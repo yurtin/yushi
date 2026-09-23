@@ -1,0 +1,18 @@
+# 统一换行符，不依赖每个人本地的 core.autocrlf 设置。
+#
+# 为什么要管这件事：鱼事.html 会被原样打进 APK 的 assets，构建脚本还会拿它和
+# 包内页面做逐字节比对。如果在 Windows 上 clone 之后换行被转成 CRLF，
+# 源码就与已发布的 APK 不一致了，那条校验会莫名其妙地失败。
+* text=auto eol=lf
+
+# 二进制文件别做任何转换，也别在 diff 里当成文本
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.ico      binary
+*.apk      binary
+*.jks      binary
+*.webmanifest binary
+
+# GitHub 语言统计：这个项目真正的源文件就一个 HTML
+*.html     linguist-documentation=false

@@ -1,0 +1,3170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>鱼事</title>
+<style>
+/* ==========================================================================
+   设计令牌 —— 逐条照抄 pidanai.com 首页（assets/pdaim-home/pdaim-styles.css）
+   亮色 :root / 暗色 html[data-theme="dark"]
+   ========================================================================== */
+:root{
+  color-scheme:light;
+  --bg:#ffffff; --fg:#070707;
+  --muted:rgba(7,7,7,.58); --faint:rgba(7,7,7,.38);
+  --line:rgba(7,7,7,.08); --line2:rgba(7,7,7,.16);
+  --pill:rgba(7,7,7,.045); --pill-hover:rgba(7,7,7,.075);
+  --dot:rgba(7,7,7,.34);
+  /* 折射色球：原站首页 body::after 的五色 */
+  --refraction-opacity:.72;
+  --refraction-cyan:rgba(71,169,255,.2);
+  --refraction-violet:rgba(153,111,255,.18);
+  --refraction-pink:rgba(255,108,174,.17);
+  --refraction-mint:rgba(83,221,184,.15);
+  --refraction-warm:rgba(255,192,98,.14);
+  --glass-hi:rgba(255,255,255,.8);
+  --glass-edge:rgba(0,0,0,.18);
+  --ok:#2f8f5b; --danger:#c8443c; --accent:#2f6fed;
+  /* 键盘焦点环。刻意**不用** --accent：那个蓝是整个界面里最鲜艳的一笔，
+     拿它描一圈 2px 在米白的卡片上非常跳。焦点环要的是"看得见"而不是"抢戏"，
+     所以用中性灰 —— 和全站的描边/文字同一套灰阶，键盘用户一样能找到位置。 */
+  --ring:rgba(7,7,7,.42);
+  /* 触屏按下去的反馈色。安卓 WebView 默认那层高亮是蓝的，跟这套黑白灰完全不搭；
+     直接在 html 上换成中性灰，等于把"闪烁"调成"压暗一下"。 */
+  --tap:rgba(7,7,7,.07);
+  /* 紧急度色阶：灰 → 黄 → 橙 → 红 → 深红（清单页条目前的小点 / 时间轴的节点） */
+  --u0:#c4c4c4; --u1:#dfa300; --u2:#e2741c; --u3:#c8443c; --u4:#7a1d1d;
+  --font-main:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --font-display:"Arial Black",Impact,"PingFang SC","Microsoft YaHei",Inter,sans-serif;
+  --font-mono:"SFMono-Regular",Consolas,"JetBrains Mono","Fira Code",monospace;
+
+  /* ---------- 动效令牌：全站缓动/时长的唯一真源 ----------
+     这些值都是从下面各处原样搬上来的，一个数字都没改，所以视觉零差异。
+     好处是以后想整体调手感（全站再快一点、再弹一点）只改这一处，
+     不用再满文件搜「哪个 .18s 是哪个」。
+     只收「被重复写了两遍以上」的值；只出现一次的时长（.34s / .76s / 500ms 之类）
+     留在原地，硬塞成一个令牌反而更难读。 */
+  --mo-fast:.16s;                       /* 小元素：描边、hover 换色（8 处） */
+  --mo-quick:.18s;                      /* 按钮、pill、导航（12 处） */
+  --mo-base:.24s;                       /* 吐司进出 */
+  --mo-slow:.3s;                        /* 吸顶条投影 */
+  --mo-soft:cubic-bezier(.2,.9,.25,1);  /* 本站的"弹出感"：弹层、吐司、吸顶条（3 处） */
+  /* 尺寸类过渡（高度塌陷 / 展开）单独一条曲线。
+     --mo-soft 前段太陡（约 14% 的时间就走完 61% 的行程），拿它去做小元素很"弹"，
+     但一个几百 px 高的块这么走就成了"先跳一下、再慢慢爬"。这条两端匀一些。 */
+  --mo-size:cubic-bezier(.4,0,.2,1);
+}
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#050505; --fg:#ffffff;
+  --muted:rgba(255,255,255,.62); --faint:rgba(255,255,255,.4);
+  --line:rgba(255,255,255,.12); --line2:rgba(255,255,255,.22);
+  --pill:rgba(255,255,255,.08); --pill-hover:rgba(255,255,255,.14);
+  --dot:rgba(255,255,255,.34);
+  --refraction-opacity:.56;
+  --refraction-cyan:rgba(72,178,255,.22);
+  --refraction-violet:rgba(158,120,255,.21);
+  --refraction-pink:rgba(255,116,184,.19);
+  --refraction-mint:rgba(80,224,190,.17);
+  --refraction-warm:rgba(255,194,105,.16);
+  --glass-hi:rgba(255,255,255,.8);
+  --glass-edge:rgba(0,0,0,.42);
+  --ok:#54b57f; --danger:#e2685f; --accent:#5b8ef5;
+  --ring:rgba(255,255,255,.55);
+  --tap:rgba(255,255,255,.1);
+  /* 暗色下深红不能太暗，否则在黑底上直接看不见，取「更沉的红」而不是「更黑的」 */
+  --u0:rgba(255,255,255,.32); --u1:#e4c04c; --u2:#f0913c; --u3:#e2685f; --u4:#bb2f26;
+}
+/* 切换主题时全站平滑过渡（原站 html.theme-changing）
+   注意：这里刻意不含 filter / backdrop-filter —— 它们会被应用到每一个元素上，
+   列表里上百条时会同时启动几百个模糊过渡，切主题直接卡死几百毫秒。 */
+html.theme-changing *,html.theme-changing *::before,html.theme-changing *::after{
+  transition:background-color 440ms ease,background 440ms ease,border-color 440ms ease,
+             color 440ms ease,box-shadow 440ms ease,fill 440ms ease,opacity 440ms ease !important;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{
+  min-height:100%;scroll-behavior:smooth;scrollbar-gutter:stable;
+  /* 安卓 WebView 默认的点击高亮是蓝色的一大块，按一下整个框闪蓝 —— 跟这套黑白灰毫无关系。
+     换成中性灰就等于把"闪一下蓝"降级成"压暗一下"，跟 :active 的位移是一套语言。
+     写在 html 上是因为这个属性会被后代继承，一条就覆盖全站。 */
+  -webkit-tap-highlight-color:var(--tap);
+}
+body{
+  min-height:100vh;margin:0;
+  /* 用 clip 而不是 hidden：hidden 会创建滚动容器，令下面的 position:sticky 失效 */
+  overflow-x:clip;
+  background-color:var(--bg);color:var(--fg);
+  font-family:var(--font-main);font-size:15px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+}
+.mono{font-family:var(--font-mono)}
+
+/* ---------- 折射色球场：原站 body::after 的五色模糊球，缓慢漂移 ---------- */
+body::after{
+  content:"";position:fixed;inset:-18vh -14vw;z-index:0;pointer-events:none;
+  opacity:var(--refraction-opacity);
+  /* 渐变停止点刻意写宽（色块边缘平滑过渡到透明），等效替代原来的 blur(88px)：
+     运行时模糊在软件渲染下是每帧全屏 CPU 重算，是滚动卡顿的最大来源；
+     预软化后这层只是一张普通渐变贴图，静止时栅格化一次就不再花钱。 */
+  background:
+    radial-gradient(circle,var(--refraction-cyan) 0 20%,transparent 50%),
+    radial-gradient(circle,var(--refraction-pink) 0 18%,transparent 48%),
+    radial-gradient(circle,var(--refraction-violet) 0 20%,transparent 52%),
+    radial-gradient(circle,var(--refraction-mint) 0 16%,transparent 46%),
+    radial-gradient(circle,var(--refraction-warm) 0 18%,transparent 50%);
+  background-size:42vmax 42vmax,38vmax 38vmax,46vmax 46vmax,34vmax 34vmax,50vmax 50vmax;
+  background-position:8% 14%,84% 8%,78% 78%,18% 82%,46% 42%;
+  background-repeat:no-repeat;
+  transform:scale(1.05);
+}
+html[data-theme="dark"] body::after{
+  /* 不叠加 mix-blend-mode: 全屏混合模式会强制每帧额外合成，且对黑色背景收益很小 */
+  opacity:calc(var(--refraction-opacity) * 1.15);
+}
+
+/* ---------- 玻璃面板：原站 .pdaim-theme.css 的玻璃配方 ----------
+   分两级：
+   1) 默认「实底玻璃」——保留 inset 高光、::before 渐变、投影这些形状语言，
+      但不用 backdrop-filter。原因：backdrop 模糊在软件渲染（内嵌预览 iframe）
+      下每帧都要全价读回屏幕内容重采样，哪怕元素再小，一个就能吃掉一半帧率；
+      而面板背后只有柔和色球背景，本没有锐利内容可模糊 —— 实底与真模糊
+      视觉上几乎不可区分，代价却是零。
+   2) 检测到真 GPU（html.gpu-render）时升级为原站完整配方（54% 底 + blur）。
+   浮层（悬浮头/吸顶录入条）会盖在列表文字上，实底模式下加浓到 92% 防文字透出。 */
+.glass{
+  position:relative;overflow:hidden;isolation:isolate;
+  background:color-mix(in srgb,var(--bg) 84%,transparent);
+  box-shadow:
+    inset 1px -1px .75px -1px color-mix(in srgb,var(--glass-hi) 40%,transparent),
+    inset -1px 1px .75px -1px color-mix(in srgb,var(--glass-hi) 34%,transparent),
+    inset 0 0 1px color-mix(in srgb,var(--glass-edge) 16%,transparent),
+    0 14px 46px color-mix(in srgb,var(--glass-edge) 28%,transparent);
+}
+.glass::before{
+  content:"";position:absolute;inset:1px;z-index:0;border-radius:inherit;pointer-events:none;
+  background:
+    linear-gradient(135deg,color-mix(in srgb,var(--glass-hi) 18%,transparent),transparent 36%,transparent 76%),
+    linear-gradient(315deg,color-mix(in srgb,var(--glass-edge) 5%,transparent),transparent 44%);
+  opacity:.42;
+}
+.glass>*{position:relative;z-index:1}
+.site-header,.capture{background:color-mix(in srgb,var(--bg) 92%,transparent)}
+/* 真 GPU：升级为原站完整玻璃（14px 而非原站 18px：一屏内玻璃面十余个，
+   模糊半径直接决定每个的采样量，降到视觉无差、代价小四成） */
+html.gpu-render .glass{
+  background:color-mix(in srgb,var(--bg) 54%,transparent);
+  -webkit-backdrop-filter:blur(14px) saturate(1.16);
+  backdrop-filter:blur(14px) saturate(1.16);
+}
+html.gpu-render .site-header,html.gpu-render .capture{
+  background:color-mix(in srgb,var(--bg) 54%,transparent);
+}
+
+/* ---------- 悬浮胶囊玻璃头（原站 .site-header） ---------- */
+.site-header{
+  position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:80;
+  width:min(calc(100% - 32px),1180px);height:78px;
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:center;
+  gap:24px;padding:0 clamp(18px,3.4vw,46px);border-radius:9999px;
+}
+.site-header .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;overflow:hidden}
+.logo{font-family:var(--font-display);font-weight:900;font-size:19px;letter-spacing:.16em;white-space:nowrap}
+.hleft small{font-size:12px;color:var(--faint);white-space:nowrap}
+.hright{display:flex;align-items:center;justify-content:flex-end;gap:12px}
+.nav-pills{display:flex;align-items:center;justify-content:center;gap:6px;position:relative}
+.nav-pill{
+  border:0;background:transparent;color:var(--muted);font:inherit;font-size:14px;font-weight:700;
+  letter-spacing:.04em;padding:10px;border-radius:13px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;   /* 图标按钮要的是近正方形，不是文字内边距 */
+  position:relative;z-index:1;
+  transition:color var(--mo-quick) ease,background var(--mo-quick) ease,transform var(--mo-quick) ease;
+}
+/* 页签图标：20px 线性图标，stroke 用 currentColor —— 所以 .on / :hover 换的是文字色，
+   图标自动跟着变色，不需要再写一套 fill/stroke 规则。
+   为什么把文字换成图标：窄屏下四个页签被挤到只剩一个字宽，"时间轴"直接竖排成三行，
+   顶栏被迫长高。图标本身等宽、不会换行，顶栏高度一下就下来了。
+   语义交给 aria-label（读屏）+ title（桌面悬停），视觉上"简约"和"可读"不必二选一。 */
+.np-ico{
+  width:20px;height:20px;display:block;
+  fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round;
+}
+.nav-pill:hover{color:var(--fg);background:var(--pill)}
+.nav-pill.on{
+  color:var(--fg);background:color-mix(in srgb,var(--fg) 10%,transparent);
+  box-shadow:inset 1px -1px .55px -1px color-mix(in srgb,var(--glass-hi) 42%,transparent),
+             inset -1px 1px .55px -1px color-mix(in srgb,var(--glass-hi) 34%,transparent);
+}
+/* 页签的滑动指示块。
+   原来"选中"是 .on 那颗自己亮一块，切换时是硬切。这里把这块底挪到一个独立的空元素上，
+   由 JS 按当前 .on 页签的 offsetLeft/offsetWidth 量出位置后用 transform 平移过去，
+   于是切换时底块会滑过去（宽度也跟着过渡，因为三个页签宽度不等）。
+   两个稳妥处：
+   ① 底块常态 width 为 0（空元素收缩到 0），所以 JS 没跑到 / 报错时它是看不见的，不会留一块脏色；
+   ② .on 原来的背景只有在 JS 成功定位、给容器挂上 .glide-ready 之后才让位（见下一条）——
+      万一 JS 挂了，退回原来"自己亮一块"的样子，不会出现"选中页签没有任何高亮"。 */
+.nav-glide{
+  position:absolute;left:0;top:0;z-index:0;pointer-events:none;opacity:0;
+  border-radius:13px;background:color-mix(in srgb,var(--fg) 10%,transparent);
+  box-shadow:inset 1px -1px .55px -1px color-mix(in srgb,var(--glass-hi) 42%,transparent),
+             inset -1px 1px .55px -1px color-mix(in srgb,var(--glass-hi) 34%,transparent);
+  transition:transform var(--mo-base) var(--mo-soft),width var(--mo-base) var(--mo-soft),
+             height var(--mo-base) var(--mo-soft),opacity var(--mo-fast) ease;
+}
+.nav-pills.glide-ready .nav-glide{opacity:1}
+.nav-pills.glide-ready .nav-pill.on{background:transparent;box-shadow:none}
+.backup{font-size:12px;color:var(--faint);white-space:nowrap}
+.backup.warn{color:var(--danger)}
+/* 主题开关：一颗圆点，点一下就切。
+   （原来是个 58px 宽、带滑块的开关，滑块左右滑表示当前模式。
+   手机上顶栏横向空间最紧张 —— 那条 58px 连同 ⚡ 一起，把左边的标题挤成半截字。
+   改成圆点后占宽从 58 降到 34，省下的正好是标题要的那点位置。
+   "现在是哪个模式"改由图标本身表达：日间画太阳、夜间画月牙，交叉淡入 + 一点旋转，
+   切换仍有"翻面"的观感，但不占横向空间。） */
+.theme-dot{
+  position:relative;width:34px;height:34px;flex:0 0 auto;padding:0;cursor:pointer;
+  border:1px solid var(--line2);border-radius:999px;background:transparent;color:var(--fg);
+  display:flex;align-items:center;justify-content:center;
+  transition:border-color var(--mo-base) var(--mo-soft),background var(--mo-base) var(--mo-soft);
+}
+.theme-dot:hover{background:var(--pill)}
+.theme-dot svg{
+  position:absolute;width:17px;height:17px;
+  fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;
+  transition:opacity .28s ease,transform .34s cubic-bezier(.2,.9,.2,1);
+}
+.theme-dot .td-moon{opacity:0;transform:rotate(-40deg) scale(.68)}
+html[data-theme="dark"] .theme-dot .td-sun{opacity:0;transform:rotate(40deg) scale(.68)}
+html[data-theme="dark"] .theme-dot .td-moon{opacity:1;transform:none}
+
+/* ---------- 页面骨架 ---------- */
+.page-shell{position:relative;z-index:2}
+/* 首屏（原站 .hero，按"平衡"压到 ~44vh 而不是满屏） */
+.hero{
+  position:relative;isolation:isolate;
+  padding:clamp(126px,17vh,178px) 24px clamp(22px,4vh,44px);
+  text-align:center;overflow:hidden;
+}
+/* 点阵网格（原站 body::before，只在首页出现） */
+.hero::before{
+  content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
+  background-image:radial-gradient(circle at center,var(--dot) 0 1.05px,transparent 1.18px);
+  background-size:38px 38px;
+  -webkit-mask-image:radial-gradient(circle at 50% 34%,#000 0 22%,rgba(0,0,0,.72) 46%,transparent 78%);
+          mask-image:radial-gradient(circle at 50% 34%,#000 0 22%,rgba(0,0,0,.72) 46%,transparent 78%);
+  opacity:.9;
+}
+.hero .eyebrow{
+  margin:0 0 clamp(16px,2.4vh,26px);color:var(--muted);
+  font-size:12px;font-weight:800;letter-spacing:.34em;text-transform:uppercase;
+}
+/* 粗细混排大标题（原站 .hero-copy h1 / .title-strong / .title-light） */
+.hero h1{
+  margin:0;font-size:clamp(38px,6.4vw,104px);line-height:.88;letter-spacing:-.075em;font-weight:400;
+}
+.title-strong{font-family:var(--font-display);font-weight:900;letter-spacing:-.05em}
+.title-comma{display:inline-block;padding:0 .06em;font-family:var(--font-display);font-weight:900}
+.title-light{font-style:italic;font-weight:500;letter-spacing:-.07em;color:var(--muted)}
+.hero .subtitle{margin:clamp(14px,2.2vh,24px) 0 0;color:var(--muted);font-size:clamp(14px,1.5vw,18px);font-weight:600}
+
+/* ---------- 极速录入（吸顶） ---------- */
+.capture-wrap{position:sticky;top:106px;z-index:60;padding:0 18px}
+.capture-wrap .inner{max-width:1240px;margin:0 auto}
+.capture{
+  display:flex;align-items:center;gap:12px;
+  padding:15px clamp(18px,2.4vw,30px);border-radius:9999px;
+  transition:box-shadow var(--mo-slow) ease,transform var(--mo-slow) var(--mo-soft);
+}
+.capture.is-stuck{box-shadow:inset 1px -1px .75px -1px color-mix(in srgb,var(--glass-hi) 46%,transparent),
+  inset -1px 1px .75px -1px color-mix(in srgb,var(--glass-hi) 38%,transparent),
+  0 20px 60px color-mix(in srgb,var(--glass-edge) 40%,transparent)}
+.capture .mark{color:var(--faint);font-size:17px}
+.capture input{
+  flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--fg);
+  font-family:inherit;font-size:16px;padding:4px 0;
+}
+.capture input::placeholder{color:var(--faint)}
+.kbd{font-size:11px;color:var(--faint);border:1px solid var(--line2);border-radius:7px;padding:3px 8px;white-space:nowrap}
+/* 录入条下方：标签框 + 提示框，各自独立、居中，不吸顶（随页面滚走） */
+.entry-extra{
+  display:flex;flex-direction:column;align-items:center;gap:9px;
+  margin:10px auto 0;padding:0 18px;
+}
+.entry-box{
+  border:1px solid var(--line2);border-radius:16px;
+  background:color-mix(in srgb,var(--bg) 72%,transparent);
+  padding:9px 15px;width:fit-content;max-width:100%;
+  /* 框体本身（选中标签后里面多一颗 pill、写法提示展开）的变化也走同一条柔和过渡，
+     否则内层柔了、外层硬切，看着更割裂。 */
+  transition:border-color var(--mo-base) var(--mo-soft),background var(--mo-base) var(--mo-soft),
+             box-shadow var(--mo-base) var(--mo-soft);
+}
+.entry-tags{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;min-width:0}
+.et-l{font-size:11px;font-weight:800;letter-spacing:.14em;color:var(--faint);margin-right:2px;flex:0 0 auto}
+/* 录入区「已选 N」的小角标 */
+.et-n{
+  font-size:10.5px;font-weight:800;color:var(--accent);margin-right:2px;flex:0 0 auto;
+  border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);border-radius:999px;padding:1px 7px;
+}
+/* 写法提示：可折叠。默认收起 —— 全展开十几个 chip 要占三行，太占地方。
+   padding 交给 summary / .hint-chips 各自控制，所以这里归零 */
+.hint{padding:0;overflow:hidden}
+/* justify-content:center 是必须的：收起时这个盒子是 fit-content（贴着「写法提示」那几个字），
+   一展开就被 chips 撑成 700 多 px 宽，summary 默认靠左 → 点开的一瞬间那行字会从中间跳到左边。
+   居中之后 summary 的水平中心永远和盒子中心重合，也就是永远停在「展开前」那个位置。 */
+.hint>summary{
+  cursor:pointer;list-style:none;user-select:none;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:9px 15px;font-size:12px;font-weight:800;color:var(--muted);
+  transition:color .2s ease;
+}
+.hint>summary::-webkit-details-marker{display:none}
+.hint>summary:hover{color:var(--fg)}
+.hint[open]>summary{color:var(--fg)}
+.hb-ico{
+  width:0;height:0;flex:0 0 auto;opacity:.75;
+  border-left:5px solid currentColor;
+  border-top:4px solid transparent;border-bottom:4px solid transparent;
+  transition:transform .22s cubic-bezier(.2,.8,.2,1);
+}
+.hint[open] .hb-ico{transform:rotate(90deg)}
+.hb-n{font-size:11px;font-weight:800;color:var(--faint);border:1px solid var(--line2);border-radius:999px;padding:1px 7px}
+.hb-open{font-size:11px;font-weight:600;color:var(--faint)}
+.hint[open] .hb-open{display:none}
+.hint-chips{
+  display:flex;flex-wrap:wrap;justify-content:center;gap:6px;
+  font-size:12px;color:var(--faint);padding:0 15px 12px;max-width:720px;
+}
+.hint-chips span{border:1px solid var(--line);border-radius:999px;padding:2px 10px;white-space:nowrap}
+.hint-chips b{color:var(--muted);font-weight:700}
+
+/* 统计页 / 设置页：大标题 / 录入条 / 标签框 / 提示框都用不上，整块隐藏
+   （body[data-view] 由 refresh 同步） */
+body[data-view="stat"] .hero,
+body[data-view="stat"] .capture-wrap,
+body[data-view="stat"] .entry-extra,
+body[data-view="settings"] .hero,
+body[data-view="settings"] .capture-wrap,
+body[data-view="settings"] .entry-extra{display:none}
+body[data-view="stat"] .pdaim-section,
+body[data-view="settings"] .pdaim-section{padding-top:clamp(96px,12vh,140px)}  /* 顶栏下别贴太近 */
+
+/* 「外观 → 页面说明文字」关掉时，各页标题下面那段解释文案整段收起。
+   开关状态只写在 body 的一个属性上（applyHelp 同步），不在三个视图里各写一份，
+   所以切换时不需要重渲染、页面也不会跳。
+   注意这里收的是**说明性文字**：条数 / 逾期这类事实数字不在其中
+   （时间轴那行已单独挪到列表上方，见 .tl-meta），各栏的空态提示也不受影响。 */
+body[data-help="off"] .intro-note{display:none}
+
+/* ---------- 区块（原站 .pdaim-section / .section-intro / .section-kicker） ---------- */
+.pdaim-section{
+  position:relative;z-index:2;
+  width:min(1240px,calc(100% - 36px));margin:0 auto;
+  padding:clamp(64px,9vw,116px) 0 clamp(56px,7vw,90px);
+}
+.section-intro{margin:0 auto;text-align:center;max-width:1180px}
+.section-kicker{margin:0 0 18px;color:var(--muted);font-size:12px;font-weight:900;letter-spacing:.28em;text-transform:uppercase}
+.section-intro h2{
+  margin:0;font-family:var(--font-display);font-weight:900;
+  font-size:clamp(34px,5.6vw,88px);line-height:.9;letter-spacing:-.065em;
+}
+.section-intro p{max-width:720px;margin:20px auto 0;color:var(--muted);font-size:clamp(14px,1.5vw,18px);line-height:1.8;font-weight:600}
+
+/* 滚动揭示（原站 .reveal-on-scroll，数值照抄）。
+   ⚠️ 这里刻意用 animation 而不是 transition —— 是手机上真看出来才改的：
+   `.feature-card` 自己声明了 `transition:transform 320ms,box-shadow 320ms`，
+   它在本文件里比这条规则更靠后、权重又相同，而 transition 是**简写**，会整体覆盖，
+   于是卡片的 opacity/filter 过渡被换掉，入场变成"咔"一下直接出现；
+   同一页里没有 transition 的 .section-intro 却老老实实淡入 —— 一个页面两种节奏，
+   看起来就是"统计页一进去那个布局条和卡片特别生硬"。
+   （实测：切到统计页后逐帧采样，intro 从 0 走到 1 用了 760ms，
+   卡片则在 30ms 内从 0 跳到 1。）
+   换成 animation 就从这条层叠链里摘出来了：动画不参与 transition 的覆盖，
+   组件自己的 hover 过渡不受影响，入场该播还是播。
+
+   fill-mode 用 backwards 而不是 both：延迟期间保持"隐藏起点"，
+   动画播完自动失效、元素回落自身样式。用 both 会把终态的 transform 一直挂着，
+   卡片 hover 的 translateY(-8px) 就再也抬不起来了。 */
+.reveal-on-scroll{opacity:0;will-change:opacity,transform,filter}
+.reveal-on-scroll.is-visible{
+  opacity:1;
+  animation:rvIn .76s cubic-bezier(.16,1,.3,1) backwards;
+  animation-delay:var(--delay,0ms);
+}
+@keyframes rvIn{
+  from{opacity:0;transform:translateY(54px) scale(.98);filter:blur(10px)}
+  to{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}
+}
+
+/* ---------- 工具条 ----------
+   两行：第一行＝搜索 + 粘贴导入 + 备份；第二行＝标签条 + 右端的加标签/管理按钮。
+   标签条自成一栏，标签再多也只在自己那一行里横向滚，不会把别的元素挤下去。
+   注意行 class 不能叫 .row —— 页面里别处（pidanai 那套壳）已经有 .row，
+   且 820px 断点把它改成 flex-direction:column，撞上就会在小屏下整行变竖排。 */
+.toolbar{display:flex;flex-direction:column;gap:10px;margin:clamp(34px,5vw,58px) 0 16px}
+.toolbar>.tb-row{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;min-width:0}
+.tb-row.search-row .search{flex:1 1 auto;min-width:130px}
+.tb-row.search-row .btn{flex:0 0 auto}
+.tb-row.tag-row{gap:10px}
+/* 标签条＝横向滚动容器。
+   上下留白是给 pill 右上角那颗删除小叉留的位置（它 top:-6px 探出到 pill 外面），
+   不留的话 overflow 会把它裁掉半个。 */
+.pillstrip{
+  display:flex;align-items:center;gap:6px;flex-wrap:nowrap;
+  overflow-x:auto;overflow-y:hidden;
+  flex:1 1 auto;min-width:0;
+  padding:7px 8px 2px 2px;
+  scrollbar-width:thin;scrollbar-color:var(--line2) transparent;
+  overscroll-behavior-x:contain;
+}
+.pillstrip>*{flex:0 0 auto}                    /* 不许缩，撑出去才有得滚 */
+.pillstrip::after{content:"";flex:0 0 6px}     /* 滚到底时最后一颗的 × 不贴边被切 */
+
+/* ---------- 标签条的边缘渐隐 ----------
+   横向滚动容器默认是在两端"硬切"：滚到一半的 pill 被切成半个，紧贴边界，
+   看着很毛（用户圈出来的就是这处）。这里用 mask 在两边缘做一小段渐隐，
+   被切住的那颗 pill 是"淡出去"的，而不是"被刀切"的。
+
+   三个刻意的取舍：
+   ① 用 mask 而不是盖一层渐变遮罩 —— mask 不占布局、不吃点击，也不用去猜背景色
+      （玻璃底、暗色模式、遮罩上的弹窗，背景都不是同一个色，盖色块迟早对不上）。
+   ② 只在"真的能滚、且这一侧确实还有内容被切住"时才渐隐。内容没溢出时也渐隐的话，
+      第一颗 pill 会被平白无故淡化一块，看着像坏了。所以由 JS 实时挂 .fade-l/.fade-r。
+   ③ 渐隐宽度取 22px：比一颗 pill 的圆角(999px)半径大一些，够把切口感化开；
+      又小于最短的 pill 宽度，不至于把一整颗标签糊没。 */
+.pillstrip{--strip-fade:22px}
+.pillstrip.fade-l.fade-r{
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 var(--strip-fade),#000 calc(100% - var(--strip-fade)),transparent 100%);
+          mask-image:linear-gradient(90deg,transparent 0,#000 var(--strip-fade),#000 calc(100% - var(--strip-fade)),transparent 100%);
+}
+.pillstrip.fade-l:not(.fade-r){
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 var(--strip-fade));
+          mask-image:linear-gradient(90deg,transparent 0,#000 var(--strip-fade));
+}
+.pillstrip.fade-r:not(.fade-l){
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - var(--strip-fade)),transparent 100%);
+          mask-image:linear-gradient(90deg,#000 calc(100% - var(--strip-fade)),transparent 100%);
+}
+/* 细滚动条：给鼠标用户一个能拖的把手（隐藏滚动条只剩手势的话，台式机就没法用了）。
+   颜色不能用 --line2，那是描边色、太淡，6px 细条会看不见，得用文字灰阶。 */
+.pillstrip::-webkit-scrollbar{height:6px}
+.pillstrip::-webkit-scrollbar-track{background:transparent}
+.pillstrip::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--faint) 90%,transparent);border-radius:99px}
+.pillstrip::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+/* 标签条右端固定的那组按钮：＋ 加标签 / ⚙ 管理 */
+.tagacts{flex:0 0 auto;display:flex;align-items:center;gap:6px}
+/* 自定义标签：pill 右上角带删除小叉 */
+.pillwrap{position:relative;display:inline-flex;align-items:center}
+.pill-x{
+  position:absolute;top:-6px;right:-6px;width:16px;height:16px;border-radius:50%;padding:0;line-height:1;
+  border:1px solid var(--line2);background:var(--bg);color:var(--faint);font-size:11px;cursor:pointer;
+}
+.pill-x:hover{color:var(--danger);border-color:var(--danger)}
+.addpill{color:var(--faint);padding:6px 11px}
+.addpill:hover{color:var(--fg)}
+.newtag-input{
+  width:96px;border:1px solid var(--fg);border-radius:999px;background:transparent;color:var(--fg);
+  font:inherit;font-size:12.5px;font-weight:700;padding:6px 14px;outline:0;
+}
+.newtag-input::placeholder{color:var(--faint);font-weight:600}
+/* 管理标签弹窗：一行一个标签，输入框改名 + 删除 */
+.modal-note{margin:0;font-size:12.5px;line-height:1.75;color:var(--muted);font-weight:600}
+.modal .modal-note + .tagrows{margin-top:18px}
+.tagrows{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;max-height:44vh;overflow:auto}
+.tagrow{display:flex;align-items:center;gap:8px}
+.tagrow input{
+  flex:1;min-width:0;border:1px solid var(--line2);border-radius:12px;background:transparent;
+  color:var(--fg);font:inherit;font-size:14px;font-weight:700;padding:9px 13px;outline:0;
+  transition:border-color var(--mo-quick) ease;
+}
+.tagrow input:focus{border-color:var(--fg)}
+.tagrow input::placeholder{color:var(--faint);font-weight:600}
+.tagrow .btn{flex:0 0 auto;font-size:12.5px;padding:8px 15px}
+.tagrow.addrow{margin-top:4px;padding-top:14px;border-top:1px solid var(--line)}
+.pill{
+  border:1px solid var(--line2);background:transparent;color:var(--muted);
+  font:inherit;font-size:12.5px;font-weight:700;padding:6px 14px;border-radius:999px;cursor:pointer;
+  /* 过渡放慢到 .24s 并换成本站那条"柔和"曲线（原来是 .18s ease，从透明底直接跳到实黑，
+     看起来就是硬切一下）。transform 仍走 .18s：按下去的反馈要跟手，不能拖。 */
+  transition:color var(--mo-base) var(--mo-soft),border-color var(--mo-base) var(--mo-soft),
+             background var(--mo-base) var(--mo-soft),box-shadow var(--mo-base) var(--mo-soft),
+             transform var(--mo-quick) ease;
+}
+.pill:hover{color:var(--fg);border-color:var(--fg)}
+/* 选中态多一层很淡的投影：一是让"实底"看起来是浮起来的而不是贴上去的，
+   二是 box-shadow 可以参与过渡，底色切换就有个"落下来"的中间态，不会那么楞。 */
+.pill.on{
+  background:var(--fg);color:var(--bg);border-color:var(--fg);
+  box-shadow:0 2px 10px color-mix(in srgb,var(--glass-edge) 38%,transparent);
+}
+/* 筛选栏那条标签是**整块重画**的（#view 每次 refresh 都重建，连 #filters 都是新元素），
+   所以 .pill 上那条 transition 永远没机会播 —— 选中态是"啪"一下换过去的。
+   这条入场只挂在「刚刚被点中的那一颗」上（由 renderFilters 按 filterPulse 打标记），
+   补一个从无底色长到有底色的中间态，视觉上就接上了。
+   刻意不做成"所有 .on 一起播"：连着选三颗时整条一起闪，比硬切还难看。 */
+@keyframes pillOn{from{background:transparent;color:var(--muted);border-color:var(--line2);box-shadow:none}
+                  to{background:var(--fg);color:var(--bg);border-color:var(--fg);
+                     box-shadow:0 2px 10px color-mix(in srgb,var(--glass-edge) 38%,transparent)}}
+@keyframes pillOff{from{background:var(--fg);color:var(--bg);border-color:var(--fg);
+                       box-shadow:0 2px 10px color-mix(in srgb,var(--glass-edge) 38%,transparent)}
+                   to{background:transparent;color:var(--muted);border-color:var(--line2);box-shadow:none}}
+.pill.pulse{animation:pillOn .3s var(--mo-soft) both}
+.pill.pulse-off{animation:pillOff .3s var(--mo-soft) both}
+.btn{
+  border:1px solid var(--line2);background:transparent;color:var(--fg);font:inherit;font-size:13px;font-weight:700;
+  padding:8px 18px;border-radius:9999px;cursor:pointer;transition:all var(--mo-quick) ease;white-space:nowrap;
+}
+.btn:hover{border-color:var(--fg);transform:translateY(-1px)}
+.btn.primary{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.btn.ghost{border-color:transparent;color:var(--muted)}
+.btn.ghost:hover{color:var(--fg);border-color:var(--line2)}
+.btn.danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 40%,transparent)}
+
+/* ---------- 三区看板 ---------- */
+.board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(14px,1.8vw,20px);align-items:start}
+/* 屏幕外跳过布局+绘制，滚动只画看得见的部分（长列表时软件渲染的主要省力点）。
+   auto 关键字：渲染过一次后记住真实高度，避免滚动条跳动。 */
+.zone{
+  padding:6px 20px 16px;border-radius:32px;
+  content-visibility:auto;contain-intrinsic-size:auto 640px;
+}
+.zone header{display:flex;align-items:center;gap:9px;padding:16px 2px 12px;border-bottom:1px solid var(--line)}
+.zone header .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.zone[data-z="short"] header .dot{background:var(--accent);box-shadow:0 0 10px color-mix(in srgb,var(--accent) 55%,transparent)}
+.zone[data-z="long"]  header .dot{background:var(--accent);box-shadow:0 0 10px color-mix(in srgb,var(--accent) 55%,transparent)}
+.zone[data-z="consider"] header .dot{background:var(--ok);box-shadow:0 0 10px color-mix(in srgb,var(--ok) 55%,transparent)}
+/* 「考虑」不是待办，只是「还没决定要不要做」的暂存区 —— 排在最后，并铺满整行收尾 */
+.zone-wide{grid-column:1/-1}
+.zone header h3{margin:0;font-size:13px;font-weight:900;letter-spacing:.2em;text-transform:uppercase;color:var(--fg)}
+.zone header .n{margin-left:auto;font-size:12px;color:var(--faint)}
+.empty{color:var(--faint);font-size:13px;padding:16px 2px;text-align:center}
+
+/* ---------- 条目 ---------- */
+.item{display:flex;align-items:flex-start;gap:11px;padding:11px 2px;border-bottom:1px solid var(--line);position:relative}
+.item:last-child{border-bottom:0}
+/* 行首：紧急度小点 + 勾选框。两个包一层，免得 .item 的 gap 被拆成两份、白吃一截宽度 */
+.lead{flex:0 0 auto;display:flex;align-items:flex-start;gap:7px}
+.udot{
+  flex:0 0 auto;width:8px;height:8px;margin-top:8px;border-radius:50%;
+  background:var(--u0);   /* 0 灰＝没日期也不紧要 */
+}
+.udot.u1{background:var(--u1)}   /* 黄＝这周内 */
+.udot.u2{background:var(--u2)}   /* 橙＝三天内 */
+.udot.u3{background:var(--u3);box-shadow:0 0 8px color-mix(in srgb,var(--u3) 45%,transparent)}   /* 红＝逾期 / 标了 ! */
+.udot.u4{background:var(--u4);box-shadow:0 0 10px color-mix(in srgb,var(--u4) 60%,transparent)}  /* 深红＝标了 !! */
+.item.done .udot{opacity:.35}    /* 已完成的不再喊紧急，点留着只为对齐 */
+.tick{
+  flex:0 0 auto;width:20px;height:20px;margin-top:2px;border-radius:7px;cursor:pointer;padding:0;
+  border:1.6px solid var(--line2);background:transparent;color:transparent;font-size:12px;line-height:1;
+  display:flex;align-items:center;justify-content:center;transition:all var(--mo-fast) ease;
+}
+.tick:hover{border-color:var(--fg);transform:scale(1.08)}
+.item.done .tick{background:var(--ok);border-color:var(--ok);color:#fff}
+.body{flex:1;min-width:0}
+.t{font-size:15px;font-weight:600;word-break:break-word;cursor:pointer;transition:color var(--mo-fast) ease}
+.t:hover{color:var(--accent)}
+.item.done .t{color:var(--faint);font-weight:500;text-decoration:line-through}
+.meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;align-items:center}
+.chip{
+  font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;
+  border:1px solid var(--line2);color:var(--muted);white-space:nowrap;
+}
+.chip.date{font-family:var(--font-mono);font-size:11px}
+.chip.late{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 45%,transparent)}
+.chip.today{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
+.chip.hwchip{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
+.chip.rep{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent);font-family:var(--font-mono);font-size:11px}
+.chip.old{color:#b07a1e;border-color:color-mix(in srgb,#b07a1e 45%,transparent)}
+/* 条目上的标签：只写具体属性不用 all —— all 会把将来任何新加的属性一起拖进过渡，
+   而且这里的过渡时长也该和标签条统一（.24s + 柔和曲线），不然同一颗标签在两个地方手感不同。 */
+.chip[data-tag]{
+  cursor:pointer;
+  transition:color var(--mo-base) var(--mo-soft),border-color var(--mo-base) var(--mo-soft),
+             background var(--mo-base) var(--mo-soft);
+}
+.chip[data-tag]:hover{color:var(--fg);border-color:var(--fg)}
+/* 搜索框 */
+.search{
+  flex:0 1 200px;min-width:130px;border:1px solid var(--line2);border-radius:999px;
+  background:transparent;color:var(--fg);font:inherit;font-size:13px;padding:7px 16px;outline:0;
+  transition:border-color var(--mo-fast) ease;
+}
+.search:focus{border-color:var(--fg)}
+.search::placeholder{color:var(--faint)}
+/* 逾期只把标题变红。左侧那几根色条（逾期红条 / 重要黄条 / 紧急红条 / 积压黄条）撤了：
+   它们只有两三个档位，和行首那颗五档的点互相打架，同一件事会同时说两遍还不一致。 */
+.item.overdue .t{color:var(--danger)}
+.chip.prichip.p1{color:#b07a1e;border-color:color-mix(in srgb,#b07a1e 50%,transparent)}
+.chip.prichip.p2{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 50%,transparent)}
+/* 循环区现在是看板的第三栏，不再是脚下一整条，所以不用 margin-top */
+.repeat-zone header .dot{background:var(--accent);box-shadow:0 0 10px color-mix(in srgb,var(--accent) 55%,transparent)}
+/* 时间轴页：装饰性大标题和标签/提示助手盒用不上，隐藏；
+   录入条保留 —— 这页也是任务页，翻着时间轴想起来什么能随手加一条 */
+body[data-view="timeline"] .hero,
+body[data-view="timeline"] .entry-extra{display:none}
+/* 这页的录入条是吸顶的（sticky top:106px），而它在文档流里就占 0~61px，
+   所以标题的 padding-top 必须大于「吸顶位置 + 条高 - 流内偏移」，否则标题会被压在录入条底下 */
+body[data-view="timeline"] .pdaim-section{padding-top:clamp(112px,13vh,140px)}
+.tl-section{width:min(100%,960px);margin:0 auto}   /* 列表读起来窄一点更舒服 */
+/* 复合目标：子任务缩进挂在目标卡下，左侧树线随层级渐淡 */
+.goal-kids{
+  margin:6px 0 2px 2px;padding-left:12px;
+  border-left:2px solid color-mix(in srgb,var(--accent) 40%,transparent);
+  display:flex;flex-direction:column;gap:2px;
+}
+.goal-kids .goal-kids{border-left-color:color-mix(in srgb,var(--accent) 18%,transparent)}
+/* 折叠态 = 只是 display:none，子任务本身**留在 DOM 里**（见 renderTree 的注释）。
+   收起动画要先把当前高度量出来再往 0 压，DOM 里没东西就没得量。 */
+.goal-kids.folded{display:none}
+/* 折叠/展开的高度过渡：高度由 JS 量出来写成 inline 值（auto 没法参与过渡），
+   这里只提供曲线。overflow:hidden 是必需的 —— 高度塌到 0 时内容会溢出来。
+   上下的 6px/2px 外边距也要一起过渡，不然高度收完了外边距还在，会留一条 8px 的缝。 */
+.goal-kids.folding{
+  overflow:hidden;
+  transition:height var(--mo-base) var(--mo-size),
+             opacity var(--mo-fast) ease,
+             margin-top var(--mo-base) var(--mo-size),
+             margin-bottom var(--mo-base) var(--mo-size);
+}
+.item.goal .t{font-weight:800}
+.chip.goalchip{cursor:pointer;color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent);font-family:var(--font-mono);font-size:11px}
+.acts{display:flex;gap:2px;opacity:0;transition:opacity var(--mo-fast) ease;flex:0 0 auto}
+.item:hover .acts,.item:focus-within .acts{opacity:1}
+.mini{border:0;background:transparent;color:var(--faint);cursor:pointer;font-size:13px;padding:3px 6px;border-radius:7px;transition:all var(--mo-fast) ease}
+.mini:hover{color:var(--fg);background:var(--pill)}
+
+/* ---------- 作业时间线 ---------- */
+.timeline{list-style:none;margin:clamp(34px,5vw,58px) 0 0;padding:0;position:relative}
+.timeline::before{
+  content:"";position:absolute;left:7px;top:6px;bottom:6px;width:1px;
+  background:linear-gradient(to bottom,transparent,var(--line2) 6%,var(--line2) 94%,transparent);
+}
+.tl-item{position:relative;padding:0 0 16px 34px}
+.tl-node{
+  position:absolute;left:0;top:26px;width:15px;height:15px;border-radius:50%;
+  border:1.6px solid var(--line2);background:var(--bg);
+}
+/* 轴上的点按紧急度上色，和清单页行首那颗是同一套色阶 */
+.tl-item[data-u="0"] .tl-node{background:var(--u0);border-color:transparent}
+.tl-item[data-u="1"] .tl-node{background:var(--u1);border-color:transparent}
+.tl-item[data-u="2"] .tl-node{background:var(--u2);border-color:transparent;box-shadow:0 0 0 4px color-mix(in srgb,var(--u2) 14%,transparent)}
+.tl-item[data-u="3"] .tl-node{background:var(--u3);border-color:transparent;box-shadow:0 0 0 4px color-mix(in srgb,var(--u3) 16%,transparent)}
+.tl-item[data-u="4"] .tl-node{background:var(--u4);border-color:transparent;box-shadow:0 0 0 5px color-mix(in srgb,var(--u4) 20%,transparent)}
+.hwcard{padding:clamp(18px,2.2vw,26px);border-radius:32px;content-visibility:auto;contain-intrinsic-size:auto 160px}
+.hwcard .top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.course{font-size:11.5px;font-weight:800;letter-spacing:.1em;color:var(--muted);border:1px solid var(--line2);border-radius:8px;padding:2px 9px}
+.hwcard h3{margin:12px 0 0;font-size:clamp(17px,2vw,21px);font-weight:800;letter-spacing:-.02em;line-height:1.35}
+.hwcard .detail{margin:10px 0 0;font-size:13.5px;color:var(--muted);white-space:pre-wrap;line-height:1.75}
+.hwcard .grid{margin-top:12px;display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12.5px;color:var(--muted)}
+.hwcard .grid b{color:var(--faint);font-weight:700;letter-spacing:.08em}
+.statuses{display:flex;gap:6px;margin-top:16px;flex-wrap:wrap;align-items:center}
+.st{
+  border:1px solid var(--line2);background:transparent;color:var(--muted);font:inherit;font-size:12.5px;font-weight:700;
+  padding:5px 15px;border-radius:999px;cursor:pointer;transition:all var(--mo-fast) ease;
+}
+.st:hover{color:var(--fg);border-color:var(--fg)}
+.st.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.st.on[data-s="submitted"]{background:var(--ok);border-color:var(--ok);color:#fff}
+
+/* ---------- 统计（原站 .feature-grid / .feature-card） ---------- */
+.feature-grid{
+  width:min(100%,1180px);margin:clamp(38px,6vw,76px) auto 0;
+  /* auto-fit + 190 的下限：1080px 以上时容器最窄也有 1030px，
+     (1030-4×17)/5 ≈ 192 > 190，所以四张卡在桌面宽度永远排成整齐一行。
+     不用固定列数，是为了卡的数量变了也不会挤成一行空一堆。 */
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:clamp(12px,1.6vw,20px);
+}
+.feature-card{
+  position:relative;overflow:hidden;min-height:190px;padding:clamp(18px,2vw,26px);border-radius:32px;
+  transition:transform 320ms cubic-bezier(.2,.8,.2,1),box-shadow 320ms ease;
+  content-visibility:auto;contain-intrinsic-size:auto 220px;
+}
+.feature-card:hover{transform:translateY(-8px);box-shadow:0 26px 70px color-mix(in srgb,var(--glass-edge) 42%,transparent)}
+.feature-card .k{color:var(--muted);font-size:12px;font-weight:900;letter-spacing:.2em;text-transform:uppercase}
+.feature-card .v{
+  margin:20px 0 0;font-family:var(--font-mono);font-weight:700;
+  font-size:clamp(32px,3.4vw,50px);line-height:.9;letter-spacing:-.04em;
+}
+.feature-card .s{margin-top:8px;font-size:12.5px;color:var(--faint)}
+/* 主指标：用配色和字号强调，不跨列 —— 跨列会让上下两行的列宽对不齐 */
+.feature-card.big .v{font-size:clamp(38px,4vw,60px)}
+
+/* 一卡两指标（已逾期 / 作业未交）：沿用同一套「标签 / 大数字 / 单位」三层排版，
+   只是从一列变两列 —— 卡片外形、观感和别的 card 完全一致，只是内容一分为二 */
+.feature-card.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:clamp(14px,1.6vw,22px)}
+.feature-card.pair .pcol{min-width:0}
+.feature-card.pair .pcol+.pcol{border-left:1px solid var(--line);padding-left:clamp(14px,1.6vw,22px)}
+.feature-card.pair .v{font-size:clamp(28px,3vw,44px)}   /* 半栏宽，比单指标那几张收一号 */
+/* 方块模式：两个指标上下叠（方格里横向摆会挤），分隔线也就不要了 */
+.feature-grid.tile .feature-card.pair{display:flex;flex-direction:column}
+.feature-grid.tile .feature-card.pair .pcol+.pcol{border-left:0;padding-left:0}
+.feature-card.accent{
+  background:
+    radial-gradient(circle at 14% 6%,color-mix(in srgb,var(--accent) 15%,transparent),transparent 48%),
+    color-mix(in srgb,var(--bg) 84%,transparent);
+}
+html.gpu-render .feature-card.accent{
+  background:
+    radial-gradient(circle at 14% 6%,color-mix(in srgb,var(--accent) 15%,transparent),transparent 48%),
+    color-mix(in srgb,var(--bg) 54%,transparent);
+}
+.feature-card.accent .v{color:var(--accent)}
+
+/* ---------- 弹层 ---------- */
+/* 弹层打开时锁住底下的页面。不锁的话，滚动会"接力"到下面的文档，两个一起滑：
+   ① 滚轮/手指落在遮罩上（遮罩自己不可滚，于是去找上一层可滚的 —— 就是文档）；
+   ② 弹窗内容已经滚到顶/底，再继续滑同样接力出去。
+   锁在 html 而不是 body：body 上有 sticky（.capture-wrap），给 body 加 overflow:hidden
+   会新建一个滚动容器、把 sticky 直接废掉（这也是 body 那条写 overflow-x:clip 而不是 hidden 的原因）。
+   html 本来就设了 scrollbar-gutter:stable，所以锁上/解开不会因为滚动条消失而横向位移。 */
+html.locked{overflow:hidden}
+.mask{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.42);display:none;align-items:center;justify-content:center;padding:20px;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.mask.on{display:flex;animation:fadein .2s ease both}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.modal{width:100%;max-width:600px;max-height:88vh;overflow:auto;overscroll-behavior:contain;padding:clamp(22px,3vw,34px);border-radius:38px;animation:rise .34s var(--mo-soft) both}
+/* 弹窗压在深色遮罩上，而 .glass 的底是**半透明**的（真机 GPU 下只有 54% 不透明）——
+   于是遮罩的深色透过弹窗本身浮上来，整块被染成灰、连字都跟着发灰
+   （用户截图里那个灰扑扑的「粘贴导入」就是这么来的）。
+   弹层本来就浮在已经压暗的背景之上，没有理由再透，所以单独给一条接近实底的表面。
+   必须连 html.gpu-render / html.soft-render 一起写：那两条规则的选择器权重比
+   `.mask .modal` 高，不显式覆盖的话真机上跑的还是老配方。 */
+.mask .modal,
+html.gpu-render .mask .modal,
+html.soft-render .mask .modal{
+  background:color-mix(in srgb,var(--bg) 97%,transparent);
+  -webkit-backdrop-filter:none;backdrop-filter:none;
+}
+@keyframes rise{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:none}}
+.modal h3{margin:0 0 20px;font-family:var(--font-display);font-weight:900;font-size:26px;letter-spacing:-.03em}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin-bottom:7px}
+.field input[type=text],.field input[type=date],.field textarea,.field select{
+  width:100%;border:1px solid var(--line2);border-radius:14px;background:transparent;color:var(--fg);
+  font:inherit;font-size:14px;padding:11px 14px;outline:0;transition:border-color var(--mo-fast) ease;
+}
+.field textarea{min-height:100px;resize:vertical;line-height:1.7}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--fg)}
+.field select option{background:var(--bg);color:var(--fg)}
+.tagbox{display:flex;gap:6px;flex-wrap:wrap}
+.row{display:flex;gap:12px}
+.row>*{flex:1;min-width:0}
+.foot{display:flex;gap:10px;margin-top:22px;align-items:center}
+.spacer{flex:1}
+.checkline{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:600;cursor:pointer}
+
+/* ---------- toast ----------
+   ⚠️ 居中用 left:50% + translateX(-50%)，但**宽度必须显式写死**（width:max-content）。
+   不写的后果在手机上很难看：fixed 元素 width:auto 时按「left 到右边缘」的剩余空间
+   做收缩适配，left:50% 只留了半屏（360px 屏上约 180px），长文案被压成一列五六个字，
+   再配上 9999px 的圆角，整个提示框糊成一个大圆 —— 就是用户截图里那个"变形的备份提示"。
+   桌面上半屏比文案宽，所以这毛病一直只在手机上露头。
+
+   为什么不是 left:0/right:0 + margin:auto + fit-content：实测在这个布局下
+   fit-content 会解成 stretch（三档文案全都吃满 max-width 328px），短提示会变成一条
+   莫名的长胶囊。max-content 的语义才是想要的："尽量一行放完，放不下由 max-width 封顶"。
+
+   translateX(-50%) 是按自身宽度算的，所以宽度怎么变都仍然居中。 */
+#toast{
+  position:fixed;left:50%;bottom:30px;z-index:95;
+  transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;
+  transition:opacity var(--mo-base) ease,transform var(--mo-base) var(--mo-soft);
+  display:flex;align-items:center;gap:16px;padding:13px 22px;border-radius:9999px;font-size:13.5px;font-weight:600;
+  width:max-content;max-width:calc(100% - 32px);
+}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto}
+#toast button{border:0;background:transparent;color:var(--accent);font:inherit;font-weight:800;cursor:pointer;white-space:nowrap}
+
+/* ---------- 页脚（原站 .pdaim-footer） ---------- */
+.pdaim-footer{position:relative;z-index:2;padding:40px 24px 56px;text-align:center;color:var(--faint);font-size:12.5px}
+/* 同一句话在电脑上和在手机上不可能都对 ——「数据只在这台电脑的浏览器里」
+   放进安卓 App 里就是错的（那儿的运行环境根本不是浏览器）。
+   这里用 pointer/hover 媒体查询分设备，而不是宽度断点：把窗口拖窄的台式机依然是鼠标、
+   数据确实在"这台电脑"上；平板外接键盘也不会被误判成电脑。
+   默认（浏览器不支持这两个媒体特性时）显示电脑版。 */
+.fw-touch{display:none}
+@media (hover:none) and (pointer:coarse){
+  .fw-mouse{display:none}
+  .fw-touch{display:inline}
+}
+
+/* ---------- 流畅模式：软件渲染（如内嵌预览 iframe 关了 GPU）时自动降级 ----------
+   软件渲染把整页每个像素都用 CPU 画，且不支持分层滚动，
+   色球模糊 / 玻璃模糊 / 点阵 / 入场模糊 这类"每帧都重画"的东西会让滚动掉到个位数帧。
+   此模式把它们全关掉，但保留布局、配色、玻璃的形状感（半透明底 + 内描边 + 阴影）。 */
+/* 顶栏那颗手动切"流畅模式"的 ⚡ 已撤（手机上挤掉标题），这条样式随之删掉。
+   「流畅模式」现在只有两处来源：软件渲染自动识别，以及设置页里那个开关。 */
+html.soft-render body::after,html.soft-render .hero::before{display:none}
+html.soft-render .glass{
+  -webkit-backdrop-filter:none;backdrop-filter:none;
+  background:color-mix(in srgb,var(--bg) 93%,transparent);
+}
+html.soft-render .glass::before{display:none}
+html.soft-render .glass,html.soft-render .site-header,html.soft-render .capture,html.soft-render .feature-card,html.soft-render .hwcard{
+  box-shadow:0 1px 3px color-mix(in srgb,var(--fg) 10%,transparent),0 10px 28px color-mix(in srgb,var(--fg) 6%,transparent);
+}
+html.soft-render .site-header,html.soft-render .capture{background:color-mix(in srgb,var(--bg) 95%,transparent)}
+/* 揭示改成 animation 之后，这里要关的是 animation（原来关的是 transition）。 */
+html.soft-render .reveal-on-scroll{opacity:1;transform:none;filter:none;transition:none;animation:none}
+html.soft-render .feature-card:hover{transform:none}
+
+/* ---------- 统计页：布局切换（右上角）+ 完成量细分 ---------- */
+.stat-toolbar{
+  display:flex;align-items:center;justify-content:flex-end;gap:9px;
+  width:min(100%,1180px);margin:clamp(20px,2.8vw,34px) auto 0;
+}
+.stat-toolbar .len{font-size:12px;font-weight:800;letter-spacing:.08em;color:var(--faint)}
+.seg{
+  display:inline-flex;gap:3px;padding:4px;border-radius:999px;
+  background:var(--pill);border:1px solid color-mix(in srgb,var(--glass-edge) 55%,transparent);
+}
+.segbtn{
+  appearance:none;-webkit-appearance:none;border:0;background:transparent;cursor:pointer;
+  font:inherit;font-size:12.5px;font-weight:800;color:var(--muted);
+  padding:6px 14px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;
+  transition:background 220ms ease,color 220ms ease,box-shadow 220ms ease;
+}
+.segbtn:hover{color:var(--fg)}
+.segbtn.on{background:var(--bg);color:var(--fg);box-shadow:0 2px 10px color-mix(in srgb,var(--glass-edge) 45%,transparent)}
+.segbtn .gl{font-size:12px;line-height:1;opacity:.8}
+.stat-toolbar + .feature-grid{margin-top:clamp(16px,2.2vw,24px)}
+
+/* ---------- 设置页 ---------- */
+.set-wrap{
+  width:min(100%,940px);margin:clamp(22px,3vw,36px) auto 0;
+  display:flex;flex-direction:column;gap:clamp(14px,1.8vw,20px);
+}
+.set-card{padding:8px clamp(20px,2.4vw,30px) 18px}
+.set-card > h3{
+  margin:22px 0 0;font-size:13px;font-weight:900;letter-spacing:.2em;text-transform:uppercase;color:var(--fg);
+}
+.set-card > .set-sub{margin:8px 0 0;font-size:12.5px;line-height:1.6;color:var(--faint);font-weight:600}
+.set-row{display:flex;align-items:center;gap:clamp(14px,2vw,24px);padding:20px 0 4px;border-top:1px solid var(--line);margin-top:16px}
+.set-row .set-txt{flex:1;min-width:0}
+.set-row .set-txt b{display:block;font-size:14.5px;font-weight:800}
+.set-row .set-txt span{display:block;margin-top:6px;font-size:12.5px;line-height:1.7;color:var(--muted);font-weight:600}
+/* 开关：和顶栏那个主题开关同一套观感（凹槽 + 白色球），但语义是 role="switch"，
+   位置状态由 aria-checked 驱动 —— 这样键盘可达，屏幕阅读器也能读出开/关。
+   关态用 --pill-hover 而不是 --pill：4.5% 的黑在白卡上几乎看不出"槽"，只剩一个白球漂着，
+   分不清这是开关还是装饰。7.5% 既能看出轨道，又没跳出这套中性控件的观感。 */
+.switch{
+  appearance:none;-webkit-appearance:none;flex:0 0 auto;cursor:pointer;padding:0;position:relative;
+  width:58px;height:34px;border-radius:9999px;
+  border:1px solid var(--line2);background:var(--pill-hover);
+  transition:background var(--mo-quick) ease,border-color var(--mo-quick) ease,transform var(--mo-fast) ease;
+}
+.switch::after{
+  content:"";position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:999px;
+  background:radial-gradient(circle at 30% 22%,rgba(255,255,255,.72),transparent 30%),color-mix(in srgb,#fff 82%,transparent);
+  box-shadow:inset 1px -1px .75px -1px rgba(255,255,255,.86),inset -1px 1px .75px -1px rgba(255,255,255,.46),
+             0 3px 9px rgba(0,0,0,.16);
+  transition:transform var(--mo-base) var(--mo-soft);
+}
+.switch[aria-checked="true"]{background:var(--accent);border-color:transparent}
+.switch[aria-checked="true"]::after{transform:translateX(24px)}
+
+/* 时间轴：条数 / 逾期这类事实数字单独一行常显，和上面那段可关掉的说明文案分开。
+   放在列表正上方 —— 它说的是这份列表的事，本来就该挨着列表。 */
+.tl-meta{font-size:12px;font-weight:800;letter-spacing:.08em;color:var(--faint);margin:clamp(24px,3vw,34px) 0 0}
+
+/* 五张卡一律同一副样子：标签 / 大数字 / 单位 / 细分 chips，竖着排。
+   （以前这里有条 :last-child:nth-child(odd) 的规则，把最后一张铺满整行改成横排汇总条，
+   为的是别在第二行留空洞 —— 但那样「历史完成」跟前面四张长得完全不一样，
+   反而更像出错。现在改成让网格自适应，五张卡桌面宽度刚好排满一行，既不留空、也长一样。） */
+
+/* 方块：1:1 紧凑方形平铺，内容居中 */
+.feature-grid.tile{grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:clamp(10px,1.3vw,16px)}
+.feature-grid.tile .feature-card{
+  min-height:0;aspect-ratio:1/1;border-radius:26px;padding:clamp(14px,1.6vw,20px);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+}
+.feature-grid.tile .feature-card:hover{transform:translateY(-5px)}
+.feature-grid.tile .feature-card .k{font-size:11px;letter-spacing:.13em}
+.feature-grid.tile .feature-card .v{margin:12px 0 0;font-size:clamp(30px,3.3vw,44px)}
+.feature-grid.tile .feature-card.big .v{font-size:clamp(34px,3.7vw,50px)}
+.feature-grid.tile .feature-card .s{margin-top:5px;font-size:11.5px}
+.feature-grid.tile .vchips{justify-content:center;margin-top:9px;gap:4px}
+
+/* 完成量的来源细分：短期 / 长期 / 考虑 / 循环。
+   五张卡并排后每张只有 ~220px 宽，chips 得收紧一点，三个才排得下一行（省得卡片虚高） */
+.vchips{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}
+.vchip{
+  font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap;
+  padding:2px 8px;border-radius:999px;background:var(--pill);
+  border:1px solid color-mix(in srgb,var(--glass-edge) 45%,transparent);
+}
+.vchip b{margin-left:3px;font-family:var(--font-mono);font-weight:800;color:var(--fg)}
+.vchip.loop b{color:var(--accent)}
+/* 方块模式里 chips 太占地方，换成一行小字 */
+.vsub{margin-top:10px;font-size:12px;font-weight:700;line-height:1.5;color:var(--muted)}
+
+/* ---------- 响应式 ---------- */
+@media (max-width:1080px){
+  .board{grid-template-columns:1fr}
+  .feature-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* ==========================================================================
+   iOS 安全区（刘海 / 灵动岛 / 底部 Home 指示条）
+   --------------------------------------------------------------------------
+   从 Safari「添加到主屏幕」装上后，页面是以 standalone 模式全屏运行的：没有地址栏、
+   没有底部工具栏，内容会直接顶到灵动岛和 Home 指示条上（配合 viewport-fit=cover）。
+   env(safe-area-inset-*) 在不支持 env() 或安全区为 0 时解析为 0px ——
+   所以安卓 App、桌面浏览器、安卓浏览器全部零影响，不需要额外的媒体查询去分设备。
+   注意这里只动 top/bottom/左右内边距，不碰任何尺寸与配色。
+   ========================================================================== */
+.site-header{top:calc(18px + env(safe-area-inset-top))}
+.capture-wrap{top:calc(106px + env(safe-area-inset-top))}
+#toast{bottom:calc(30px + env(safe-area-inset-bottom))}
+.pdaim-footer{padding-bottom:calc(56px + env(safe-area-inset-bottom))}
+.hero{padding-left:calc(24px + env(safe-area-inset-left));padding-right:calc(24px + env(safe-area-inset-right))}
+
+/* ==========================================================================
+   窄屏（手机）—— 这一版是照真机截图重排的，解决三件事：
+   ① 顶栏被四个竖排文字页签撑得又高又挤（「时间轴」在窄屏被压成三行）；
+   ② 大标题字号超出屏幕、被 .hero 的 overflow:hidden 裁掉半行；
+   ③ 页头吃掉首屏近一半，真正要看的清单得往下翻很久才露头。
+   ========================================================================== */
+@media (max-width:820px){
+  /* 顶栏：页签图标化后改成一排 flex，并用 space-between 把标题/页签/右侧控件分开
+     （居中排的话，360px 宽时排完只剩几十 px，反而会跟右侧控件叠上）。
+
+     标题不再藏起来 —— 上一版是把 .hleft 整个 display:none，但那条规则写成了
+     `.hleft{display:none}`（权重 0,1,0），压不过基础规则 `.site-header .hleft`
+     （0,2,0），所以它其实一直显示着：flex 把它挤到只剩几十 px，又被自身
+     overflow:hidden 裁掉后半截，屏幕上就剩"待办"两个字 —— 也就是用户截图里
+     "标题被右边按钮挡住了"的样子。现在两条都改：
+     ① 选择器提到同等权重，规则真的生效；
+     ② 右侧控件瘦身（撤掉 ⚡、滑块换圆点，省 60px），三个字放得下，就把它请回来。
+     顺带把条数/备份那行小字继续收着 —— 手机上它只会抢位置。 */
+  .site-header{
+    height:56px;top:calc(10px + env(safe-area-inset-top));gap:10px;padding:0 12px;
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .site-header .hleft{display:flex;flex:0 1 auto}
+  .hleft .logo{font-size:15px;letter-spacing:.1em}
+  .hleft small{display:none}
+  .nav-pills{gap:4px}
+  .nav-pill{padding:7px;border-radius:11px}
+  .np-ico{width:18px;height:18px}
+  .nav-glide{border-radius:11px}
+  .backup{display:none}
+  .hright{gap:8px}
+  .theme-dot{width:32px;height:32px}
+  .theme-dot svg{width:16px;height:16px}
+
+  /* 吸顶录入条要正好贴在顶栏下沿：10(top) + 56(高) + 8(留白) = 74
+     （两处 top 都带上安全区偏移，否则装到 iPhone 上会整体压在灵动岛底下） */
+  .capture-wrap{top:calc(74px + env(safe-area-inset-top))}
+
+  /* 首屏：原来 padding-top 是 clamp(126px,17vh,178px)，光"让开顶栏"就花掉六分之一屏。
+     顶栏压到 56px 之后 78px 就够。标题字号下限从 38px 降到 29px：
+     当年 38px 下那个三个字的标题正好比容器宽一点点（360px 屏实测约 315px vs 312px），
+     于是被裁掉右边缘 —— 就是截图里"字都出去了"的那个。
+     现在的两字标题四档（320/360/393/412）实测溢出都是 0px；但 29px 这个下限要留着 ——
+     它是宽度余量的来源，不是专为某个名字设的，别因为名字短了就把它抬回去。 */
+  .hero{padding:calc(78px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) 16px calc(20px + env(safe-area-inset-left))}
+  .hero .eyebrow{font-size:10.5px;letter-spacing:.24em;margin:0 0 10px}
+  .hero h1{font-size:clamp(29px,8.2vw,44px);line-height:.94}
+  .hero .subtitle{margin-top:12px;font-size:13.5px;line-height:1.65}
+  .hero::before{background-size:30px 30px}      /* 点阵跟着缩小，密度观感才一致 */
+
+  /* 以下一段是"尽早露出真正的内容"：区块上边距、区块标题、工具条逐层收窄。
+     只压间距和字号 —— 事实数字（.tl-meta）、空态提示、控件尺寸都不动。 */
+  .pdaim-section{padding:22px 0 44px}
+  .section-kicker{margin-bottom:8px;font-size:11px;letter-spacing:.2em}
+  .section-intro h2{font-size:clamp(28px,7.8vw,40px)}
+  .section-intro p{margin-top:12px;font-size:13px;line-height:1.7}
+  .toolbar{margin:20px 0 12px}
+  .tl-meta{margin-top:18px}
+
+  /* 统计 / 设置 / 时间轴这三页没有 hero，原本靠 clamp(96px,12vh,140px) 顶开固定头。
+     手机上的头只有 66px，112px 起步就白扔掉 46px，同步收到 86px。
+     这三条写在这里能生效是因为选择器权重相同、而本块在源码里更靠后。 */
+  body[data-view="stat"] .pdaim-section,
+  body[data-view="settings"] .pdaim-section,
+  body[data-view="timeline"] .pdaim-section{padding-top:86px}
+
+  .feature-grid{grid-template-columns:1fr}
+  .row{flex-direction:column;gap:0}
+}
+/* ==========================================================================
+   动效增强 —— 只补缺口，不改既有动画的参数
+   原则：① 全部是可单独删除的独立规则，删掉任何一条功能都照常；
+        ② 没有一条碰到布局（只动 transform / opacity / 高度这类合成友好属性）；
+        ③ prefers-reduced-motion 由文件末尾那条全局规则兜底（下面另补两条例外）。
+   ========================================================================== */
+
+/* ---------- 1. 按下反馈 ----------
+   原来全站只有 :hover，一条 :active 都没有。触屏（iOS / Android）根本不触发 :hover，
+   所以在此之前手机上点任何按钮都是"零反馈"，只能靠页面跳变来确认点上了。
+   这里给所有可点元素一个"沉一下"的手感；按下用 60ms（跟手），松开的回弹仍走原时长。
+   注意必须写成真类选择器而不是 :where(...) —— :where 权重为 0，
+   会被上面 .btn:hover 的 translateY(-1px) 压住，鼠标按住时反而不动。 */
+.btn:active,.nav-pill:active,.pill:active,.st:active,.segbtn:active,
+.theme-dot:active,.mini:active,.pill-x:active,.addpill:active,
+.chip[data-tag]:active,.chip.goalchip:active,.backup:active{
+  transform:translateY(1px) scale(.972);
+  transition-duration:60ms;
+}
+.tick:active{transform:scale(.86)}          /* 勾选框最小，动作要更明显才看得见 */
+.vchip:active{opacity:.72}                  /* 统计页细分 chip 只压暗，不做位移（太小） */
+.switch:active{transform:scale(.955)}        /* 开关只压一下，不做位移（横向控件，位移看着像歪了） */
+
+/* ---------- 2. 键盘焦点环 ----------
+   :focus-visible 只在键盘 / 辅助设备操作时命中，鼠标点击不会出现，所以不污染现有视觉。
+   加 !important 是因为页面里有 5 处 outline:0（.capture input / .search / .newtag-input /
+   .tagrow input / .field input）—— 不带它的话输入框永远拿不到焦点环。
+
+   注意一个反直觉的点：**文本输入框只要聚焦就一定命中 :focus-visible**（规范如此，
+   不看你用鼠标还是手指）。所以手机上点一下输入框 / 粘贴框，这一圈环必然会出来 ——
+   躲不掉。既然一定出现，就让它长得像这个 App 的一部分：用中性灰 --ring，
+   而不是原来那个最鲜艳的 --accent 蓝（就是截图里"选中输入框很难看"的那圈蓝）。 */
+*:focus-visible{outline:2px solid var(--ring)!important;outline-offset:2px}
+
+/* ---------- 3. 弹层出场 ----------
+   原来只有入场（.mask.on 播 fadein、.modal 播 rise），关闭时 class 一摘就瞬间消失。
+   现在关闭会给 .mask 挂 .closing 先播完退场再真正隐藏（见 closeModal / openMask）。 */
+@keyframes fadeout{from{opacity:1}to{opacity:0}}
+@keyframes fall{from{opacity:1;transform:none}to{opacity:0;transform:translateY(10px) scale(.985)}}
+.mask.closing{animation:fadeout .17s ease both}
+.mask.closing .modal{animation:fall .17s cubic-bezier(.4,0,.7,1) both}
+
+/* ---------- 4. 打勾的确认感 ----------
+   清单页打勾后条目就从列表里消失了（完成态不上清单页），原先是「一帧之内直接不见」，
+   看不出来到底勾上没有、勾的是哪一条。现在点击瞬间先让那一行变绿 + 收掉，
+   动画走完再落数据（见 tickWithFeedback）—— 数据只晚 ~230ms，不会丢。 */
+@keyframes tickOut{
+  0%{opacity:1;transform:none}
+  40%{opacity:1;transform:translateX(4px)}
+  100%{opacity:0;transform:translateX(16px) scale(.97)}
+}
+.item.tick-out,.hwcard.tick-out{animation:tickOut .23s cubic-bezier(.4,0,.7,1) both;pointer-events:none}
+.item.tick-out .tick{background:var(--ok);border-color:var(--ok);color:#fff;transform:scale(1)}
+.item.tick-out .t{color:var(--ok);text-decoration:line-through}
+
+/* ---------- 5. 新录入的那一条落位 ----------
+   回车加一条，原来那一行是"凭空出现"的。这里只让刚录入的那一条轻轻落下，其余行不动。
+   判据是 id + 时间戳（见 addItem / itemHTML），所以页内重渲染（打勾、换标签、搜索）
+   不会整页重播 —— 本项目早先正是栽在「无条件入场动画 + innerHTML 整体重建」上。 */
+@keyframes itemIn{from{opacity:0;transform:translateY(-7px) scale(.995)}to{opacity:1;transform:none}}
+.item.just-added{animation:itemIn .34s var(--mo-soft) both}
+
+/* ---------- 6. 写法提示的展开 / 收起 ----------
+   原生 <details> 是"啪"一下弹开的。Chrome 131+ 支持 ::details-content 伪元素，
+   配合 interpolate-size:allow-keywords 就能给高度做过渡；不支持的浏览器
+   整段 @supports 被丢弃，退回原来的瞬时开合（优雅降级，不会坏）。 */
+@supports selector(::details-content){
+  .hint{interpolate-size:allow-keywords}
+  .hint::details-content{
+    height:0;overflow:hidden;
+    transition:height var(--mo-base) var(--mo-soft),
+               content-visibility var(--mo-base) allow-discrete;
+  }
+  .hint[open]::details-content{height:auto}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  /* 揭示的入场现在是 animation，全局那条已经用 !important 关掉了；
+     这里再写一遍 animation:none 是明示 —— 免得以后有人删掉上面那行"无用"的通配规则，
+     揭示动画就会在不该动的人身上复活。 */
+  .reveal-on-scroll{opacity:1;transform:none;filter:none;animation:none}
+  /* 上面那条 * 选不到伪元素，::details-content 的高度过渡得单独关 */
+  .hint::details-content{transition:none}
+}
+</style>
+</head>
+<body>
+
+<header class="site-header glass">
+  <div class="hleft">
+    <span class="logo">鱼事</span>
+    <small id="counts"></small>
+  </div>
+  <nav class="nav-pills" id="navPills">
+    <i class="nav-glide" id="navGlide" aria-hidden="true"></i>
+    <!-- 四个页签都是 20px 线性图标。文字留在 aria-label / title 里 ——
+         读屏和桌面悬停都能读到"这是什么"，页面上则只剩四个小图标，顶栏才压得下来。 -->
+    <button class="nav-pill on" data-view="list" aria-current="page" aria-label="清单" title="清单">
+      <svg class="np-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M3.6 6.6l1.3 1.3 2.3-2.5"/><path d="M3.6 12.4l1.3 1.3 2.3-2.5"/><path d="M3.6 18.2l1.3 1.3 2.3-2.5"/>
+        <path d="M11 6.8h9.4"/><path d="M11 12.6h9.4"/><path d="M11 18.4h9.4"/>
+      </svg>
+    </button>
+    <button class="nav-pill" data-view="timeline" aria-label="时间轴" title="时间轴">
+      <svg class="np-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M6.4 3.8v16.4"/>
+        <circle cx="6.4" cy="8.4" r="1.9"/><circle cx="6.4" cy="16.2" r="1.9"/>
+        <path d="M11.6 8.4h8.8"/><path d="M11.6 16.2h5.6"/>
+      </svg>
+    </button>
+    <button class="nav-pill" data-view="stat" aria-label="统计" title="统计">
+      <svg class="np-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M4.4 20.2V12"/><path d="M12 20.2V4.2"/><path d="M19.6 20.2v-5.4"/>
+      </svg>
+    </button>
+    <button class="nav-pill" data-view="settings" aria-label="设置" title="设置">
+      <!-- 齿轮：用业界通行的 24px 线性齿轮轮廓（Lucide settings 那条 path），
+           手写"八瓣"很容易画歪，这条在各种尺寸下都对得上。 -->
+      <svg class="np-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+    </button>
+  </nav>
+  <div class="hright">
+    <span class="backup" id="backup"></span>
+    <!-- 原来这里还有一颗 ⚡（手动切"流畅模式"）。手机上它和 58px 宽的主题滑块一起
+         把左边的标题挤成半截（.hleft 上是 overflow:hidden，挤窄就裁），
+         所以按钮撤掉了 —— 功能没丢，挪进设置页（见 renderSettings 里那一行开关）。
+         主题开关也从"左右滑块"改成一颗圆点，点一下就切。 -->
+    <button class="theme-dot" id="themeBtn" aria-label="切换深浅色模式" title="切换深浅色模式">
+      <svg class="td-sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="4.1"/>
+        <path d="M12 2.7v2.3M12 19v2.3M2.7 12h2.3M19 12h2.3M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7"/>
+      </svg>
+      <svg class="td-moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M20.3 14.7A8.5 8.5 0 0 1 9.3 3.7a8.5 8.5 0 1 0 11 11z"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<main class="page-shell">
+
+  <section class="hero">
+    <p class="eyebrow">Personal Todo · 只存本地</p>
+    <h1><span class="title-strong">你好</span><span class="title-comma">，</span><span class="title-light">这里是鱼事</span></h1>
+    <p class="subtitle">打一行字，回车就存 —— 分到哪区、算哪天，交给它。</p>
+  </section>
+
+  <div class="capture-wrap" id="captureWrap">
+    <div class="inner">
+      <div class="capture glass" id="captureBar">
+        <span class="mark mono">☐</span>
+        <input id="entry" autocomplete="off" spellcheck="false"
+               aria-label="新增待办：写一行字，回车保存"
+               placeholder="1016 交数学作业    /    新书?    /    #学习 复习">
+        <span class="kbd">Enter 存</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 标签行：独立小框，不吸顶，随页面滚走。
+       写法提示默认收起 —— 全展开有十几个 chip、占满三行，太占地方了 -->
+  <div class="entry-extra">
+    <div class="entry-tags entry-box" id="entryTags"></div>
+    <details class="hint entry-box" id="hintBox">
+      <summary>
+        <span class="hb-ico" aria-hidden="true"></span>
+        <span class="hb-t">写法提示</span>
+        <span class="hb-n mono"></span><!-- 条数由脚本填，加删 chip 不用改这里 -->
+        <span class="hb-open">点开看看</span>
+      </summary>
+      <div class="hint-chips">
+        <span><b>91</b> 9月1日</span>
+        <span><b>915</b> 9月15日</span>
+        <span><b>914~919</b> 区间</span>
+        <span><b>周四</b> 相对日</span>
+        <span><b>下午5点</b> 时间点</span>
+        <span><b>?</b> 结尾→考虑</span>
+        <span><b>#任意词</b> 自定义标签</span>
+        <span><b>每2天</b> 循环</span>
+        <span><b>!</b> 重要</span>
+        <span><b>!!</b> 紧急</span>
+        <span><b>目标 论文</b> 建目标</span>
+        <span><b>论文&gt; 子任务</b> 挂进去</span>
+        <span><b>/</b> 跳到输入框</span>
+      </div>
+    </details>
+  </div>
+
+  <section class="pdaim-section" id="view"></section>
+
+</main>
+
+<footer class="pdaim-footer"><span class="fw-mouse">单文件 · 零联网 · 数据只在这台电脑的浏览器里</span><span class="fw-touch">单文件 · 零联网 · 数据只存在这台手机里</span></footer>
+
+<div class="mask" id="mask"><div class="glass modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1"></div></div>
+<div class="glass" id="toast"></div>
+
+<script>
+/* =========================================================================
+   鱼事 · 纯前端单文件
+   视觉层照抄 pidanai.com 首页（#about）；解析/存储逻辑为本项目核心，保持既有行为
+   ========================================================================= */
+
+/* ---------------- 标签词典 ----------------
+   这里只是「默认给几个」+「自动猜标签的关键词」。
+   真实来源是 S.tags —— 用户可以给任意标签改名或删掉，所以渲染一律读 S.tags。
+   自动猜只猜「标签还在、且词典里有规则的」那几个；用户改过名或新建的标签不参与猜测。 */
+const TAGS_DEFAULT = ['学习','生活','娱乐'];
+let ACTIVE_TAGS = TAGS_DEFAULT.slice();     // 应用层同步成 S.tags
+/* 一个条目最多挂几个标签。手选可以多选，加上正文里写的 #标签，超过就截断 */
+const TAG_PER_ITEM = 4;
+const TAG_RULES = {
+  学习:['作业','课','论文','考试','复习','预习','申论','考研','读书','书','讲座','答辩','稿子','ppt','侦查','讯问','法条','案例','学分','老师','报告','笔记','教材','题','学'],
+  生活:['洗','晾','打扫','收拾','清理','买','拿','快递','丢','垃圾','牙膏','行李箱','箱','水','衣服','衣','鞋','锅','茶几','沙发','被罩','酸奶','面包','西瓜','饭','睡','药','充电','话费','套餐','理发','袜子','内裤'],
+  娱乐:['游戏','以撒','星露谷','表情包','b站','视频','电影','听歌','动漫','小说','看剧','闲鱼','刷','比赛','boss','拼豆']
+};
+function guessTags(text){
+  const s = String(text || '').toLowerCase();
+  const score = ACTIVE_TAGS
+    .filter(t => TAG_RULES[t])               // 标签被删/改名后词典里就没有对应规则了
+    .map(t => ({ t, n: TAG_RULES[t].filter(k => s.includes(k)).length }))
+    .filter(x => x.n > 0)
+    .sort((a, b) => b.n - a.n);
+  return score.slice(0, 2).map(x => x.t);
+}
+
+/* ---------------- 日期工具 ---------------- */
+function pad2(n){ return String(n).padStart(2, '0'); }
+function ymd(d){ return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+function dateFrom(s){ const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
+
+/* 导入历史笔记时，相对日期（今天/周四/17号）按「基准日」算，而不是按今天 */
+let BASEDAY = null;
+function today0(){
+  if (BASEDAY){ const d = new Date(BASEDAY); d.setHours(0, 0, 0, 0); return d; }
+  const d = new Date(); d.setHours(0, 0, 0, 0); return d;
+}
+function daysFromToday(s){ return Math.round((dateFrom(s) - today0()) / 86400000); }
+
+/* 你的日期简写 → YYYY-MM-DD：91 / 915 / 9.21
+   三位数字（如 123）天然有歧义：1月23 还是 12月3？按「当前月份优先」消歧：
+   1) 哪种切分的月份等于输入当时的月份就选哪种 —— 12月2日输 123 → 12月3；1月输 123 → 1月23
+   2) 都匹配不上 → 取离今天更近的（待办指向将来，9月输 123 → 12月3）
+   导入历史笔记时以 BASEDAY 为基准，同样适用。 */
+function mkDate(mo, da, monthOnly){
+  if (!(mo >= 1 && mo <= 12)) return null;
+  if (!(da >= 1 && da <= 31)) return null;
+  const now = today0();
+  const y = now.getFullYear();
+  let d = new Date(y, mo - 1, da);
+  if (d.getMonth() !== mo - 1) return null;
+  // 跨年规则：算出来已过去超过 180 天 → 当作明年
+  if (!monthOnly && Math.round((now - d) / 86400000) > 180) d = new Date(y + 1, mo - 1, da);
+  return { date: ymd(d), monthOnly };
+}
+function numToDate(tok){
+  if (tok.includes('.')){ const p = tok.split('.'); return mkDate(+p[0], +p[1], false); }
+  if (tok.length === 1) return mkDate(+tok, 1, true);
+  if (tok.length === 2) return mkDate(+tok[0], +tok[1], false);
+  if (tok.length === 3){
+    const a = mkDate(+tok.slice(0, 1), +tok.slice(1), false);  // 1|23 → 1月23
+    const b = mkDate(+tok.slice(0, 2), +tok.slice(2), false);  // 12|3 → 12月3
+    if (a && b){
+      const cm = today0().getMonth() + 1;
+      if (+tok.slice(0, 1) === cm) return a;   // 当前月份 = 前一位 → 选 1|23
+      if (+tok.slice(0, 2) === cm) return b;   // 当前月份 = 前两位 → 选 12|3
+      // 都不是当前月：取离基准日更近的
+      return Math.abs(dateFrom(a.date) - today0()) <= Math.abs(dateFrom(b.date) - today0()) ? a : b;
+    }
+    return a || b;                              // 只有一种合法（如 915 只能 9|15）
+  }
+  return mkDate(+tok.slice(0, 2), +tok.slice(2), false);  // 4 位：10|15 无歧义
+}
+
+const WEEK = { '一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'日':0,'天':0 };
+const REL  = { '今天':0,'今日':0,'明天':1,'明日':1,'后天':2,'大后天':3 };
+
+/* ---------------- 核心：一行字 → {title,date,dateEnd,time,tags,zone,done} ---------------- */
+function parseSmart(input){
+  let text = String(input || '').trim();
+  let explicit = null, time = null, date = null, dateEnd = null, monthOnly = false;
+
+  /* 已完成标记 / 行首装饰。刻意**不含 x / X**：
+     下面 done 的判定用 [☑☒√✓]、导入的行首判定用 [☐☑☒□√✓✗×]，两处都不认 x —— 只有这里认过。
+     而 `\s*` 允许零个空白，于是「x 光片取报告」→「光片取报告」、
+     「xiaomi 手环保修」→「iaomi 手环保修」，静默把用户写的字吃掉了，还没法察觉。
+     真想支持「x 打勾」这种写法的话，得三处一起改，不能只在这儿悄悄剥。 */
+  text = text.replace(/^[☐☑☒□√✓✗×]\s*/, '').trim();
+  text = text.replace(/[\-—–·、,，。;；:：\s]+$/, '').trim();
+
+  // 重要程度：行首 ! = 重要，!! = 紧急
+  let pri = 0;
+  {
+    const pm = text.match(/^\s*(!{1,2})\s*/);
+    if (pm){ pri = pm[1].length >= 2 ? 2 : 1; text = text.slice(pm[0].length).trim(); }
+  }
+
+  // 显式进「考虑」
+  if (/[?？]$/.test(text)){ explicit = 'consider'; text = text.replace(/[?？]+$/, '').trim(); }
+
+  // 显式标签：#任意词 都收下（内置 3 个之外的自动成为自定义标签，见 addItem）
+  const forced = [];
+  text = text.replace(/#([\u4e00-\u9fa5A-Za-z0-9_]+)/g, (m, g) => {
+    forced.push(g); return '';
+  }).trim();
+
+  // 复合目标：「目标 写论文」建大目标；「写论文> 搜材料 925」挂子任务；
+  // 「写论文> 第一周> 查文献」多层嵌套。父级不存在会自动创建。
+  let goal = false, path = [];
+  text = text.replace(/^目标\s+/, () => { goal = true; return ''; }).trim();
+  {
+    const pm = text.match(/^((?:[^>]+\s*>\s*)+)(.+)$/);
+    if (pm){
+      path = pm[1].split('>').map(s => s.trim()).filter(Boolean);
+      if (path.length) text = pm[2].trim();
+    }
+  }
+
+  // 时间点：下午5点 / 5点半 / 晚上
+  const tpat = /(凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|晚)?\s*(\d{1,2})\s*[点时](半|\d{1,2}\s*分)?\s*(之?[前后])?/;
+  const tm = text.match(tpat);
+  if (!tm){
+    const bare = text.match(/(凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|晚)\s*$/);
+    if (bare) text = text.slice(0, bare.index).trim();
+  } else {
+    let hh = +tm[2];
+    const mm = tm[3] ? (tm[3] === '半' ? 30 : parseInt(tm[3])) : 0;
+    const per = tm[1] || '';
+    if (/下午|傍晚|晚上|晚/.test(per) && hh < 12) hh += 12;
+    if (/凌晨/.test(per) && hh === 12) hh = 0;
+    if (!per && hh >= 1 && hh <= 6) hh += 12;
+    if (hh >= 0 && hh <= 23 && mm >= 0 && mm < 60) time = pad2(hh) + ':' + pad2(mm);
+    text = (text.slice(0, tm.index) + ' ' + text.slice(tm.index + tm[0].length)).replace(/\s+/g, ' ').trim();
+    text = text.replace(/(之前|以前|前)\s*$/, '').trim();
+  }
+
+  // 相对词：今天/明天/后天
+  for (const k in REL){
+    if (text.includes(k)){
+      const d = today0(); d.setDate(d.getDate() + REL[k]);
+      date = ymd(d); text = text.replace(k, '').trim(); break;
+    }
+  }
+  // 星期：周四 / 本周五 / 下周一
+  if (!date){
+    const wm = text.match(/(本周|这周|这个|下?周|星期|礼拜)([一二三四五六日天])\s*(之前|以前|前)?/);
+    if (wm){
+      const target = WEEK[wm[2]], base = today0();
+      let diff = (target - base.getDay() + 7) % 7;
+      if (/下/.test(wm[1])) diff += 7;
+      const d = new Date(base); d.setDate(d.getDate() + diff);
+      date = ymd(d);
+      text = (text.slice(0, wm.index) + ' ' + text.slice(wm.index + wm[0].length)).trim();
+      text = text.replace(/(之前|以前|前)\s*$/, '').trim();
+    }
+  }
+
+  // 区间 914~919
+  if (!date){
+    const rm = text.match(/(\d{1,2}\.\d{1,2}|\d{1,4})\s*[~～\-—－]\s*(\d{1,2}\.\d{1,2}|\d{1,4})\s*$/);
+    if (rm){
+      const a = numToDate(rm[1]), b = numToDate(rm[2]);
+      if (a && b){ date = a.date; dateEnd = b.date; text = text.slice(0, rm.index).trim(); }
+    }
+  }
+
+  // 行尾数字（从长到短试）—— 即使已有日期也剥掉，免得留在标题里
+  {
+    const nm = text.match(/(\d{1,2}\.\d{1,2}|\d+)\s*$/);
+    if (nm){
+      const run = nm[1], cands = [];
+      if (run.includes('.')) cands.push(run);
+      else for (let len = Math.min(4, run.length); len >= 1; len--) cands.push(run.slice(run.length - len));
+      for (const c of cands){
+        const r = numToDate(c);
+        if (r){
+          if (!date){ date = r.date; monthOnly = r.monthOnly; }
+          text = text.slice(0, nm.index + (run.length - c.length)).trim();
+          break;
+        }
+      }
+    }
+  }
+
+  // 行首数字：921 交作业（你习惯把日期写在最前面）
+  if (!date){
+    const lm = text.match(/^(\d{1,2}\.\d{1,2}|\d{1,4})[\s、,，]+(.+)$/);
+    if (lm){
+      const r = numToDate(lm[1]);
+      if (r){ date = r.date; monthOnly = r.monthOnly; text = lm[2].trim(); }
+    }
+  }
+
+  // X号
+  if (!date){
+    const hm = text.match(/(\d{1,2})\s*号\s*(之前|以前|前)?\s*$/);
+    if (hm && +hm[1] >= 1 && +hm[1] <= 31){
+      const now0 = today0();
+      let d = new Date(now0.getFullYear(), now0.getMonth(), +hm[1]);
+      if (Math.round((now0 - d) / 86400000) > 15) d = new Date(now0.getFullYear(), now0.getMonth() + 1, +hm[1]);
+      date = ymd(d); text = text.slice(0, hm.index).trim();
+    }
+  }
+
+  // 行中独立数字（前后是空白/边界，且至少两位）—— 「#大 924 给植物浇水」这类日期夹中间的写法
+  if (!date){
+    const re = /(?:^|(?<=\s))(\d{2,4}|\d{1,2}\.\d{1,2})(?=\s|$)/g;
+    let mm2;
+    while ((mm2 = re.exec(text))){
+      const r = numToDate(mm2[1]);
+      if (r && !date){ date = r.date; monthOnly = r.monthOnly; }
+      if (r){
+        text = (text.slice(0, mm2.index) + ' ' + text.slice(mm2.index + mm2[0].length)).replace(/\s+/g, ' ').trim();
+        break;
+      }
+    }
+  }
+
+  // 循环任务：每天 / 每2天 / 每隔3天 —— 打勾后自动生成下一次（见 toggleDone）
+  let repeat = null;
+  {
+    const rm = text.match(/每\s*隔\s*(\d+)\s*天|每\s*(\d+)\s*天|每天/);
+    if (rm){
+      repeat = Math.max(1, +(rm[1] || rm[2] || 1));
+      if (repeat > 365) repeat = 365;
+      text = text.replace(rm[0], '').trim();
+    }
+  }
+
+  const cleaned = text.replace(/^[\-—·、,，。;；:：\s]+/, '').replace(/[\-—·、,，。;；:：\s]+$/, '').trim();
+  const fallback = String(input || '').trim();
+  const tags = forced.length ? forced.slice(0, TAG_PER_ITEM) : guessTags((cleaned || fallback) + ' ' + fallback);
+  // 循环任务没写日期时归短期 —— 它总是「近期要做」的
+  const zone = explicit || (date ? (daysFromToday(date) <= 14 ? 'short' : 'long') : (repeat ? 'short' : 'long'));
+
+  return {
+    title: (cleaned || fallback).replace(/\s{2,}/g, ' '),
+    titleRaw: cleaned || fallback,
+    date, dateEnd, monthOnly, time, tags, zone, repeat: repeat || null,
+    pri,           // 0 无 / 1 重要(!) / 2 紧急(!!)
+    goal,          // 「目标」前缀：显式标记为目标卡（有子任务也会按目标渲染）
+    path           // 「写论文> 搜材料」的祖先链，addItem 里解析挂靠
+  };
+  /* 这里原来还返回过一个 `done: /^[☑☒√✓]/.test(fallback)`，是**死字段** ——
+     三个调用方都不读：addItem 硬编码 done:false，openEdit 只用 date/repeat/pri，
+     导入路径（importText）自己从行首符号另算一遍 done。已删除。
+     注意别为了"用上它"去改 addItem：录入框的职责是**新建一条待办**，
+     真写 ☑ 就立刻完成、从列表里消失，那是另一种"静默改数据"。导入才是 ☑ 的入口。 */
+}
+
+/* ---------------- 作业字段猜测 ---------------- */
+function guessCourse(title){
+  const known = ['形策','电诈','戒毒','申论','侦查','讯问','禁毒','思政','英语','体育','法律','刑侦','治安','形势与政策','计算机'];
+  for (const k of known) if (title.includes(k)) return k;
+  const m = title.match(/^(.{2,6}?)(课|的)?作业/);
+  return m ? m[1] : '未分类';
+}
+function guessChannel(raw){
+  if (/学习通/.test(raw)) return '学习通';
+  if (/邮箱|邮件|email/i.test(raw)) return '邮箱';
+  if (/打印|纸质|交到/.test(raw)) return '纸质';
+  return '';
+}
+function guessNaming(raw){
+  const m = raw.match(/\b(\d{2}[A-Za-z0-9]{1,3}\s*[-－]\s*姓名\s*[-－]\s*学号)\b/);
+  if (m) return m[1].replace(/\s/g, '');
+  const m2 = raw.match(/(?:命名|文件名|格式)[：:是为]?\s*([^\s，。,；;]{2,40})/);
+  return m2 ? m2[1] : '';
+}
+/* 作业长条：用连续空格切出标题与详细要求 */
+function splitHw(it, p){
+  const segs = String(p.titleRaw || p.title || '').split(/\s{2,}/).map(s => s.trim()).filter(Boolean);
+  if (segs.length > 1){ it.title = segs[0]; it.hw.detail = segs.slice(1).join('\n'); }
+}
+function dateLabel(it){
+  if (!it.date) return '';
+  const d = dateFrom(it.date);
+  if (it.monthOnly) return (d.getMonth() + 1) + '月内';
+  let s = (d.getMonth() + 1) + '月' + d.getDate() + '日';
+  if (it.dateEnd){
+    const e = dateFrom(it.dateEnd);
+    s += '–' + (e.getMonth() + 1) + '月' + e.getDate() + '日';
+  }
+  if (it.time) s += ' ' + it.time;
+  return s;
+}
+/* 转义进 HTML 的文本。**必须带上单引号** —— 当前所有插值点都用双引号包属性，
+   所以单引号暂时炸不开；但只要有人日后写了 class='${esc(x)}' 就会漏。
+   一次补齐，比等到出问题再全库排查便宜。 */
+function esc(s){
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+/* =============================== 应用层 =============================== */
+const LS = 'daibanji.v2';
+const LS_OLD = 'daibanji.v1';
+/* tags 是唯一的标签库（默认 3 个，用户可任意改名/删除）；customTags 只用于读旧数据。
+   filterTags 是筛选栏多选出来的标签集合，空数组＝不筛 */
+const S = { items: [], lastBackup: null, view: 'list', filterTags: [], q: '', tags: TAGS_DEFAULT.slice(), statLayout: 'card', hintOpen: false, showHelp: true };
+/* 折叠中的目标卡（会话级，不持久化） */
+const collapsed = new Set();
+
+/* 数据迁移：老版本存在 daibanji.v1，别丢 */
+function load(){
+  try {
+    let raw = localStorage.getItem(LS);
+    if (!raw){
+      const old = localStorage.getItem(LS_OLD);
+      if (old){ raw = old; localStorage.setItem(LS, old); }
+    }
+    if (raw){
+      const o = JSON.parse(raw);
+      S.items = o.items || [];
+      S.lastBackup = o.lastBackup || null;
+      /* 标签库：老数据只有 customTags（内置 3 个是写死的），迁成一份完整的 S.tags。
+         注意要区分「没有 tags 字段」（老数据 → 迁默认值）和「tags 是空数组」
+         （用户把标签全删了 → 就得保持空的，不能把默认的三个又塞回来）。 */
+      const hasTags = Array.isArray(o.tags);
+      const src = hasTags ? o.tags : TAGS_DEFAULT.concat(Array.isArray(o.customTags) ? o.customTags : []);
+      S.tags = normTagList(src);
+      S.statLayout = o.statLayout === 'tile' ? 'tile' : 'card';
+      S.hintOpen = !!o.hintOpen;
+      /* 页面说明文字默认开。老数据里没有这个字段 → 保持默认开；
+         显式存过 false 才关（不能写成 `!!o.showHelp`，否则老数据会被静默关掉）。 */
+      S.showHelp = o.showHelp !== false;
+    }
+  } catch (e){}
+  syncTags();
+  save();      // 把迁移后的规范结构写回去（老数据只有 customTags，不写回就一直是旧形状）
+}
+/* 写盘失败只提示一次。原来是空 catch —— 配额写满（条目多、hw.detail 里贴了大段文字）
+   或隐私模式下 localStorage 不可写时，用户只会看到"我明明勾了，刷新就没了"，查不到原因。 */
+let saveFailed = false;
+function save(){
+  try {
+    localStorage.setItem(LS, JSON.stringify({
+      items: S.items, lastBackup: S.lastBackup, tags: S.tags,
+      statLayout: S.statLayout, hintOpen: S.hintOpen, showHelp: S.showHelp
+    }));
+    saveFailed = false;
+  } catch (e){
+    if (!saveFailed){
+      saveFailed = true;
+      toast('保存失败：浏览器写不进去了（空间可能已满，或处于隐私模式），先用「备份」留个底');
+    }
+  }
+}
+/* 备份 / 导出的完整快照。**只带 items 是不够的** —— 标签库和外观设置也在这份数据里，
+   缺了它们，在另一台电脑上恢复时会静默丢掉自定义标签：条目上还挂着那些标签字符串，
+   但筛选栏是标签库驱动的，于是那些标签"筛不到、也删不掉"。 */
+function snapshot(){
+  return {
+    items: S.items, tags: S.tags, statLayout: S.statLayout,
+    hintOpen: S.hintOpen, showHelp: S.showHelp, lastBackup: S.lastBackup
+  };
+}
+/* 去空白、去空串、去重（保留先后顺序） */
+function normTagList(list){
+  const out = [];
+  (Array.isArray(list) ? list : []).forEach(t => {
+    const v = String(t == null ? '' : t).replace(/^#/, '').trim();
+    if (v && out.indexOf(v) < 0) out.push(v);
+  });
+  return out;
+}
+/* 标签库变了就同步给解析层，自动猜标签才知道哪些还活着 */
+function syncTags(){ ACTIVE_TAGS = S.tags.slice(); }
+function uid(){ return Math.random().toString(36).slice(2, 10); }
+
+/* 按标题找未完成条目（精确 → 前缀 → 包含）；找不到就自动建一张目标卡 */
+function findOrCreateGoal(title, zone){
+  const t = String(title || '').trim();
+  if (!t) return null;
+  const live = S.items.filter(i => !i.done);
+  const hit = live.find(i => i.title === t)
+    || live.find(i => i.title.startsWith(t))
+    || live.find(i => i.title.includes(t));
+  if (hit) return hit;
+  const g = {
+    id: uid(), raw: t, title: t,
+    date: null, dateEnd: null, monthOnly: false, time: null,
+    zone: zone || 'long', tags: [], done: false, doneAt: null,
+    createdAt: Date.now(), hw: null, repeat: null, parent: null, goal: true, pri: 0
+  };
+  S.items.unshift(g); return g;
+}
+
+function addItem(text){
+  const p = parseSmart(text);
+  if (!p.title) return null;
+  const it = {
+    id: uid(), raw: text.trim(), title: p.title,
+    date: p.date, dateEnd: p.dateEnd, monthOnly: p.monthOnly, time: p.time,
+    zone: p.zone, tags: p.tags, done: false, doneAt: null,
+    createdAt: Date.now(), hw: null, repeat: p.repeat || null,
+    parent: null, goal: !!p.goal, pri: p.pri || 0
+  };
+  // 祖先链逐级挂靠：'写论文> 第一周> 查文献' → 论文 ← 第一周 ← 查文献
+  if (p.path && p.path.length){
+    let prev = null;
+    for (const seg of p.path){
+      const node = findOrCreateGoal(seg, prev ? prev.zone : 'long');
+      if (!node) break;
+      if (prev && node.id !== prev.id) node.parent = prev.id;
+      if (node.goal !== true) node.goal = true;
+      prev = node;
+    }
+    if (prev && prev.id !== it.id) it.parent = prev.id;
+  }
+  if (/作业/.test(p.title)){
+    it.hw = { course: guessCourse(p.title), detail:'', channel: guessChannel(text), naming: guessNaming(text), status:'todo', submittedAt:null };
+    splitHw(it, p);
+  }
+  /* 正文里写的 #标签 也进标签库，但**要守同一个上限** —— addTag() 有 TAG_MAX 检查，
+     这里原来没有，连续录入十几种新标签就能把库撑过 24，而管理弹窗还显示"30 / 24 个标签"。 */
+  (p.tags || []).forEach(t => {
+    if (S.tags.indexOf(t) < 0 && S.tags.length < TAG_MAX) S.tags.push(t);
+  });
+  syncTags();
+  S.items.unshift(it);
+  justAdded = { id: it.id, t: Date.now() };   // 渲染时给这一条挂 .just-added，播一次落位
+  save(); return it;
+}
+
+/* ---------------- 渲染 ---------------- */
+const view = document.getElementById('view');
+/* 分栏顺序写死在 renderList 里（长期 → 短期 → 循环，考虑单独铺满一行），这里不再放一份 */
+
+/* 入场动画只在「切视图」时播一次。
+   纯数据更新（回车加一条、打个勾、换个标签）不重播 —— 因为渲染是整体重建 innerHTML，
+   .is-visible 会随之销毁，若照常播动画，每次回车都会把整页卡片重新淡入 + 去模糊一遍，
+   条目上百时既卡又闪。 */
+let ANIM = true;
+function rv(){ return ANIM ? ' reveal-on-scroll' : ''; }
+function rvd(ms){ return ANIM ? ` style="--delay:${ms}ms"` : ''; }
+/* 长期区积压提醒：每次会话只问一次 */
+let staleToastShown = false;
+/* 刚录入的那一条：只让它播一次落位动画，别让整页重渲染时全列表一起播。
+   用 id + 时间戳而不是一个"用完就清"的标记 —— 万一这条被筛掉了没渲染，
+   标记也就自然过期，不会留到下一次刷新去污染别的条目。 */
+let justAdded = { id: '', t: 0 };
+
+/* 筛选栏可以多选：选中的标签之间是「或」——挂着其中任意一个就显示出来。
+   同时搜索框再做一次标题/原文的过滤。 */
+function ordered(){
+  const q = (S.q || '').trim().toLowerCase();
+  return S.items
+    .filter(i => !S.filterTags.length || S.filterTags.some(t => (i.tags || []).includes(t)))
+    .filter(i => !q || (i.title || '').toLowerCase().includes(q) || (i.raw || '').toLowerCase().includes(q));
+}
+function chipDate(it){
+  const dl = dateLabel(it);
+  if (!dl) return '';
+  let cls = 'chip date';
+  const df = daysFromToday(it.date);
+  if (df < 0) cls += ' late'; else if (df === 0) cls += ' today';
+  const txt = it.done ? dl : (df < 0 ? dl + ' · 逾期' + (-df) + '天' : (df === 0 ? dl + ' · 今天' : dl));
+  return `<span class="${cls}">${txt}</span>`;
+}
+/* 区内排序：重要度优先（紧急 > 重要 > 普通），再按日期先近后远，最后新加入的在前 */
+function cmpItem(a, b){
+  const pa = a.pri || 0, pb = b.pri || 0;
+  if (pa !== pb) return pb - pa;
+  /* 必须先把「两边同日期」这种情况排除掉再返回 -1/1：原来写成 `a.date && b.date ? (a<b?-1:1)`，
+     日期相等时两个方向都返回 1，违反反对称性 —— sort 拿到不一致的比较函数，
+     结果由引擎实现决定、不保证稳定，而且下面那条"新加入的在前"的兜底永远走不到。 */
+  if (a.date && b.date && a.date !== b.date) return a.date < b.date ? -1 : 1;
+  if (a.date && !b.date) return -1;
+  if (!a.date && b.date) return 1;
+  return b.createdAt - a.createdAt;
+}
+
+/* 紧急度 0~4，行首那颗点、时间轴上的节点都用它上色：
+   0 灰＝没日期也不循环（还没到时候）   1 黄＝这周内   2 橙＝三天内或循环到期当天
+   3 红＝逾期、或标了 !                 4 深红＝标了 !!
+   人工标的优先：写 !! 你就说它最急，不该被「还早」的日期压下去。 */
+const URG_TXT = ['不急', '这周内', '三天内', '逾期 / 重要', '紧急'];
+function urgencyLevel(it){
+  if (it.done) return 0;                        // 完成就没有紧急度可言，一律灰点收着
+  const pri = it.pri || 0;
+  if (pri >= 2) return 4;
+  if (pri === 1) return 3;
+  const df = it.date ? daysFromToday(it.date) : null;
+  /* 循环任务看的是节奏不是死线：平时黄点惦记着，到期当天升橙，漏了一天算红。
+     否则「每1天 喂寄居蟹」会天天挂在橙/红上，看两天就麻木了。 */
+  if (it.repeat) return df === null ? 1 : (df < 0 ? 3 : (df === 0 ? 2 : 1));
+  if (df === null) return 0;
+  if (df < 0) return 3;
+  if (df <= 3) return 2;
+  if (df <= 7) return 1;
+  return 0;
+}
+
+function itemHTML(it, kidsHTML, goalInfo){
+  /* 标签名和 id 都必须转义：标签名来自用户输入（重命名时 normTagList 只去 # 和空白），
+     id 来自备份 json（外部数据）。不转义的话，名字里带一个英文引号就会把属性截断 ——
+     实测标签名设为 a"b 时 data-tag 读回来是 "a"，列表 DOM 直接坏掉，而且很难看出原因。
+     注意 tagPillHTML() 一直是转义的，这里没跟上，才是不一致的那一处。 */
+  const tags = (it.tags || []).map(t => `<span class="chip" data-tag="${esc(t)}" data-id="${esc(it.id)}">${esc(t)}</span>`).join('');
+  // overdue 只用来把标题染红；紧急度不再靠这些类，统一由行首那颗 udot 表达
+  // stale 给长期区放了超 30 天的条目挂一个「放了N天」chip
+  const overdue = !it.done && it.date && daysFromToday(it.date) < 0;
+  const staleDays = (!it.done && !it.date && it.zone === 'long' && it.createdAt)
+    ? Math.floor((Date.now() - it.createdAt) / 86400000) : 0;
+  const stale = staleDays > 30;
+  const pri = it.pri || 0;
+  const cls = 'item' + (it.done ? ' done' : '') + (overdue ? ' overdue' : '') + (stale ? ' stale' : '')
+    + (pri ? ' pri' + pri : '') + (goalInfo ? ' goal' : '')
+    + (it.id === justAdded.id && Date.now() - justAdded.t < 1200 ? ' just-added' : '');
+  const lvl = urgencyLevel(it);
+  return `<div class="${cls}" data-id="${esc(it.id)}" data-u="${lvl}">
+    <div class="lead">
+      <span class="udot u${lvl}" title="紧急度：${URG_TXT[lvl]}"></span>
+      <button class="tick" data-act="tick" title="完成">✓</button>
+    </div>
+    <div class="body">
+      <div class="t" data-act="edit">${esc(it.title)}</div>
+      <div class="meta">
+        ${goalInfo ? `<span class="chip goalchip" data-act="fold" data-id="${esc(it.id)}" aria-expanded="${goalInfo.folded ? 'false' : 'true'}" title="展开/收起子任务">${goalInfo.folded ? '▸' : '▾'} ${goalInfo.done}/${goalInfo.total}</span>` : ''}
+        ${pri ? `<span class="chip prichip p${pri}">${pri === 2 ? '紧急' : '重要'}</span>` : ''}
+        ${chipDate(it)}
+        ${it.repeat ? `<span class="chip rep">每${it.repeat === 1 ? '' : it.repeat}天</span>` : ''}
+        ${it.goal && !goalInfo ? '<span class="chip goalchip">目标</span>' : ''}
+        ${it.hw ? '<span class="chip hwchip">作业</span>' : ''}
+        ${stale ? `<span class="chip old">放了${staleDays}天</span>` : ''}
+        ${tags}
+      </div>
+      ${kidsHTML || ''}
+    </div>
+    <div class="acts">
+      <button class="mini" data-act="edit" title="编辑">✎</button>
+      <button class="mini" data-act="del" title="删除">✕</button>
+    </div>
+  </div>`;
+}
+
+function renderList(){
+  let h = `<div class="section-intro${rv()}">
+    <p class="section-kicker">Today</p>
+    <h2>今天要做什么</h2>
+    <p class="intro-note">没日期的沉长期，有死线的进短期，带节奏的走循环，行尾带 <b class="mono">?</b> 的去考虑 —— 你不用先想它属于哪。<br>
+       每条最左边那颗点按紧急度上色：灰 → 黄 → 橙 → 红 → 深红，鼠标停上去会说是哪一档。</p>
+  </div>`;
+
+  h += `<div class="toolbar${rv()}"${rvd(60)}>
+    <div class="tb-row search-row">
+      <input class="search" id="searchBox" type="text" aria-label="搜索标题关键词" placeholder="搜索标题关键词…" value="${esc(S.q || '')}">
+      <button class="btn ghost" id="importBtn">粘贴导入</button>
+      <button class="btn ghost" id="exportBtn">备份</button>
+    </div>
+    <div class="tb-row tag-row">
+      <!-- tabindex=0：标签一多这条就横向滚，键盘用户得能聚焦到它才滚得动（方向键） -->
+      <div class="pillstrip" id="filters" tabindex="0" role="group" aria-label="按标签筛选"></div>
+      ${tagActsHTML}
+    </div>
+  </div>`;
+
+  h += '<div class="board">';
+
+  /* ---- 复合目标：树形渲染 ----
+     vis = 搜索/标签过滤后的可见集（子任务可见时，祖先链强制可见）；
+     kids = 父id → 可见且未完成的子任务；根 = 无父 / 父不存在 / 父已完成 */
+  const byId = new Map(S.items.map(i => [i.id, i]));
+  const vis = new Set(ordered().map(i => i.id));
+  for (const i of ordered()){
+    let cur = i;
+    while (cur.parent && byId.has(cur.parent)){
+      const p = byId.get(cur.parent);
+      if (p.done) break;
+      vis.add(p.id);
+      cur = p;
+    }
+  }
+  const kids = new Map();
+  for (const i of ordered()){
+    if (i.done || !i.parent || !byId.has(i.parent)) continue;
+    const p = byId.get(i.parent);
+    if (p.done) continue;
+    if (!kids.has(i.parent)) kids.set(i.parent, []);
+    kids.get(i.parent).push(i);
+  }
+  kids.forEach(arr => arr.sort(cmpItem));
+  /* 每个节点都要数一遍自己**全部**子任务（含已完成、含被过滤掉的），用来显示 ▾ 3/5 那个角标。
+     原来这行是 `S.items.filter(x => x.parent === it.id)`，而它在 renderTree 里 ——
+     一次渲染里整个数组被扫「节点数」遍，是 O(n²)。这里进函数前建一次索引降到 O(n)。
+     注意它和上面的 kids 语义不同：kids 只收「可见且未完成」，这里收所有，
+     所以不能合并成一张表。 */
+  const byParent = new Map();
+  for (const i of S.items){
+    if (!i.parent) continue;
+    if (!byParent.has(i.parent)) byParent.set(i.parent, []);
+    byParent.get(i.parent).push(i);
+  }
+  function renderTree(it){
+    /* 子任务**始终**渲染进 DOM，折叠只加一个 display:none。
+       为什么不能沿用「折叠就不渲染」：高度过渡必须"先渲染再塌陷" ——
+       展开时若等结构建好再补动画，会先闪一下完整高度；收起时若结构已经不在，
+       就无高度可量，只能硬切。留在 DOM 里的代价只是折叠的子树多占一点内存。 */
+    const children = kids.get(it.id) || [];
+    const allKids = byParent.get(it.id) || [];
+    const folded = collapsed.has(it.id);
+    const info = (it.goal || allKids.length)
+      ? { total: allKids.length, done: allKids.filter(x => x.done).length, folded }
+      : null;
+    const kidsHTML = children.length
+      ? `<div class="goal-kids${folded ? ' folded' : ''}" data-kids="${esc(it.id)}">` + children.map(renderTree).join('') + `</div>`
+      : '';
+    return itemHTML(it, kidsHTML, info);
+  }
+  /* 根列表从 vis 取而不是 ordered —— 搜索/标签过滤命中子任务时，祖先目标是补进 vis 的；
+     循环任务不混进 zone，它自己一栏 */
+  const rootList = k => S.items.filter(i => {
+    if (i.done || i.zone !== k || !vis.has(i.id) || i.repeat) return false;
+    const p = i.parent && byId.get(i.parent);
+    return !p || p.done;                          // 根：无父 / 父不存在 / 父已完成
+  }).sort(cmpItem);
+
+  const repList = ordered()
+    .filter(i => !i.done && i.repeat && vis.has(i.id) && !(i.parent && byId.get(i.parent) && !byId.get(i.parent).done))
+    .sort(cmpItem);
+
+  /* 三栏顺序＝「要管的程度」从松到紧：长期（最没期限）→ 短期（有死线）→ 循环（节奏固定）。
+     「考虑」不算待办，只在这儿暂存想法，铺满整行收在最后，不挤进这三栏。 */
+  const cols = [
+    { k:'long',   label:'长期', list: rootList('long'),  empty:'空' },
+    { k:'short',  label:'短期', list: rootList('short'), empty:'空' },
+    { k:'repeat', label:'循环', cls:' repeat-zone', list: repList,
+      empty:'还没有循环任务。写「每2天 喂寄居蟹」，打勾后自动排下一次。' },
+  ];
+  cols.forEach((c, zi) => {
+    h += `<section class="glass zone${c.cls || ''}${rv()}" data-z="${c.k}"${rvd(100 + zi * 80)}>
+      <header><span class="dot"></span><h3>${c.label}</h3><span class="n mono">${c.list.length}</span></header>
+      ${c.list.length ? c.list.map(renderTree).join('') : `<div class="empty">${c.empty}</div>`}
+    </section>`;
+  });
+
+  /* 考虑区：这里放的是「还没决定要不要做」的事，不是待办 —— 不占三栏之一，
+     靠 grid-column:1/-1 铺满整行落在所有栏目脚下，绿点跟上面三栏的蓝点分开。
+     必须写在 .board 里面：它是这个网格的一个 item，行间距（gap）才管得到它。
+     以前这段渲染在 .board 外面（`</div>` 提前把看板关掉了），后果是
+     grid-column 空转、而且它紧贴着看板一个像素都不隔 —— 看着像跟「循环」粘成一张卡。 */
+  const conList = rootList('consider');
+  h += `<section class="glass zone zone-wide${rv()}" data-z="consider"${rvd(360)}>
+    <header><span class="dot"></span><h3>考虑</h3><span class="n mono">${conList.length}</span></header>
+    ${conList.length ? conList.map(renderTree).join('')
+      : '<div class="empty">这儿暂存「还没想好要不要做」的事。写的时候在结尾加个 <b class="mono">?</b>，它就会落到这儿，不占上面三栏。</div>'}
+  </section>`;
+
+  h += '</div>';   // 关掉 .board（放在考虑区之后）
+
+  // 长期区积压提醒：每次会话只问一次；备份提醒更重要，它要弹时这里让位
+  const backupStale = !S.lastBackup || Date.now() - S.lastBackup >= 7 * 86400000;
+  const staleCount = S.items.filter(i => !i.done && !i.date && i.zone === 'long' &&
+    i.createdAt && (Date.now() - i.createdAt) > 30 * 86400000).length;
+  if (staleCount && !staleToastShown && !backupStale){
+    staleToastShown = true;
+    setTimeout(() => toast('长期区有 ' + staleCount + ' 条放了超过 30 天，看看要不要处理掉', null, null, 8000), 800);
+  }
+
+  // 时间线已经单开一页（导航「时间轴」），清单页不再重复贴一份
+  // 「已完成」栏目也已去掉：完成态不在清单页展示，只在统计页计数
+
+  view.innerHTML = h;
+}
+
+/* 时间线卡片：作业条目带课程/渠道/状态按钮，普通条目带完成/编辑 */
+function tlCardHTML(it){
+  const df = it.date ? daysFromToday(it.date) : null;
+  const dl = it.date ? (df < 0 ? dateLabel(it) + ' · 逾期' + (-df) + '天' : (df === 0 ? dateLabel(it) + ' · 今天' : dateLabel(it))) : '未定截止';
+  const chips = `<span class="chip ${df !== null && df < 0 ? 'late' : (df === 0 ? 'today' : '')}">${dl}</span>` +
+    (it.pri ? `<span class="chip prichip p${it.pri}">${it.pri === 2 ? '紧急' : '重要'}</span>` : '') +
+    (it.repeat ? `<span class="chip rep">每${it.repeat === 1 ? '' : it.repeat}天</span>` : '') +
+    (it.tags || []).map(t => `<span class="chip" data-tag="${esc(t)}" data-id="${esc(it.id)}">${esc(t)}</span>`).join('');
+
+  if (it.hw){
+    const hw = it.hw;
+    const st = [['todo','未开始'], ['doing','在做'], ['submitted','已交']];
+    return `<article class="glass hwcard" data-id="${esc(it.id)}">
+      <div class="top"><span class="course">${esc(hw.course || '未分类')}</span>${chips}</div>
+      <h3>${esc(it.title)}</h3>
+      ${hw.detail ? `<div class="detail">${esc(hw.detail)}</div>` : ''}
+      <div class="grid">
+        ${hw.channel ? `<b>提交渠道</b><span>${esc(hw.channel)}</span>` : ''}
+        ${hw.naming ? `<b>命名要求</b><span class="mono">${esc(hw.naming)}</span>` : ''}
+        ${hw.submittedAt ? `<b>交于</b><span class="mono">${esc(hw.submittedAt)}</span>` : ''}
+      </div>
+      <div class="statuses">
+        ${st.map(([k, t]) => `<button class="st ${hw.status === k ? 'on' : ''}" data-s="${k}" data-act="st" data-id="${esc(it.id)}">${t}</button>`).join('')}
+        <button class="mini" data-act="edit" data-id="${esc(it.id)}" style="margin-left:auto">编辑</button>
+      </div>
+    </article>`;
+  }
+  return `<article class="glass hwcard" data-id="${esc(it.id)}">
+    <div class="top">${chips}</div>
+    <h3>${esc(it.title)}</h3>
+    <div class="statuses">
+      <button class="st" data-act="tick" data-id="${esc(it.id)}">完成</button>
+      <button class="mini" data-act="edit" data-id="${esc(it.id)}" style="margin-left:auto">编辑</button>
+    </div>
+  </article>`;
+}
+
+/* 时间轴页：一条左侧竖轴，所有带日期的未完成任务按截止日从近到远上下排 */
+function renderTimeline(){
+  const list = S.items.filter(i => !i.done && i.date)
+    .sort((a, b) => { const A = a.date || '', B = b.date || ''; return A < B ? -1 : A > B ? 1 : 0; });
+  const late = list.filter(i => daysFromToday(i.date) < 0).length;
+
+  view.innerHTML = `<div class="section-intro${rv()}">
+      <p class="section-kicker">Timeline</p>
+      <h2>时间轴</h2>
+          <p class="intro-note">所有写了日期的未完成任务，按截止日从近到远上下排。<br>
+             点越红越急：灰＝还早，黄＝这周内，橙＝三天内，红＝逾期，深红＝标了 <b class="mono">!!</b>。</p>
+    </div>` +
+    (list.length
+      ? `<div class="tl-section${rv()}">
+          <div class="tl-meta">共 ${list.length} 条${late ? ' · 其中逾期 ' + late + ' 条' : ''}</div>
+          <ol class="timeline">` + list.map((it, hi) => {
+            const lv = urgencyLevel(it);
+            /* 入场错峰最多算 12 步，否则第 30 条要等 1.5 秒才出现 */
+            return `<li class="tl-item${rv()}"${rvd(80 + Math.min(hi, 12) * 50)} data-u="${lv}" title="紧急度：${URG_TXT[lv]}">
+              <span class="tl-node"></span>
+              ${tlCardHTML(it)}
+            </li>`;
+          }).join('') + `</ol></div>`
+      : `<div class="glass zone${rv()}" style="margin-top:clamp(30px,4vw,48px)">
+          <div class="empty">还没有带日期的任务。在录入时写个日期，它就会排到这里 ——
+            比如「交实验报告 924」「明天 买牙膏」「周四之前 交表」。</div>
+        </div>`);
+}
+
+function streak(){
+  const days = new Set(S.items.filter(i => i.done && i.doneAt).map(i => ymd(new Date(i.doneAt))));
+  let n = 0; const d = today0();
+  if (!days.has(ymd(d))) d.setDate(d.getDate() - 1);
+  while (days.has(ymd(d))){ n++; d.setDate(d.getDate() - 1); }
+  return n;
+}
+function renderStat(){
+  const today = ymd(today0());
+  const doneItems = S.items.filter(i => i.done);
+  const doneTodayList = doneItems.filter(i => i.doneAt && ymd(new Date(i.doneAt)) === today);
+  const overdue = S.items.filter(i => !i.done && i.date && daysFromToday(i.date) < 0).length;
+  const hwOpen = S.items.filter(i => i.hw && !i.done && i.hw.status !== 'submitted').length;
+  const doneAll = doneItems.length;
+  const st = streak();
+  const tile = S.statLayout === 'tile';
+
+  /* 完成量按来源拆开：循环 / 短期 / 长期 / 考虑。
+     清单页每个分区标题本来就带未完成条数，这里就不重复列分区待办数了。 */
+  function byOrigin(list){
+    const c = { short: 0, long: 0, consider: 0, loop: 0 };
+    list.forEach(i => { if (i.repeat) c.loop++; else if (c[i.zone] !== undefined) c[i.zone]++; });
+    return c;
+  }
+  function breakdown(list){
+    const c = byOrigin(list);
+    const total = c.short + c.long + c.consider + c.loop;
+    if (!total) return tile ? `<div class="vsub">还没有打勾</div>`
+                            : `<div class="vchips"><span class="vchip">还没有打勾</span></div>`;
+    if (tile){                                   /* 方块太小，chips 会挤爆 → 收成一行小字 */
+      const parts = [];
+      if (c.short) parts.push('短期 ' + c.short);
+      if (c.long) parts.push('长期 ' + c.long);
+      if (c.consider) parts.push('考虑 ' + c.consider);
+      if (c.loop) parts.push('循环 ' + c.loop);
+      return `<div class="vsub">${parts.join(' · ')}</div>`;
+    }
+    const chip = (label, n, cls) => `<span class="vchip ${cls || ''}">${label}<b>${n}</b></span>`;
+    return `<div class="vchips">` + chip('短期', c.short) + chip('长期', c.long) +
+      (c.consider ? chip('考虑', c.consider) : '') + chip('循环', c.loop, 'loop') + `</div>`;
+  }
+
+  const cards = [
+    { k: '今日完成', v: doneTodayList.length, s: '条', cls: 'accent big', sub: breakdown(doneTodayList) },
+    { k: '连续打勾', v: st, s: '天没断', cls: 'big',
+      tip: '连着多少天，每天都至少打勾一次。今天还没打勾不算断，从昨天往前数。' },
+    /* 已逾期和作业未交合成一张卡：都是「欠着的」，平时又常是 0，各占一张太浪费地方。
+       卡里并排两个指标，三层排版（标签/大数字/单位）跟别的卡一模一样。 */
+    { cls: 'pair', pair: [
+      { k: '已逾期', v: overdue, s: '条' },
+      { k: '作业未交', v: hwOpen, s: '项' }
+    ] },
+    { k: '历史完成', v: doneAll, s: '条', cls: '', sub: breakdown(doneItems) }
+  ];
+
+  /* 「布局 横条/方块」这一行原来没挂揭示类：整页别的东西都在淡入去模糊，
+     只有它（和紧接着的卡片）"啪"地出现 —— 切进统计页时就显得很生硬。
+     现在跟其它区块同一条入场，延迟排在标题之后、卡片之前。 */
+  view.innerHTML = `<div class="section-intro${rv()}">
+      <p class="section-kicker">Progress</p>
+      <h2>这些天</h2>
+      <p class="intro-note">只统计这台电脑上的这份数据。<b>连续打勾</b>＝连着多少天每天都至少打过一次勾，<br>今天还没打勾不算断，从昨天往前数。</p>
+    </div>
+    <div class="stat-toolbar${rv()}"${rvd(30)}>
+      <span class="len">布局</span>
+      <span class="seg">
+        <button class="segbtn${tile ? '' : ' on'}" data-lay="card" title="横条：宽卡片竖着排">▤ 横条</button>
+        <button class="segbtn${tile ? ' on' : ''}" data-lay="tile" title="方块：方形平铺">▦ 方块</button>
+      </span>
+    </div>
+    <div class="feature-grid${tile ? ' tile' : ''}">` + cards.map((c, ci) => {
+      const tip = c.tip ? ' title="' + c.tip + '"' : '';
+      /* 一张卡里放几个指标：pair 的卡走两列，普通卡一列 + 可选细分 */
+      const cols = c.pair || [c];
+      const inner = cols.map(x =>
+        `<div class="pcol"><div class="k">${x.k}</div><div class="v">${x.v}</div><div class="s">${x.s}</div>` +
+        (x.sub || '') + `</div>`).join('');
+      return `<div class="glass feature-card ${c.cls}${rv()}"${rvd(60 + ci * 50)}${tip}>
+        ${inner}
+      </div>`;
+    }).join('') + `</div>`;
+
+  countUpNumbers();
+}
+
+/* ---------- 设置页 ---------- */
+
+/* 「外观 → 页面说明文字」的总开关。
+   实现成一个 body 属性 + 一条 CSS（见 body[data-help="off"] .intro-note），
+   不在清单/时间轴/统计三个视图里各写一份判断 —— 所以切换时不需要重渲染，
+   当前页和之后切过去的每一页都会自动跟上，页面也不会跳一下。
+   启动时（load 之后）就要调一次：refresh 是 rAF 延迟的，等它来会先闪一下那段字。 */
+function applyHelp(){ document.body.dataset.help = S.showHelp ? 'on' : 'off'; }
+
+/* 设置页。
+   目前只有「外观」一栏、一个开关 —— 故意保持这么小：页面上真正需要用户决定的事情
+   只有"屏幕上有多少字"。开关用 role="switch" + aria-checked 表达状态（键盘可达、
+   读屏能读出开/关），位置状态也由 aria-checked 驱动，不在 CSS 里另存一套类名。 */
+function renderSettings(){
+  view.innerHTML = `<div class="section-intro${rv()}">
+      <p class="section-kicker">Settings</p>
+      <h2>设置</h2>
+    </div>
+    <div class="set-wrap">
+      <section class="glass set-card${rv()}"${rvd(60)}>
+        <h3>外观</h3>
+        <p class="set-sub">只管"屏幕上出现什么"，不动你的数据。改完立刻生效，存在这台电脑上。</p>
+        <div class="set-row">
+          <div class="set-txt">
+            <b>页面说明文字</b>
+            <span>清单 / 时间轴 / 统计页标题下面那段解释文案（分区规则、色阶含义这类）。
+              关掉只收掉这些字：条数、逾期这类数字照旧显示，列表空着时的引导提示也不会消失。</span>
+          </div>
+          <button class="switch" data-set="help" role="switch" aria-label="显示页面说明文字"
+                  aria-checked="${S.showHelp ? 'true' : 'false'}"></button>
+        </div>
+        <!-- 流畅模式原来在顶栏（一颗 ⚡）。撤掉是因为手机上它和主题滑块一起挤掉了标题，
+             功能本身有用（老机型 / 软件渲染滚动更顺），所以搬到这里。
+             aria-checked 直接读 html.soft-render —— 那是唯一真相：
+             它由"软件渲染自动检测"或"用户手动选择"共同决定，这里不另存一份状态。 -->
+        <div class="set-row">
+          <div class="set-txt">
+            <b>流畅模式</b>
+            <span>关掉玻璃模糊、背景点阵和入场动画，老机型滚动明显更顺。
+              检测到设备在用软件渲染时会自动打开；这里的开关可以手动覆盖它。</span>
+          </div>
+          <button class="switch" data-set="lite" role="switch" aria-label="流畅模式"
+                  aria-checked="${document.documentElement.classList.contains('soft-render') ? 'true' : 'false'}"></button>
+        </div>
+      </section>
+    </div>`;
+}
+
+/* 统计页大数字滚动计数：从 0 数到目标值。
+   原来数字是"啪"一下出现的，看不出"涨了多少"；数一下能让增减有感知。
+   三个必须守住的点：
+   ① 结束时**必须**写回精确目标值 —— 动画中途被打断（切页、切布局）也不能留下错数字；
+   ② 0 不数（"0 → 0"没有意义，反而多闪一下）；
+   ③ reduced-motion 直接跳过，尊重系统设置。
+   元素是每次 renderStat 重建的，旧动画里的 el 已脱离文档，写它也不会污染新页面。 */
+function countUpNumbers(){
+  if (reduceMotion()) return;
+  const DUR = 460;
+  view.querySelectorAll('.feature-grid .v').forEach(el => {
+    const to = parseInt(String(el.textContent).trim(), 10);
+    if (!isFinite(to) || to <= 0) return;
+    const t0 = performance.now();
+    el.textContent = '0';
+    el.setAttribute('data-counting', '1');       // 给测试一个"还在数"的抓手
+    const step = now => {
+      if (!el.isConnected) return;               // 已被下次渲染换掉，别再写
+      const p = Math.min(1, (now - t0) / DUR);
+      const e = 1 - Math.pow(1 - p, 3);          // easeOutCubic：开头快、收尾稳
+      el.textContent = String(Math.round(to * e));
+      if (p < 1) requestAnimationFrame(step);
+      else { el.textContent = String(to); el.removeAttribute('data-counting'); }
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+/* 标签条右端固定的那组按钮（两处标签栏共用一份 HTML）。
+   放在滚动区外面，标签滚起来的时候它们不会跟着跑。 */
+const tagActsHTML =
+  `<div class="tagacts">` +
+    `<button class="pill addpill" data-act="addtag" title="新建标签（回车确认）">＋</button>` +
+    `<button class="pill addpill" data-act="managetag" title="管理标签：改名 / 删除">⚙</button>` +
+  `</div>`;
+
+function renderFilters(){
+  const box = document.getElementById('filters');
+  if (!box) return;
+  const n = S.filterTags.length;
+  /* 「全部」在不筛选时就是个静态状态；一旦选了标签，它就变成一键清空 */
+  const clearPulse = filterPulse === '' ? ' pulse' : '';
+  box.innerHTML = `<button class="pill${n ? '' : ' on'}${clearPulse}" data-f="" title="${n ? '清空筛选' : '不筛选'}">` +
+      (n ? '清空 (' + n + ')' : '全部') + `</button>` +
+    S.tags.map(t => tagPillHTML(t, 'filter')).join('');
+  filterPulse = null;   // 只在"被点中的那一次刷新"里生效，别让后面的无关刷新重播
+  restoreStripScroll(box);
+}
+
+/* 两处标签条都是「整块重建 innerHTML」来刷新的：筛选栏那条更狠 ——
+   refresh() 会把整个 #view 重画一遍，连它自己都是新元素。
+   所以横滚位置不能靠重建前后读一次，得单独记一份，重建后还回去，
+   否则滚到右边点一颗标签，整条立刻弹回开头，很难连着选几个。 */
+const stripScrollX = { filters: 0, entryStrip: 0 };
+document.addEventListener('scroll', e => {
+  const el = e.target;
+  if (el && el.id && el.id in stripScrollX) stripScrollX[el.id] = el.scrollLeft;
+}, true);
+function restoreStripScroll(el){
+  if (el && el.id in stripScrollX) el.scrollLeft = stripScrollX[el.id];
+}
+
+/* 标签条的边缘渐隐开关（CSS 那边有三条 mask 规则）。
+   判据是"这一侧是否真的还有内容被切住"：
+   - scrollWidth <= clientWidth（压根没溢出）→ 两侧都不渐隐；
+   - scrollLeft 已经在 0 → 左边没东西被切，别把第一颗 pill 淡化；
+   - 已经滚到底（scrollLeft ≈ max）→ 右边同理。
+   留 1px 容差：某些缩放下 scrollLeft 会是 1.0001 这种小数，卡死等号会让边缘反复闪。
+   统一挂类而不是写 inline 样式，是为了让"要不要渐隐"只由这一处决定。 */
+function syncStripFades(){
+  document.querySelectorAll('.pillstrip').forEach(el => {
+    const max = el.scrollWidth - el.clientWidth;
+    const scrollable = max > 1;
+    el.classList.toggle('fade-l', scrollable && el.scrollLeft > 1);
+    el.classList.toggle('fade-r', scrollable && el.scrollLeft < max - 1);
+  });
+}
+/* 捕获阶段监听：滚动事件不冒泡，但在捕获阶段能收到子元素的滚动 ——
+   条子自己滚、页面滚（可能把整条滑出视口）、窗口变宽变窄，都要重算。 */
+document.addEventListener('scroll', syncStripFades, true);
+window.addEventListener('resize', syncStripFades);
+
+/* 刚被点中的那颗筛选标签。筛选栏每次 refresh 都整块重建，没有元素可以复用，
+   所以只能给"这一颗"补一段入场动画把状态切换接上（见 CSS .pill.pulse / @keyframes pillOn）。
+   用完立刻清空 —— 否则下一次无关的 refresh（搜索、打勾…）会把旧的那颗又播一遍。 */
+let filterPulse = null;
+
+/* 标签 pill：一律带 × 可删（内置的那三个也能删，所有标签一视同仁）。
+   mode='filter' 点标签＝加入/移出筛选（可多选）；mode='entry' 点标签＝给之后录入的条目加/去这个标签（可多选） */
+function tagPillHTML(t, mode){
+  const entryMode = mode === 'entry';
+  const on = entryMode ? entryTagSet.has(t) : S.filterTags.indexOf(t) >= 0;
+  const attr = entryMode ? `data-et="${esc(t)}"` : `data-f="${esc(t)}"`;
+  /* 筛选栏那颗刚被点中的补一个入场：选中走 .pulse（无底色→实底），
+     取消走 .pulse-off（实底→无底色）。它整块重画、没有元素可复用，
+     只能靠动画把这次状态切换接上。 */
+  const pulse = (!entryMode && t === filterPulse) ? (on ? ' pulse' : ' pulse-off') : '';
+  return `<span class="pillwrap"><button class="pill${on ? ' on' : ''}${pulse}" ${attr}>${esc(t)}</button>` +
+    `<button class="pill-x" data-act="deltag" data-t="${esc(t)}" title="删除「${esc(t)}」">×</button></span>`;
+}
+
+/* 录入区标签条的选中态：**就地改 class，绝不重建 innerHTML**。
+   以前点一颗标签就把整条 innerHTML 重画一遍，节点全是新的 ——
+   CSS 上那条 transition 压根没有可过渡的旧状态，于是"选中"永远是硬切一下
+   （用户说的"过渡非常生硬"就是这个）。就地改还有个附带好处：
+   整条标签栏的横向滚动位置不会因为重画而弹回开头。 */
+function syncEntryTagUI(){
+  const box = document.getElementById('entryTags');
+  if (!box) return;
+  box.querySelectorAll('[data-et]').forEach(b => {
+    b.classList.toggle('on', entryTagSet.has(b.dataset.et));
+  });
+  const n = entryTagSet.size;
+  const old = box.querySelector('.et-n');
+  if (n && old) old.textContent = '已选 ' + n;
+  else if (n && !old){
+    const s = document.createElement('span');
+    s.className = 'et-n mono';
+    s.title = '当前已选，回车录入时会加到条目上';
+    s.textContent = '已选 ' + n;
+    box.insertBefore(s, box.querySelector('.pillstrip'));
+  }
+  else if (!n && old) old.remove();
+}
+
+/* 录入区标签栏：可以多选，选中的标签会一起加到之后录入的条目上（再点一次取消）。
+   和筛选栏共用同一套标签库，但不共用选中状态。
+   结构＝[标签] [已选 N] [可横向滚动的标签条] [＋ ⚙]：
+   标签多的时候只有中间那条滚，「已选几」和加标签按钮一直看得见。 */
+function renderEntryTags(){
+  const box = document.getElementById('entryTags');
+  if (!box) return;
+  const n = entryTagSet.size;
+  box.innerHTML = `<span class="et-l">标签</span>` +
+    (n ? `<span class="et-n mono" title="当前已选，回车录入时会加到条目上">已选 ${n}</span>` : '') +
+    `<div class="pillstrip" id="entryStrip" tabindex="0" role="group" aria-label="给之后录入的条目加标签">` + S.tags.map(t => tagPillHTML(t, 'entry')).join('') + `</div>` +
+    tagActsHTML;
+  restoreStripScroll(document.getElementById('entryStrip'));
+}
+
+let rafRefresh = 0;
+function refresh(){
+  if (rafRefresh) return;
+  rafRefresh = requestAnimationFrame(() => {
+    rafRefresh = 0;
+    if (S.view === 'list') renderList();
+    else if (S.view === 'timeline') renderTimeline();
+    else if (S.view === 'settings') renderSettings();
+    else renderStat();
+    renderFilters();
+    renderEntryTags();
+    ANIM = false;   // 渲染完就关掉，之后的纯数据更新不再重播入场动画
+
+    const total = S.items.filter(i => !i.done).length;
+    document.getElementById('counts').textContent = total ? total + ' 条未完成' : '清空了';
+
+    const b = document.getElementById('backup');
+    if (!S.lastBackup){ b.textContent = '未备份'; b.className = 'backup warn'; }
+    else {
+      const d = Math.floor((Date.now() - S.lastBackup) / 86400000);
+      b.textContent = d <= 0 ? '今天已备份' : d + ' 天前备份';
+      b.className = 'backup' + (d >= 7 ? ' warn' : '');
+    }
+    document.querySelectorAll('.nav-pill').forEach(x => {
+      const on = x.dataset.view === S.view;
+      x.classList.toggle('on', on);
+      /* 只同步类名的话读屏不知道"现在在哪一页"；aria-current 才是标准说法 */
+      if (on) x.setAttribute('aria-current', 'page'); else x.removeAttribute('aria-current');
+    });
+    moveNavGlide();   // 页签的滑动指示块跟着当前视图走（首帧自动不补间）
+    document.body.dataset.view = S.view;   // CSS 据此隐藏统计页不需要的区块
+    applyHelp();                           // 「页面说明文字」总开关（切页后 DOM 是新的，这里每帧同步一次最稳）
+    observeReveals();
+    /* 标签条是这一帧刚重建的，边缘渐隐要按新的 scrollWidth 重算
+       （标签增删、筛选栏重置滚动位置都会改变"哪一侧还被切住"）。 */
+    syncStripFades();
+  });
+}
+
+/* 滚动揭示（原站 .reveal-on-scroll + IntersectionObserver） */
+let revealIO = null;
+function observeReveals(){
+  const els = document.querySelectorAll('.reveal-on-scroll:not(.is-visible)');
+  if (!els.length) return;
+  if (!('IntersectionObserver' in window)){ els.forEach(e => e.classList.add('is-visible')); return; }
+  if (!revealIO){
+    revealIO = new IntersectionObserver(list => {
+      list.forEach(en => {
+        if (!en.isIntersecting) return;
+        const el = en.target;
+        el.classList.add('is-visible');
+        revealIO.unobserve(el);
+        // 入场动画跑完就撤掉 will-change，别让这些图层永久留在合成器里。
+        // 注意监听的是 animationend：揭示改成了 animation（见 CSS 里那段说明），
+        // 不再有 transitionend 可听。reduced-motion 下动画被全局那条 !important 关掉，
+        // 这里就等不到事件 —— 那种情况下浏览器本来也不会为它们建合成层，无需收拾。
+        el.addEventListener('animationend', function done(ev){
+          if (ev.target !== el || ev.animationName !== 'rvIn') return;
+          el.style.willChange = 'auto';
+          el.removeEventListener('animationend', done);
+        });
+      });
+    }, { rootMargin:'0px 0px -8% 0px', threshold:0.04 });
+  }
+  els.forEach(e => revealIO.observe(e));
+  clearTimeout(observeReveals._t);
+  observeReveals._t = setTimeout(() => {
+    document.querySelectorAll('.reveal-on-scroll:not(.is-visible)').forEach(e => {
+      if (e.getBoundingClientRect().top < window.innerHeight) e.classList.add('is-visible');
+    });
+  }, 1400);
+}
+
+/* ---------------- toast ---------------- */
+let toastTimer = null;
+function toast(msg, actionLabel, action, dur){
+  const el = document.getElementById('toast');
+  el.innerHTML = `<span>${esc(msg)}</span>`;
+  if (actionLabel){
+    const b = document.createElement('button');
+    b.textContent = actionLabel;
+    b.onclick = () => { action(); hideToast(); };
+    el.appendChild(b);
+  }
+  el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, dur || 5000);
+}
+function hideToast(){ document.getElementById('toast').classList.remove('on'); }
+
+/* 备份提醒：数据只在 localStorage 里，超 7 天没备份（或从未备份）就提醒一次，
+   并提供「复制备份到剪贴板」——不用导出文件也能快速留底 */
+function copyBackup(){
+  const json = JSON.stringify(snapshot(), null, 2);
+  const done = () => { S.lastBackup = Date.now(); save(); toast('已复制，找个地方（备忘录/网盘）粘贴保存一下'); };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(json).then(done).catch(() => fallbackCopy(json, done));
+  } else fallbackCopy(json, done);
+}
+function fallbackCopy(text, done){
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); }
+  catch (e) { toast('复制失败，请用「备份」按钮导出文件'); }
+  ta.remove();
+}
+/* 备份提醒：数据只在 localStorage 里，超 7 天没备份（或从未备份）就提醒一次，
+   并提供「复制备份到剪贴板」——不用导出文件也能快速留底。
+
+   ⚠️ 这个函数**必须在 load() 之后调用**（见文件末尾的启动块）。
+   原来它写成「定义即执行」的 IIFE、位置又落在 load() 之前，守卫读到的 S.lastBackup
+   永远是初始值 null，于是**每次打开页面都误报一次**；更别扭的是文案是在下面的 setTimeout
+   里才拼的，那时 load() 早跑完了 —— 结果 header 显示"今天已备份"、toast 说"已经 0 天没备份"。 */
+function backupNudge(){
+  if (S.lastBackup && Date.now() - S.lastBackup < 7 * 86400000) return;
+  const d = S.lastBackup ? Math.floor((Date.now() - S.lastBackup) / 86400000) : 0;
+  setTimeout(() => toast(
+    !S.lastBackup ? '数据只存在这台电脑的浏览器里，还没备份过，建议留个底'
+                  : '已经 ' + d + ' 天没备份数据了，建议留个底',
+    '复制备份', copyBackup, 12000), 1500);
+}
+
+/* ---------------- 交互 ---------------- */
+/* 标签栏（录入区 + 筛选栏共用一套标签库 S.tags）：点选 / 新建 / 改名 / 删除。
+   两处标签条完全平权 —— 内置的「学习/生活/娱乐」也只是默认值，一样能改名和删掉。
+   —— 放在 document 级委托，两处标签条改动后都会同步刷新
+   注意：筛选栏在 #view 内，而 view 自己的委托只认 tick/edit/fold/tag/f 那几类，
+   不认 addtag/deltag/managetag；所以下面只对这几个 act 做委托，且不能按 #view 跳过。 */
+let entryTagSet = new Set();      // 录入区多选出来的标签（会话级，不持久化）
+const TAG_MAX = 24;
+
+function addTag(name){
+  const v = normTagList([name])[0];
+  if (!v) return false;
+  if (S.tags.indexOf(v) >= 0) return false;
+  if (S.tags.length >= TAG_MAX) return false;
+  S.tags.push(v); syncTags(); save(); refresh(); return true;
+}
+
+/* 删标签：从标签库拿掉，同时把条目上这个标签也摘掉（否则会出现「筛选栏里没有、
+   条目上却挂着一个点不到的标签」）。整个操作可撤销。 */
+function removeTag(t){
+  const k = S.tags.indexOf(t);
+  if (k < 0) return false;
+  S.tags.splice(k, 1);
+  S.filterTags = S.filterTags.filter(x => x !== t);
+  entryTagSet.delete(t);
+  const touched = [];
+  S.items.forEach(i => {
+    const j = (i.tags || []).indexOf(t);
+    if (j >= 0){ i.tags.splice(j, 1); touched.push(i.id); }
+  });
+  syncTags(); save(); refresh();
+  const undo = () => {
+    if (S.tags.indexOf(t) < 0) S.tags.splice(Math.min(k, S.tags.length), 0, t);
+    S.items.forEach(i => {
+      if (touched.indexOf(i.id) >= 0 && (i.tags || []).indexOf(t) < 0) i.tags.push(t);
+    });
+    syncTags(); save(); refresh();
+  };
+  toast('删掉标签「' + t + '」' + (touched.length ? '，' + touched.length + ' 条也一并摘掉' : ''),
+        '撤销', undo);
+  return true;
+}
+
+/* 改标签名：标签库和所有条目一起改，筛选/录入区的选中状态也跟着走 */
+function renameTag(from, to){
+  const v = normTagList([to])[0];
+  const k = S.tags.indexOf(from);
+  if (k < 0 || !v) return false;
+  if (v === from) return true;                     // 没改动，当成功
+  if (S.tags.indexOf(v) >= 0) return false;        // 和别的标签重名
+  S.tags[k] = v;
+  S.filterTags = S.filterTags.map(x => x === from ? v : x);
+  if (entryTagSet.has(from)){ entryTagSet.delete(from); entryTagSet.add(v); }
+  S.items.forEach(i => {
+    const j = (i.tags || []).indexOf(from);
+    if (j >= 0) i.tags[j] = v;
+  });
+  syncTags(); save(); refresh(); return true;
+}
+
+/* 管理标签弹窗：一行一个，输入框直接改名，右边删除；底部加新标签 */
+function openTagManager(){
+  const row = t => `<div class="tagrow">
+      <input type="text" value="${esc(t)}" maxlength="12" data-tagin="${esc(t)}" aria-label="标签名 ${esc(t)}">
+      <button class="btn danger" data-tagdel="${esc(t)}" title="删除「${esc(t)}」">删除</button>
+    </div>`;
+  modal.innerHTML = `<h3 id="modalTitle">管理标签</h3>
+    <p class="modal-note">改名字直接在框里改，回车或点到别处生效；删除会把这些条目上的这个标签也一并摘掉，可以撤销。</p>
+    <div class="tagrows">${S.tags.length ? S.tags.map(row).join('')
+      : '<p class="modal-note">现在一个标签都没有，下面加一个吧。</p>'}</div>
+    <div class="tagrow addrow">
+      <input type="text" id="tagNew" placeholder="新标签名" maxlength="12">
+      <button class="btn primary" id="tagAdd">添加</button>
+    </div>
+    <div class="foot">
+      <span class="modal-note">${S.tags.length} / ${TAG_MAX} 个标签</span>
+      <div class="spacer"></div>
+      <button class="btn" id="tmClose">关闭</button>
+    </div>`;
+  openMask();
+
+  modal.querySelectorAll('[data-tagin]').forEach(inp => {
+    let busy = false;
+    const apply = () => {
+      if (busy) return; busy = true;
+      const from = inp.dataset.tagin, to = inp.value;
+      if (normTagList([to])[0] === from){ busy = false; return; }   // 没改
+      if (renameTag(from, to)){ openTagManager(); return; }         // 重开一遍，行里的 data 才是新的
+      busy = false;
+      inp.value = from;
+      toast('改不了：名字不能空着，也不能和别的标签重名');
+    };
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); inp.blur(); } });
+    inp.addEventListener('blur', apply);
+  });
+
+  modal.querySelectorAll('[data-tagdel]').forEach(b => {
+    b.onclick = () => { removeTag(b.dataset.tagdel); openTagManager(); };
+  });
+
+  const addInp = document.getElementById('tagNew');
+  const doAdd = () => {
+    const v = addInp.value;
+    if (!v.trim()){ toast('标签名不能空着'); return; }
+    if (!addTag(v)){ toast(S.tags.length >= TAG_MAX ? '标签太多了，先删几个' : '这个标签已经有了'); return; }
+    openTagManager();
+  };
+  document.getElementById('tagAdd').onclick = doAdd;
+  addInp.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); doAdd(); } });
+  document.getElementById('tmClose').onclick = closeModal;
+  addInp.focus();
+}
+
+document.addEventListener('click', e => {
+  const et = e.target.closest('[data-et]');
+  if (et){
+    const t = et.dataset.et;                     // 多选：点一下加入，再点移出
+    if (entryTagSet.has(t)) entryTagSet.delete(t);
+    else {
+      /* 一条最多 TAG_PER_ITEM 个标签，超了就在这里拦住，
+         不然用户选了 5 个、录入时被悄悄砍掉一个，会觉得"选了没用" */
+      if (entryTagSet.size >= TAG_PER_ITEM){ toast('每条最多 ' + TAG_PER_ITEM + ' 个标签'); return; }
+      entryTagSet.add(t);
+    }
+    /* 就地改 class，不重建 —— 这样 .pill 上那条 transition 才播得出来（见 syncEntryTagUI） */
+    syncEntryTagUI(); return;
+  }
+  /* 新建 / 改名 / 删除标签：两处标签条（录入区 + 筛选栏）都走这里。
+     筛选栏在 #view 里，而 view 的委托只认 tick/edit/fold 那几类，不认这几个 act，
+     所以这里不能按 #view 跳过 —— 否则筛选栏的 ＋ / ⚙ / × 都是死的。 */
+  const act = e.target.closest('[data-act="addtag"],[data-act="deltag"],[data-act="managetag"]');
+  if (!act) return;
+  if (act.dataset.act === 'managetag'){ openTagManager(); return; }
+  if (act.dataset.act === 'addtag'){
+    const wrap = document.createElement('span');
+    wrap.className = 'pillwrap';
+    wrap.innerHTML = `<input class="newtag-input" id="newTagInput" placeholder="标签名" maxlength="12">`;
+    act.replaceWith(wrap);
+    const inp = document.getElementById('newTagInput');
+    inp.focus();
+    inp.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter'){
+        const v = inp.value;
+        if (!v.trim()){ toast('标签名不能空着'); inp.focus(); return; }   // 空的不关盒子，方便接着打
+        if (!addTag(v)) toast(S.tags.length >= TAG_MAX ? '标签太多了，先删几个' : '这个标签已经有了');
+        refresh();
+      }
+      else if (ev.key === 'Escape') refresh();
+    });
+    inp.addEventListener('blur', () => refresh());
+    return;
+  }
+  if (act.dataset.act === 'deltag'){ removeTag(act.dataset.t); return; }
+});
+
+/* 标签条横向滚动：鼠标滚轮落在标签条上时，把竖向滚转换成横向滚 ——
+   标签一多，光靠拖那条细滚动条很难选。滚到头就放行，让页面照常上下滚。 */
+document.addEventListener('wheel', e => {
+  const box = e.target && e.target.closest ? e.target.closest('.pillstrip') : null;
+  if (!box) return;
+  const max = box.scrollWidth - box.clientWidth;
+  if (max <= 2) return;                                    // 没得滚，别抢事件
+  if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;     // 本来就是横向手势（触控板），交给浏览器
+  const atStart = box.scrollLeft <= 0.5, atEnd = box.scrollLeft >= max - 0.5;
+  if ((e.deltaY < 0 && atStart) || (e.deltaY > 0 && atEnd)) return;   // 到头了就交给页面
+  e.preventDefault();
+  /* deltaMode: 0=像素 1=行 2=页。Firefox 的滚轮一格是「行」，
+     不换算是 3px 一步，等于没滚 */
+  const d = e.deltaMode === 1 ? e.deltaY * 26
+          : e.deltaMode === 2 ? e.deltaY * box.clientWidth
+          : e.deltaY;
+  box.scrollLeft += d;
+}, { passive: false });
+
+document.getElementById('entry').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const v = e.target.value.trim();
+  if (!v) return;
+  const it = addItem(v);
+  e.target.value = '';
+  /* 录入区手选的标签（可多选）优先加在最前面，再跟上正文里写的 #标签，去重后截断 */
+  if (it && entryTagSet.size){
+    it.tags = normTagList([...entryTagSet].concat(it.tags || [])).slice(0, TAG_PER_ITEM);
+    save();
+  }
+  refresh();
+  if (it){
+    const zl = { short:'短期', long:'长期', consider:'考虑' }[it.zone];
+    toast('已加入「' + zl + '」' + (it.date ? ' · ' + dateLabel(it) : '') +
+          ((it.tags && it.tags.length) ? ' · ' + it.tags.join('/') : ''),
+      '撤销', () => { S.items = S.items.filter(x => x.id !== it.id); save(); refresh(); });
+    // 新增后把看板滚进视野，避免"存了但没看见"
+    const sec = document.getElementById('view');
+    if (sec && sec.getBoundingClientRect().top > window.innerHeight * 0.6)
+      sec.scrollIntoView({ behavior:'smooth', block:'start' });
+  }
+});
+
+/* 搜索：过滤标题。渲染是整体重建 innerHTML，输入框会被重建，所以每次刷新后
+   用 rAF 把焦点和光标补回去（rAF2 排在 refresh 的 rAF1 之后）。
+
+   **为什么要 debounce**：原来每敲一个键就 refresh() 一次整块重建，
+   条目一多（还带 .reveal-on-scroll / .goal-kids）输入会明显发涩；
+   搜索框还得靠 refocusSearch 把焦点找回来，本身就说明重建代价不小。
+   现在只把 refresh() 推到停手之后（S.q 仍然立刻更新 —— 这样期间任何
+   别的原因触发的 refresh() 拿到的都是最新的过滤词，不会把输入框内容冲掉）。
+
+   顺带把「光标位置」也接住了：重建后如果无脑 setSelectionRange(末尾)，
+   用户点到中间改字、120ms 后光标会自己跳到末尾。 */
+const SEARCH_DEBOUNCE_MS = 130;
+let searchTimer = 0;
+function refocusSearch(caret){
+  requestAnimationFrame(() => {
+    const el = document.getElementById('searchBox');
+    if (!el) return;
+    if (document.activeElement !== el) el.focus();
+    const p = caret === undefined ? el.value.length : Math.min(caret, el.value.length);
+    try { el.setSelectionRange(p, p); } catch (e){}
+  });
+}
+view.addEventListener('input', e => {
+  if (e.target.id !== 'searchBox') return;
+  S.q = e.target.value;
+  const caret = e.target.selectionStart;      // 重建前先把光标记下来
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { searchTimer = 0; refresh(); refocusSearch(caret); }, SEARCH_DEBOUNCE_MS);
+});
+view.addEventListener('keydown', e => {
+  /* 清空要立刻生效（还带一个清空搜索的挂起定时器，否则它稍后会把刚清掉的词又填回去） */
+  if (e.target.id === 'searchBox' && e.key === 'Escape'){
+    clearTimeout(searchTimer); searchTimer = 0;
+    S.q = ''; refresh(); refocusSearch(0);
+  }
+});
+
+view.addEventListener('click', e => {
+  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set]');
+  if (!el) return;
+  /* 按钮自身可能不带 data-id（id 在外层 .item / .hwcard 容器上），向上找一层 */
+  const id = el.dataset.id || el.closest('[data-id]')?.dataset.id;
+  const it = id ? S.items.find(x => x.id === id) : null;
+
+  /* 统计页布局：横条 / 方块。只换视图内部，不走 refresh()，省得整页重排 */
+  if (el.dataset.lay !== undefined){
+    const lay = el.dataset.lay === 'tile' ? 'tile' : 'card';
+    if (lay !== S.statLayout){ S.statLayout = lay; save(); renderStat(); }
+    return;
+  }
+  /* 设置页的外观开关。同样不走 refresh()：显示的显隐交给 body[data-help]，
+     所以这里只要改状态 + 同步 aria-checked，页面一帧都不会跳。 */
+  if (el.dataset.set !== undefined){
+    if (el.dataset.set === 'help'){
+      S.showHelp = !S.showHelp;
+      save();
+      applyHelp();
+      el.setAttribute('aria-checked', S.showHelp ? 'true' : 'false');
+    }
+    /* 流畅模式：改之前那颗 ⚡ 的行为一样 —— 手动选择记进 localStorage，
+       以后即使自动检测认为"你是真 GPU"也尊重用户的手动选择（见 currentLite）。
+       状态不另存，直接以 html.soft-render 为准，避免两处状态打架。 */
+    else if (el.dataset.set === 'lite'){
+      const on = !document.documentElement.classList.contains('soft-render');
+      try { localStorage.setItem(LITE_KEY, on ? 'on' : 'off'); } catch (e){}
+      applyLite(on);
+      el.setAttribute('aria-checked', on ? 'true' : 'false');
+      toast(on ? '已开启流畅模式（更省性能）' : '已切回完整视觉');
+    }
+    return;
+  }
+  /* 筛选栏：多选开关。点标签切换选中，点最前面的「全部/清空」一次清空 */
+  if (el.dataset.f !== undefined && el.classList.contains('pill')){
+    const t = el.dataset.f;
+    if (!t) S.filterTags = [];
+    else {
+      const k = S.filterTags.indexOf(t);
+      k >= 0 ? S.filterTags.splice(k, 1) : S.filterTags.push(t);
+    }
+    filterPulse = t || null;   // 让重画出来的那颗补一段入场（否则选中态是硬切）
+    refresh(); return;
+  }
+  if (el.dataset.tag && it){
+    const t = el.dataset.tag, i = it.tags.indexOf(t);
+    if (i >= 0) it.tags.splice(i, 1); else it.tags.push(t);
+    save(); refresh(); return;
+  }
+  const act = el.dataset.act;
+  if (act === 'fold' && it){ foldWithMotion(el, it); return; }
+  if (act === 'tick' && it){ tickWithFeedback(el, it); return; }
+  if (act === 'del' && it){ remove(it); return; }
+  if (act === 'edit' && it){ openEdit(it); return; }
+  if (act === 'st' && it && it.hw){
+    const s = el.dataset.s;
+    it.hw.status = s;
+    it.hw.submittedAt = s === 'submitted' ? ymd(new Date()) : null;
+    if (s === 'submitted' && !it.done){ it.done = true; it.doneAt = Date.now(); }
+    save(); refresh(); return;
+  }
+});
+
+/* 打勾的确认动效。
+   打勾后条目就不在清单里了（完成态不上清单页），所以原来那一行是"一帧之内直接消失"，
+   完全看不出勾上没有、勾的是哪一条。这里先在点击处让那一行变绿 + 收掉，动画走完再落数据。
+   代价只是数据晚 ~230ms 落库，用户感知不到。
+   防连点用「按 id 记账」而不是一个全局锁 —— 全局锁会让连点第二下走另一条分支，
+   结果第二次 toggleDone 把刚完成的那条又翻回来（勾上又冒出来）。 */
+const tickPending = new Set();
+function tickWithFeedback(el, it){
+  if (tickPending.has(it.id)) return;              // 这一条正在播动效，忽略连点
+  const row = el.closest('.item, .hwcard');
+  if (!row || reduceMotion()){ toggleDone(it); return; }
+  tickPending.add(it.id);
+  row.classList.add('tick-out');
+  setTimeout(() => { tickPending.delete(it.id); toggleDone(it); }, 230);
+}
+
+/* 复合目标的折叠 / 展开高度过渡。
+   原来这条路上是「改 collapsed → refresh() 整页重建」：DOM 全换了，没有旧高度可量，
+   所以只能硬切。这里改成就地做，顺序按「先渲染再塌陷」：
+     展开 = 先把 display:none 摘掉让结构就位 → 量内容高度 → 从 0 长到量出来的值；
+     收起 = 结构本来就在 → 量当前高度 → 从当前值压到 0，动画走完才真正 display:none。
+   几个必须守住的点：
+   ① 收尾一定要把 inline 的 height/overflow 清掉，否则那张卡片的高度被钉死 ——
+      以后往里加子任务、标题换行、窗口变窄，它都不会再长高；
+   ② 终值是「量出来的 px」而不是 auto：auto 不参与过渡。清掉 inline 之后自然回到 auto；
+   ③ 连点（上一次没收完又点）：先把上一次的目标态立刻落定。不这么做，两个定时器
+      会互相清 inline，最后停在一个错误的高度上；
+   ④ 动画期间刷新了整页（比如顺手勾掉一条），这个 box 就成了孤儿 —— 收尾里先查 isConnected；
+   ⑤ reduced-motion：不量不补间，直接切；
+   ⑥ 量高度必须在摘掉 folded **之后**：display:none 的元素量出来是 0。
+   还有一个坑是"提交"：起点和 transition 各强制一次布局。把 transition 和高度变化
+   挤在同一帧里，浏览器会拿"还没有 transition 的旧样式"当起点，过渡根本不启动。 */
+const FOLD_MS = 280;   // 跟 .goal-kids.folding 的 height 过渡时长（--mo-base .24s）留一点余量
+function resetFold(box){
+  box.style.height = ''; box.style.opacity = ''; box.style.overflow = '';
+  box.style.marginTop = ''; box.style.marginBottom = '';
+  box.classList.remove('folding');
+}
+function foldWithMotion(chip, it){
+  const body = chip.closest('.body');
+  const box = body ? body.querySelector(':scope > .goal-kids') : null;
+  if (!box){                                  // 没有可折叠的子树（正常到不了）：退回整页重渲染
+    collapsed.has(it.id) ? collapsed.delete(it.id) : collapsed.add(it.id);
+    refresh(); return;
+  }
+  const wasFolded = collapsed.has(it.id);
+
+  if (box._foldTimer){                        // ③ 上一次的收尾先立刻补上
+    clearTimeout(box._foldTimer); box._foldTimer = 0;
+    box.classList.toggle('folded', wasFolded);
+    resetFold(box);
+  }
+
+  if (wasFolded) collapsed.delete(it.id); else collapsed.add(it.id);
+  chip.textContent = chip.textContent.replace(/^[▸▾]/, wasFolded ? '▾' : '▸');
+  chip.setAttribute('aria-expanded', wasFolded ? 'true' : 'false');
+
+  if (reduceMotion()){                        // ⑤
+    resetFold(box);
+    box.classList.toggle('folded', !wasFolded);
+    return;
+  }
+
+  if (wasFolded){                             // ⑥ 展开：先把 height:0;overflow:hidden 写上再摘 folded，
+    box.style.overflow = 'hidden';            //    摘掉那一帧被兜住，所以不会闪一下完整高度
+    box.style.height = '0px';
+    box.classList.remove('folded');
+  }
+  const FULL = box.scrollHeight;              // 内容真实高度（height:0 + overflow:hidden 也量得准）
+
+  box.style.overflow = 'hidden';              // ---- 起点 ----
+  box.style.height = (wasFolded ? 0 : FULL) + 'px';
+  box.style.opacity = wasFolded ? '0' : '1';
+  box.style.marginTop = wasFolded ? '0px' : '6px';
+  box.style.marginBottom = wasFolded ? '0px' : '2px';
+  void box.offsetHeight;                      // 提交起点（此刻还没挂 transition）
+  box.classList.add('folding');
+  void box.offsetHeight;                      // 提交 transition 本身，别和高度变化挤同一帧
+  box.style.height = (wasFolded ? FULL : 0) + 'px';   // ---- 终点 ----
+  box.style.opacity = wasFolded ? '1' : '0';
+  box.style.marginTop = wasFolded ? '6px' : '0px';
+  box.style.marginBottom = wasFolded ? '2px' : '0px';
+
+  box._foldTimer = setTimeout(() => {
+    box._foldTimer = 0;
+    if (!box.isConnected) return;             // ④ 整页已被换掉，别去写孤儿节点
+    box.classList.toggle('folded', !wasFolded);   // 收起：动画走完才真正 display:none
+    resetFold(box);                           // ①② 清掉 inline，高度交还给内容
+  }, FOLD_MS);
+}
+
+function toggleDone(it){
+  it.done = !it.done;
+  it.doneAt = it.done ? Date.now() : null;
+  if (it.done && it.hw && it.hw.status !== 'submitted'){ it.hw.status = 'submitted'; it.hw.submittedAt = ymd(new Date()); }
+  // 循环任务：打勾即完成一轮，按间隔生成下一次（作业不走循环）
+  let nextId = null, nextLabel = '';
+  if (it.done && it.repeat && !it.hw){
+    const base = today0(); base.setDate(base.getDate() + it.repeat);
+    const nx = {
+      id: uid(), raw: it.raw, title: it.title,
+      date: ymd(base), dateEnd: null, monthOnly: false, time: it.time || null,
+      zone: it.zone, tags: [...(it.tags || [])], done: false, doneAt: null,
+      createdAt: Date.now(), hw: null, repeat: it.repeat, pri: it.pri || 0
+    };
+    S.items.unshift(nx); nextId = nx.id;
+    nextLabel = '，' + (+nx.date.slice(5, 7)) + '月' + (+nx.date.slice(8)) + '日再来一轮';
+  }
+  save(); refresh();
+  if (it.done) toast('完成 · ' + it.title + nextLabel, '撤销', () => {
+    it.done = false; it.doneAt = null;
+    if (nextId) S.items = S.items.filter(x => x.id !== nextId);
+    save(); refresh();
+  });
+}
+function remove(it){
+  const idx = S.items.indexOf(it);
+  /* 不在库里就当没点过。少了这句守卫，splice(-1, 1) 会**删掉最后一条**（删错对象），
+     撤销时又把 it 插到倒数第二位。当前调用点的 it 都取自 S.items.find 所以走不到，
+     但这是个"一旦重构就变成数据丢失"的写法。 */
+  if (idx < 0) return;
+  S.items.splice(idx, 1); save(); refresh();
+  toast('已删除「' + it.title + '」', '撤销', () => { S.items.splice(idx, 0, it); save(); refresh(); });
+}
+
+/* ---------------- 弹层 ---------------- */
+const mask = document.getElementById('mask'), modal = document.getElementById('modal');
+/* 弹层开合。原来只有入场（fadein + rise），关闭是 remove('on') 瞬间消失。
+   现在先播 ~170ms 退场再真正隐藏。有两个边角必须处理：
+   ① 退场没走完又点了打开：openMask() 要先取消未完成的退场，否则那个定时器
+      会把刚填好的新弹窗内容清空（症状是"弹窗闪一下就空了"）；
+   ② prefers-reduced-motion：用户已声明不要动效，别让他白等这 170ms，直接关。 */
+const MASK_OUT_MS = 170;
+let maskOutTimer = 0;
+function reduceMotion(){
+  try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e){ return false; }
+}
+/* 锁 / 解锁底下页面的滚动。和 .mask.on 同进同出 —— 三个弹层（编辑、导入、标签管理）
+   都是 openMask() 打开、closeModalNow() 收尾，所以挂在两头上就全覆盖了，不必逐个调用点去加。 */
+function lockPage(){ document.documentElement.classList.add('locked'); }
+function unlockPage(){ document.documentElement.classList.remove('locked'); }
+
+/* 弹层打开时把背景整块设成 inert，一次解决三件事：
+   ① 读屏不再读到遮罩背后的正文（语义上真的"模态"了）；
+   ② Tab 够不到背后的控件；
+   ③ 焦点跑到遮罩后面按 Enter 触发底层按钮的路径被彻底切断 ——
+      那条路径的症状（背景被 scrollTo 顶走）和"滚动穿透"一模一样，光测滚轮永远发现不了。
+   弹层和 toast 都在 .page-shell 之外，所以不会被自己设的 inert 误伤。 */
+const MASK_BG = ['.site-header', '.page-shell', '.pdaim-footer'];
+function setBackgroundInert(on){
+  for (const sel of MASK_BG){
+    const el = document.querySelector(sel);
+    if (el) el.inert = on;
+  }
+}
+/* 关闭后焦点要还回触发它的那个按钮，否则键盘用户得从头 Tab 一遍 */
+let maskPrevFocus = null;
+/* 用 getClientRects() 判可见：display:none 的元素（编辑弹层里那块折叠的「作业信息」）
+   返回 0 长度。`offsetParent` 在 fixed 祖先下不可靠，不能用。 */
+function modalFocusables(){
+  return [...modal.querySelectorAll(
+    'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+  )].filter(el => el.getClientRects().length);
+}
+function openMask(){
+  clearTimeout(maskOutTimer); maskOutTimer = 0;
+  mask.classList.remove('closing');
+  mask.classList.add('on');
+  lockPage();
+  /* 顺序要紧：**先记焦点、再 inert** —— 给一棵"焦点正在里面"的子树设 inert，
+     浏览器会把焦点踢到 body，那时再记就只剩 body 了。
+     再进一层守卫：只有当前记着的那个还在文档里才保留（openTagManager 改名会重开一次，
+     那时焦点落在弹层里的输入框上，要留住最初触发弹层的那个按钮）。 */
+  if (!maskPrevFocus || !maskPrevFocus.isConnected){
+    const a = document.activeElement;
+    maskPrevFocus = (a && a !== document.body && a !== document.documentElement) ? a : null;
+  }
+  setBackgroundInert(true);
+  /* 焦点移到弹层容器（tabindex=-1）而不是第一个输入框：读屏会播报"对话框 + 标题"，
+     而且不会顺带把弹层内部滚一下。preventScroll 保证背景滚动位置纹丝不动。 */
+  if (!modal.contains(document.activeElement)) modal.focus({ preventScroll: true });
+}
+function closeModalNow(){
+  clearTimeout(maskOutTimer); maskOutTimer = 0;
+  mask.classList.remove('on', 'closing');
+  modal.innerHTML = '';
+  /* 等退场动画（~170ms）走完才解锁：这段时间页面还锁着，不然背景会先跟着滑一下。 */
+  unlockPage();
+  setBackgroundInert(false);
+  const back = maskPrevFocus; maskPrevFocus = null;
+  if (back && back.isConnected && typeof back.focus === 'function') back.focus({ preventScroll: true });
+}
+/* 焦点陷阱：背景已经 inert，正常 Tab 出不去，但会跳到浏览器地址栏再绕回来 ——
+   键盘用户等于"当前位置丢了"。这里在两个端点之间显式回绕。 */
+mask.addEventListener('keydown', e => {
+  if (e.key !== 'Tab' || !mask.classList.contains('on')) return;
+  const f = modalFocusables();
+  if (f.length < 2) return;
+  const first = f[0], last = f[f.length - 1], cur = document.activeElement;
+  if (e.shiftKey && (cur === first || cur === modal)){ e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && cur === last){ e.preventDefault(); first.focus(); }
+});
+function closeModal(){
+  clearTimeout(maskOutTimer); maskOutTimer = 0;
+  if (!mask.classList.contains('on')) return closeModalNow();   // 没开着：别白挂一个 closing
+  if (reduceMotion()) return closeModalNow();
+  mask.classList.add('closing');
+  maskOutTimer = setTimeout(closeModalNow, MASK_OUT_MS);
+}
+mask.addEventListener('click', e => { if (e.target === mask) closeModal(); });
+/* 没开着就别走一遍关闭流程 —— 否则 closeModalNow() 会去清空 #modal、还会解开滚动锁，
+   让"弹层是否打开"和"页面是否上锁"有机会不同步。 */
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && mask.classList.contains('on')) closeModal(); });
+
+function openEdit(it){
+  const zoneOpts = [['short','短期'], ['long','长期'], ['consider','考虑']];
+  const stOpts = [['todo','未开始'], ['doing','在做'], ['submitted','已交']];
+  modal.innerHTML = `
+    <h3 id="modalTitle">编辑</h3>
+    <div class="field"><label>原文（改完重解析；写「每2天」= 循环任务，打勾自动排下一次）</label><input type="text" id="m_raw" value="${esc(it.raw || it.title)}"></div>
+    <div class="row">
+      <div class="field"><label>分区</label><select id="m_zone">${zoneOpts.map(([k, t]) => `<option value="${k}" ${it.zone === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="field"><label>标题</label><input type="text" id="m_title" value="${esc(it.title)}"></div>
+    </div>
+    <div class="field"><label>重要程度</label>
+      <select id="m_pri">
+        <option value="0" ${!(it.pri) ? 'selected' : ''}>普通</option>
+        <option value="1" ${it.pri === 1 ? 'selected' : ''}>重要（!）</option>
+        <option value="2" ${it.pri === 2 ? 'selected' : ''}>紧急（!!）</option>
+      </select>
+    </div>
+    <div class="field"><label>标签（可多选，也可以不选）</label>
+      <div class="tagbox" id="m_tags">${(() => {
+        const all = normTagList(S.tags.concat(it.tags || []));
+        return all.map(t => `<button class="pill ${(it.tags || []).includes(t) ? 'on' : ''}" data-t="${esc(t)}">${esc(t)}</button>`).join('');
+      })()}</div>
+    </div>
+    <div class="field"><label class="checkline"><input type="checkbox" id="m_hw" ${it.hw ? 'checked' : ''}> 这是作业</label></div>
+    <div id="m_hwbox" style="display:${it.hw ? 'block' : 'none'}">
+      <div class="row">
+        <div class="field"><label>课程</label><input type="text" id="m_course" value="${esc(it.hw ? it.hw.course : '')}"></div>
+        <div class="field"><label>状态</label><select id="m_status">${stOpts.map(([k, t]) => `<option value="${k}" ${it.hw && it.hw.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label>详细要求</label><textarea id="m_detail">${esc(it.hw ? it.hw.detail : '')}</textarea></div>
+      <div class="row">
+        <div class="field"><label>提交渠道</label><input type="text" id="m_channel" value="${esc(it.hw ? it.hw.channel : '')}"></div>
+        <div class="field"><label>命名要求</label><input type="text" id="m_naming" value="${esc(it.hw ? it.hw.naming : '')}"></div>
+      </div>
+    </div>
+    <div class="foot">
+      <button class="btn danger" id="m_del">删除</button>
+      <div class="spacer"></div>
+      <button class="btn" id="m_cancel">取消</button>
+      <button class="btn primary" id="m_save">保存</button>
+    </div>`;
+  openMask();
+
+  modal.querySelectorAll('#m_tags .pill').forEach(b => b.onclick = () => b.classList.toggle('on'));
+  document.getElementById('m_hw').onchange = e => {
+    document.getElementById('m_hwbox').style.display = e.target.checked ? 'block' : 'none';
+  };
+  document.getElementById('m_cancel').onclick = closeModal;
+  document.getElementById('m_del').onclick = () => { closeModal(); remove(it); };
+  document.getElementById('m_save').onclick = () => {
+    const raw = document.getElementById('m_raw').value;
+    const p = parseSmart(raw);
+    const titleVal = document.getElementById('m_title').value.trim();
+    it.raw = raw.trim();
+    it.title = titleVal || p.title;
+    it.zone = document.getElementById('m_zone').value;
+    it.tags = [...modal.querySelectorAll('#m_tags .pill.on')].map(b => b.dataset.t);
+    if (raw.trim() && titleVal === p.title){
+      it.date = p.date; it.dateEnd = p.dateEnd; it.monthOnly = p.monthOnly; it.time = p.time;
+    }
+    it.repeat = p.repeat || null;
+    it.pri = p.pri || (+document.getElementById('m_pri').value || 0);
+    if (document.getElementById('m_hw').checked){
+      it.hw = it.hw || { status:'todo' };
+      it.hw.course = document.getElementById('m_course').value.trim();
+      it.hw.status = document.getElementById('m_status').value;
+      it.hw.detail = document.getElementById('m_detail').value;
+      it.hw.channel = document.getElementById('m_channel').value.trim();
+      it.hw.naming = document.getElementById('m_naming').value.trim();
+      if (it.hw.status === 'submitted' && !it.hw.submittedAt) it.hw.submittedAt = ymd(new Date());
+    } else it.hw = null;
+    save(); closeModal(); refresh(); toast('已保存');
+  };
+}
+
+/* ---------------- 导入 / 导出 ---------------- */
+const SEC = { '长期':'long', '短期':'short', '考虑':'consider', '已完成':'short', '完成':'short' };
+function importText(txt, base){
+  const lines = txt.split(/\r?\n/);
+  let zone = 'long', n = 0, sawSection = false;
+  /* BASEDAY 是模块级状态，today0() 到处都在读它。中途任何一处抛错都必须复位 ——
+     否则之后所有「今天 / 周四 / 17号」都会按那个旧基准日解析，静默错位、极难排查。 */
+  BASEDAY = base || null;
+  try {
+    for (const raw of lines){
+      const line = raw.trim();
+      if (!line) continue;
+      const sec = line.match(/^[\-—–]{2,}\s*(.+?)\s*[\-—–]{2,}$/);
+      if (sec){ zone = SEC[sec[1].trim()] || zone; sawSection = true; continue; }
+      if (!/^[☐☑☒□√✓✗×]/.test(line)) continue;
+      const done = /^[☑☒√✓✗×]/.test(line);
+      const p = parseSmart(line);
+      if (!p.title) continue;
+      const it = {
+        id: uid(), raw: line, title: p.title,
+        date: p.date, dateEnd: p.dateEnd, monthOnly: p.monthOnly, time: p.time,
+        zone: sawSection ? zone : p.zone,
+        tags: p.tags, done, doneAt: done ? Date.now() : null,
+        createdAt: Date.now() + n, hw: null, repeat: p.repeat || null, pri: p.pri || 0
+      };
+      if (/作业/.test(p.title)){
+        it.hw = { course: guessCourse(p.title), detail:'', channel: guessChannel(line), naming: guessNaming(line),
+                  status: done ? 'submitted' : 'todo', submittedAt: done ? ymd(new Date()) : null };
+        splitHw(it, p);
+      }
+      S.items.push(it); n++;
+    }
+  } finally {
+    BASEDAY = null;
+  }
+  save(); refresh();
+  return n;
+}
+
+function pickImport(){
+  modal.innerHTML = `
+    <h3 id="modalTitle">粘贴导入</h3>
+    <div class="field"><label>把荣耀笔记整段粘进来（☐ / ☒ 和 ----分区---- 都能认）</label>
+      <textarea id="i_txt" style="min-height:240px" placeholder="----长期----&#10;☐ 读一本专业书101～1015&#10;☐ 写结课论文105～1020&#10;----短期----&#10;☐ 1016 交数学作业"></textarea></div>
+    <div class="field"><label>这批笔记大概是什么时候写的？（"今天 / 周四 / 17号"按这天算）</label>
+      <input type="date" id="i_base" value="${ymd(new Date())}"></div>
+    <div class="foot"><span style="font-size:12px;color:var(--faint)">会追加到现有清单，不覆盖</span>
+      <div class="spacer"></div>
+      <button class="btn" id="i_cancel">取消</button>
+      <button class="btn primary" id="i_ok">导入</button></div>`;
+  openMask();
+  document.getElementById('i_cancel').onclick = closeModal;
+  document.getElementById('i_ok').onclick = () => {
+    const n = importText(document.getElementById('i_txt').value, document.getElementById('i_base').value);
+    closeModal(); toast('导入了 ' + n + ' 条');
+  };
+}
+
+document.addEventListener('click', e => {
+  if (e.target.closest('#importBtn')) pickImport();
+  if (e.target.closest('#exportBtn')){
+    /* 带上完整快照（含标签库/外观设置），否则换台电脑恢复会丢标签 —— 见 snapshot() 的说明 */
+    const payload = Object.assign(snapshot(), { exportedAt: new Date().toISOString() });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '鱼事备份-' + ymd(new Date()) + '.json';
+    a.click(); URL.revokeObjectURL(a.href);
+    S.lastBackup = Date.now(); save(); refresh();
+    toast('已导出备份');
+  }
+});
+
+window.addEventListener('dragover', e => e.preventDefault());
+/* 拖一个 json 进来 = 恢复备份；拖一整块笔记文本进来 = 走文本导入。
+   恢复这条必须过两道闸：
+   ① **形状校验**。原来只判 `if (o.items)`：一个 items 是字符串/对象/数字的 json 会直接塞进
+      S.items，下一次渲染就 `S.items.map is not a function` 整个应用瘫痪 ——
+      而且坏数据当场就写进了 localStorage，刷新也救不回来，只能手动清。
+   ② **二次确认**。这是唯一一个会覆盖全部数据的操作，不能点一下就没。
+   另外老备份（只带 items 的那种）没有 tags 字段，缺什么就保持现状，**不能顺手把标签库清空**。 */
+window.addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    let o = null;
+    try { o = JSON.parse(r.result); } catch (err){ o = null; }
+    if (o && Array.isArray(o.items)){
+      if (!confirm('用备份里的 ' + o.items.length + ' 条，覆盖现在的 ' + S.items.length +
+                   ' 条？\n\n此操作不可撤销（当前数据不会自动留底）。')) return;
+      S.items = o.items;
+      if (Array.isArray(o.tags)){ S.tags = normTagList(o.tags); syncTags(); }
+      if (o.statLayout === 'tile' || o.statLayout === 'card') S.statLayout = o.statLayout;
+      if (typeof o.hintOpen === 'boolean') S.hintOpen = o.hintOpen;
+      if (typeof o.showHelp === 'boolean') S.showHelp = o.showHelp;
+      if (o.lastBackup) S.lastBackup = o.lastBackup;
+      save(); applyHelp(); refresh();
+      toast('已从备份恢复 ' + S.items.length + ' 条');
+      return;
+    }
+    /* 不是备份 json（多半是直接拖进来的一整块笔记文本） */
+    const n = importText(String(r.result));
+    toast(n ? '导入了 ' + n + ' 条' : '这个文件里没认出可导入的条目（备份请拖 json）');
+  };
+  r.readAsText(f);
+});
+
+/* ---------------- 导航 / 主题 / 吸顶 ---------------- */
+/* 页签的滑动指示块：把底块按当前 .on 那个页签的**实际**位置和宽度摆过去。
+   这里现场量 offsetLeft/offsetWidth，而不是写死「下标 × 宽度」—— 三个页签文字不一样长，
+   窄屏还有一条改 padding/font-size 的媒体查询，量出来才跟着走。
+   两处必须小心：
+   ① 首帧、窗口尺寸变化、字体换上来之后都要**不带动画**直接落位，否则会看到底块
+      从左上角滑到目标位置那一下；
+   ② 页签在 header 里，renderList/Stat/Timeline 只换 #view 的内容，它不会随每次渲染重建，
+      所以定位挂在 refresh 的 rAF 里就够了 —— 那儿同时也在同步 .on 的类名。 */
+const navPillsEl = document.getElementById('navPills');
+const navGlideEl = document.getElementById('navGlide');
+let navGlidePlaced = false;
+function moveNavGlide(animate = true){
+  if (!navPillsEl || !navGlideEl) return;
+  const on = navPillsEl.querySelector('.nav-pill.on');
+  if (!on) return;
+  const instant = !animate || !navGlidePlaced || reduceMotion();
+  if (instant) navGlideEl.style.transition = 'none';
+  navGlideEl.style.width = on.offsetWidth + 'px';
+  navGlideEl.style.height = on.offsetHeight + 'px';
+  navGlideEl.style.transform = `translate(${on.offsetLeft}px, ${on.offsetTop}px)`;
+  if (instant){
+    void navGlideEl.offsetWidth;   // 让上面几个值先落定，再把过渡交还给 CSS
+    navGlideEl.style.transition = '';
+  }
+  if (!navGlidePlaced){
+    navGlidePlaced = true;
+    navPillsEl.classList.add('glide-ready');   // 到这一步才让 .on 原来的那块底让位给滑动块
+  }
+}
+window.addEventListener('resize', () => moveNavGlide(false));
+/* 中文字体是晚一步换上的，换字之后页签宽度会变一点点，重摆一次 */
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => moveNavGlide(false));
+
+document.getElementById('navPills').addEventListener('click', e => {
+  const b = e.target.closest('.nav-pill'); if (!b) return;
+  if (b.dataset.view === S.view) return;
+  S.view = b.dataset.view;
+  ANIM = true;   // 切视图时允许播一次入场
+  refresh();
+  if (S.view === 'list'){
+    const sec = document.getElementById('view');
+    if (sec) window.scrollTo({ top: sec.offsetTop - 132, behavior: 'smooth' });
+  } else {
+    window.scrollTo({ top: 0, behavior: 'smooth' });   // 时间轴 / 统计页头都没有 hero，直接回顶
+  }
+});
+
+/* 吸顶反馈：录入条贴住顶栏时加一层更实的投影
+   （不能用 IntersectionObserver —— 吸顶后它仍 100% 可见，ratio 恒为 1） */
+(function stickyCapture(){
+  const bar = document.getElementById('captureBar');
+  const wrap = document.getElementById('captureWrap');
+  if (!bar || !wrap) return;
+  let ticking = false, stickTop = 0;
+  /* 只在尺寸变化时读一次计算样式 —— getComputedStyle 会强制样式重算，不能放进滚动帧里 */
+  function measure(){ stickTop = parseFloat(getComputedStyle(wrap).top) || 0; }
+  function paint(){
+    ticking = false;
+    bar.classList.toggle('is-stuck', wrap.getBoundingClientRect().top <= stickTop + 1);
+  }
+  window.addEventListener('scroll', () => { if (!ticking){ ticking = true; requestAnimationFrame(paint); } }, { passive:true });
+  window.addEventListener('resize', () => { measure(); paint(); });
+  measure(); paint();
+})();
+
+const tb = document.getElementById('themeBtn');
+function applyTheme(t, animate){
+  if (animate){
+    document.documentElement.classList.add('theme-changing');
+    setTimeout(() => document.documentElement.classList.remove('theme-changing'), 560);
+  }
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem(LS + '.theme', t); } catch (e){}
+}
+tb.onclick = () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark', true);
+applyTheme((() => {
+  try {
+    return localStorage.getItem(LS + '.theme')
+        || localStorage.getItem(LS_OLD + '.theme')
+        || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  } catch (e){ return 'light'; }
+})());
+
+/* ---------------- 流畅模式：软件渲染自动降级 + 手动开关 ---------------- */
+/* 检测 WebGL 渲染器字符串：Microsoft Basic Render Driver / SwiftShader / llvmpipe 等都是软件渲染。
+   实测：Intel Arc（真 GPU）报 "ANGLE (Intel, ...Arc...)"；--disable-gpu 报 "ANGLE (Microsoft, ...Basic Render Driver...)"。 */
+function isSoftwareGL(){
+  try {
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+    if (!gl) return true;
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const r = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : (gl.getParameter(gl.RENDERER) || '')).toLowerCase();
+    return /basic render|swiftshader|llvmpipe|softpipe|software|angle \(microsoft/.test(r);
+  } catch (e){ return false; }
+}
+const LITE_KEY = LS + '.lite';
+/* gpu-render：真 GPU 才升级为 backdrop 玻璃。软件渲染下即使手动切回「完整视觉」，
+   也用实底玻璃（色球/点阵/动画/高光全保留）—— backdrop-filter 在软件渲染下
+   每帧全价重采样，实测一个元素就能把滚动帧率砍半以上。 */
+const SOFT_GL = isSoftwareGL();
+document.documentElement.classList.toggle('gpu-render', !SOFT_GL);
+function applyLite(on){
+  document.documentElement.classList.toggle('soft-render', on);
+  /* 设置页那个开关（正好在设置页时）跟着同步。进设置页时会按当前状态渲染一份，
+     这里是给"在设置页改完、切走又切回来"补一道，免得两处说法不一致。 */
+  const sw = document.querySelector('.switch[data-set="lite"]');
+  if (sw) sw.setAttribute('aria-checked', on ? 'true' : 'false');
+}
+function currentLite(){
+  let pref = null;
+  try { pref = localStorage.getItem(LITE_KEY); } catch (e){}
+  if (pref === 'on') return true;          // 手动开过
+  if (pref === 'off') return false;        // 手动关过（即使软件渲染也尊重）
+  return SOFT_GL;                          // 否则自动检测
+}
+applyLite(currentLite());
+/* 顶栏那颗手动切"流畅模式"的 ⚡ 已撤（手机上它和主题滑块一起把标题挤没了），
+   开关挪进设置页 —— 见 renderSettings 里 data-set="lite" 那一行，
+   点击逻辑在 view 的点击代理里（和"页面说明文字"同一个分支）。 */
+
+/* ---------------- 快捷键 ---------------- */
+document.addEventListener('keydown', e => {
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA'){
+    e.preventDefault();
+    document.getElementById('entry').focus();
+  }
+});
+
+/* ---------------- 启动 ---------------- */
+load();
+/* 「页面说明文字」的开关在首帧之前就要落到位 —— refresh() 是 rAF 延迟的，
+   等它同步会先闪一下那段说明文字。 */
+applyHelp();
+/* 备份提醒：必须排在 load() 之后 —— 它要读 S.lastBackup，见函数定义处的说明。 */
+backupNudge();
+/* 写法提示：chip 条数由脚本数一遍填上去；开合状态记进 localStorage。
+   放在 load() 之后，否则读不到已存的 hintOpen。 */
+(function initHint(){
+  const box = document.getElementById('hintBox');
+  if (!box) return;
+  const n = box.querySelectorAll('.hint-chips span').length;
+  const badge = box.querySelector('.hb-n');
+  if (badge) badge.textContent = n + ' 种';
+  box.open = !!S.hintOpen;
+  box.addEventListener('toggle', () => { S.hintOpen = box.open; save(); });
+})();
+refresh();
+</script>
+</body>
+</html>

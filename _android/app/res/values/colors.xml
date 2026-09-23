@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 窗口底色 = 页面自己的背景色令牌（light 下 #ffffff），用来消掉 WebView
+         首帧之前那一下白闪。浅色 / 深色分别放在 values 和 values-night。
+         注意别在这里写 CSS 的自定义属性名：XML 注释里不允许出现连续两个连字符。 -->
+    <color name="window_bg">#FFFFFFFF</color>
+    <color name="ic_launcher_background">#FF090B10</color>
+</resources>
