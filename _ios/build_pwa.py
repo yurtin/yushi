@@ -101,7 +101,7 @@ def write_manifest(version):
     data = {
         'name': APP_NAME,
         'short_name': APP_NAME,
-        'description': '本地待办清单：清单 / 时间轴 / 统计 / 设置，数据只存在这台设备上',
+        'description': '本地待办清单：清单与统计，长按圆钮语音录入，数据只存在这台设备上',
         'lang': 'zh-CN',
         'start_url': './',
         'scope': './',

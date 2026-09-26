@@ -52,8 +52,29 @@ PKG = 'com.yushi.app'
 # 文件名会带上包名（Screenshot_20260923_135229_com_zhiyu_daibanji_MainActivity.jpg），
 # 等于把"这不是这个 App"印在每一张截图上。已改成 com.yushi.app。
 # 注意：改包名 = 换了一个 App，旧的安装包**不能被覆盖升级**，必须先卸载旧的那份。
-VERSION_CODE = 21
-VERSION_NAME = '2.1'
+# ★ 3.5.0 起：版本号改成**三段显示**（X.Y.Z），并且**只认 AndroidManifest.xml 一处真相源** ——
+#   本脚本不再手抄一份（手抄的第三份一定会漂移，历史上就漂过）。
+#   显示版本 `3.5.0` = 第 3 代（界面重构时代）· 第 5 波 · 波内第 0 版。
+#   `versionCode` 是"只能递增的整数"，和显示版本**解耦**（显示版本会重新起算，构建号不会）：
+#       VERSION_CODE = MAJOR * 1000000 + MINOR * 10000 + PATCH * 100
+#   乘数取 1000000/10000/100，是为了让新方案（3.5.0 → 3050000）稳压旧方案
+#   （3.1–3.39 → 30100–33900）一头；安卓只比较 versionCode、不比 versionName，倒退就装不上。
+#   旧的 `主号×10+次号` 在 minor 到 10 时会撞号（3.10 与 4.0 都得 40），已弃用。
+MANIFEST = os.path.join(HERE, 'app', 'AndroidManifest.xml')
+def _manifest_version():
+    """从 AndroidManifest.xml 读 versionName / versionCode —— 唯一真相源。
+
+    注意这里用 sys.exit 而不是文件后面定义的 die()：本函数在**模块加载时**就被调用，
+    那时 die 还没绑定，用它会在"manifest 读不到"这条错误路径上再抛 NameError。"""
+    with open(MANIFEST, encoding='utf-8') as f:
+        txt = f.read()
+    name = re.search(r'android:versionName="([^"]+)"', txt)
+    code = re.search(r'android:versionCode="([^"]+)"', txt)
+    if not name or not code:
+        sys.exit('AndroidManifest.xml 里读不到 versionName / versionCode')
+    return code.group(1), name.group(1)
+
+VERSION_CODE, VERSION_NAME = _manifest_version()
 MIN_SDK = 24
 TARGET_SDK = 34
 
@@ -97,6 +118,16 @@ def resolve_keystore_pass():
             '   （这个文件已在 .gitignore 里，不会进版本库）' % KS_PROP)
 
 OUT_NAME = '鱼事-v' + VERSION_NAME + '.apk'
+
+# 控制台是 GBK（Windows 中文默认）时，日志里的 ✓ / ☐ 这类字符会让 print 抛
+# UnicodeEncodeError —— 而它发生在**最后一行日志**，于是构建明明成功、退出码却是 1
+# （2026-09-25 实测：APK 已生成且核验全过，进程却报失败）。
+# 统一把 stdout/stderr 切到 UTF-8，报告文件本来就是 UTF-8，两边就一致了。
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 log_lines = []
 
@@ -227,6 +258,13 @@ def add_dex_to_apk(apk_in, dex_file, apk_out):
             for item in zin.infolist():
                 zout.writestr(item, zin.read(item.filename), compress_type=item.compress_type)
             zout.write(dex_file, 'classes.dex', compress_type=zipfile.ZIP_DEFLATED)
+            # ★ v3.18 Vosk：native 库按 APK 规范放 lib/<abi>/，这里用**压缩**存
+            # （清单没关 extractNativeLibs，安装时系统会解出来）→ 不需要 zipalign -p 页对齐。
+            for _abi in ('arm64-v8a',):
+                for _n in ('libonnxruntime.so', 'libsherpa-onnx-jni.so', 'libsherpa-onnx-c-api.so'):
+                    _so = os.path.join(HERE, 'vendor', 'lib', _abi, _n)
+                    if os.path.exists(_so):
+                        zout.write(_so, 'lib/%s/%s' % (_abi, _n), compress_type=zipfile.ZIP_DEFLATED)
     return os.path.getsize(apk_out)
 
 
@@ -279,6 +317,30 @@ def main():
     assets_www = os.path.join(src_app, 'assets', 'www')
     os.makedirs(assets_www, exist_ok=True)
     shutil.copy2(html_src, os.path.join(assets_www, 'index.html'))
+    # v3.8：设置页最下面显示版本号，而版本号的唯一真相源是 AndroidManifest 的 versionName。
+    # 这里把页面里的 APP_VERSION 常量改写成同一个值 —— 包里显示的不会和包本身对不上。
+    _idx = os.path.join(assets_www, 'index.html')
+    with open(_idx, encoding='utf-8') as _f:
+        _html = _f.read()
+    _html2, _n = re.subn(r"const APP_VERSION = '[^']*'",
+                         "const APP_VERSION = '%s'" % VERSION_NAME, _html, count=1)
+    if _n != 1:
+        die('页面里找不到 APP_VERSION 常量，版本号无法注入（会显示错版本）')
+    with open(_idx, 'w', encoding='utf-8', newline='') as _f:
+        _f.write(_html2)
+    log('   版本号注入：APP_VERSION = %s（与 AndroidManifest 同源）' % VERSION_NAME)
+    # ★ v3.18 Vosk：模型要当 assets 打进包。注意 sync_tree 是 **exclude=('assets',)** 的，
+    # 所以必须像 www 一样在这里显式拷一次，否则模型会被静默丢掉。
+    _mdl_src = os.path.join(APP, 'assets', 'model')
+    if os.path.isdir(_mdl_src):
+        _mdl_dst = os.path.join(src_app, 'assets', 'model')
+        shutil.rmtree(_mdl_dst, ignore_errors=True)
+        shutil.copytree(_mdl_src, _mdl_dst)
+        _tot = sum(os.path.getsize(os.path.join(r, f))
+                   for r, _d, fs in os.walk(_mdl_dst) for f in fs)
+        log('   Vosk 模型：{:,} 字节 → assets/model'.format(_tot))
+    else:
+        log('   !! 找不到 _android/app/assets/model（离线语音会不可用）')
     log('   页面本体：鱼事.html → assets/www/index.html（{:,} 字节）'
         .format(os.path.getsize(os.path.join(assets_www, 'index.html'))))
 
@@ -309,6 +371,12 @@ def main():
                        '--version-code', str(VERSION_CODE),
                        '--version-name', VERSION_NAME,
                        '--no-version-vectors',
+                       # ★ v3.29（用户实测：音频正常、无异常，但识别器一个字都不出）：
+                       # sherpa 通过 AssetManager 读模型时走 AAssetManager 的内存映射，
+                       # 而**压缩存放的 asset 打不开** —— 它不抛错，只是给一个空结果，
+                       # 表现就是"声音没问题却永远听不清"。所以模型必须以 STORED 入包。
+                       '-0', 'onnx',
+                       '-0', 'txt',
                        compiled])   # 位置参数 = 普通资源输入；-R 是「叠加包(overlay)」专用，
                                     # 用了它 aapt2 会要求每个资源都去覆盖已有项而报
                                     # "does not override an existing resource"。
@@ -342,7 +410,10 @@ def main():
     run('javac', [os.path.join(JDK, 'bin', 'javac.exe'), '-J-Duser.language=en', '-J-Duser.country=US',
                   '--release', '8',
                   '-encoding', 'UTF-8', '-nowarn',
-                  '-cp', ANDROID_JAR,
+                  '-cp', ANDROID_JAR + os.pathsep + os.path.join(HERE, 'vendor', 'sherpa-classes.jar')
+                         + os.pathsep + os.path.join(HERE, 'vendor', 'kotlin-stdlib.jar')
+                         + os.pathsep + os.path.join(HERE, 'vendor', 'vosk-classes.jar')
+                         + os.pathsep + os.path.join(HERE, 'vendor', 'jna-classes.jar'),
                   '-d', javac_out] + java_files)
     check_no_method_parameters(javac_out)
 
@@ -365,7 +436,12 @@ def main():
                'com.android.tools.r8.D8',
                '--min-api', str(MIN_SDK),
                '--lib', ANDROID_JAR,
-               '--output', dex_out] + class_files)
+               '--output', dex_out] + class_files
+               + [p for p in (os.path.join(HERE, 'vendor', 'sherpa-classes.jar'),
+                              os.path.join(HERE, 'vendor', 'kotlin-stdlib.jar'),
+                              os.path.join(HERE, 'vendor', 'vosk-classes.jar'),
+                              os.path.join(HERE, 'vendor', 'jna-classes.jar'))
+                  if os.path.exists(p)])
     dex = os.path.join(dex_out, 'classes.dex')
     require(dex, 'classes.dex')
     log('   classes.dex {:,} 字节'.format(os.path.getsize(dex)))

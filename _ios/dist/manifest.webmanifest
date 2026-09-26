@@ -1,7 +1,7 @@
 {
   "name": "鱼事",
   "short_name": "鱼事",
-  "description": "本地待办清单：清单 / 时间轴 / 统计 / 设置，数据只存在这台设备上",
+  "description": "本地待办清单：清单与统计，长按圆钮语音录入，数据只存在这台设备上",
   "lang": "zh-CN",
   "start_url": "./",
   "scope": "./",
@@ -9,7 +9,7 @@
   "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
-  "version": "2.1",
+  "version": "3.5.3",
   "icons": [
     {
       "src": "icon-192.png",

@@ -3,7 +3,7 @@
 
 构建脚本说「成功」不算数，这个脚本只信 APK 文件里实际有什么：
     包名 / 版本 / minSdk / targetSdk
-    权限（必须为空）
+    权限（恰好 RECORD_AUDIO + VIBRATE，且绝不含 INTERNET）
     应用名（中文，得单独按 UTF-8 读，不能被控制台编码带歪）
     签名是否通过
     里面的 assets/www/index.html 是否和项目里的 鱼事.html 逐字节一致
@@ -13,9 +13,18 @@
 """
 import hashlib
 import os
+import re
 import subprocess
 import sys
 import zipfile
+
+# 控制台是 GBK 时，结论行里的 ✓ 会让最后的 print 抛 UnicodeEncodeError ——
+# 检查全跑完、报告已写盘，进程却以退出码 1 结束（会被误读成"核验失败"）。
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 SDK = r'D:\Android\Sdk'
 BT = os.path.join(SDK, 'build-tools', '34.0.0')
@@ -23,14 +32,21 @@ JAVA = r'D:\java\java17\bin\java.exe'
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT = os.path.dirname(os.path.dirname(HERE))       # ...\鱼事
 
-APK = os.path.join(PROJECT, '鱼事-v2.1.apk')
+APK = os.path.join(PROJECT, '鱼事-v3.39.apk')
 HTML = os.path.join(PROJECT, '鱼事.html')
 REPORT = os.path.join(PROJECT, '_ref', '_verify.log')
 
 # 包名和 build.py 里必须一致。这也是"系统截图文件名里带什么"的来源
 # （Screenshot_..._com_yushi_app_...），所以单独钉一个常量、单独断言。
 PKG_EXPECT = 'com.yushi.app'
-VER_EXPECT = '2.1'
+# ★ 3.5.0 起：期望版本不再手抄 —— 从 AndroidManifest.xml（唯一真相源）读；
+#   连要核验的 APK 文件名也从它派生。以前这里和 build.py 各抄一份，三处一起漂只是时间问题。
+_MANIFEST = os.path.join(PROJECT, '_android', 'app', 'AndroidManifest.xml')
+with open(_MANIFEST, encoding='utf-8') as _f:
+    _man = _f.read()
+_ver_name = re.search(r'android:versionName="([^"]+)"', _man)
+VER_EXPECT = _ver_name.group(1) if _ver_name else '?'
+APK = os.path.join(PROJECT, '鱼事-v' + VER_EXPECT + '.apk')
 
 lines = []
 ok_all = True
@@ -90,13 +106,52 @@ check('有可启动 Activity',
       'launchable-activity: name=\'%s.MainActivity\'' % PKG_EXPECT in badging, '')
 check('自适应图标', 'mipmap-anydpi-v26/ic_launcher.xml' in badging, '')
 
-# ---- 2. 权限：必须是空的 ----
+# ---- 2. 权限：恰好 RECORD_AUDIO + VIBRATE，且绝不含 INTERNET ----
+# v2.3 为支持长按圆钮的设备端离线语音识别，有意加这两条权限。
+# 但「纯本地、零联网」是命根子：语音走 SpeechRecognizer 的 on-device 离线识别，
+# 模型在手机本地，绝不经过任何服务器，所以 INTERNET 一个字都不能有。
+# ⚠️ 这一条独立、醒目地断言：INTERNET 必须不存在。
 say('\n-- 权限 --')
 _rc, raw = run([os.path.join(BT, 'aapt2.exe'), 'dump', 'permissions', APK])
 perms = raw.decode('utf-8', 'replace')
-permlines = [l for l in perms.splitlines() if 'uses-permission' in l]
-check('零权限（未声明任何 uses-permission）', not permlines,
-      '命中: ' + '; '.join(permlines) if permlines else '（空）')
+perm_names = []
+for l in perms.splitlines():
+    if 'uses-permission' in l and "name='" in l:
+        s = l.index("name='") + len("name='")
+        e = l.index("'", s)
+        perm_names.append(l[s:e])
+say('  原始权限列表: ' + (', '.join(perm_names) if perm_names else '（空）'))
+EXPECT_PERMS = {'android.permission.RECORD_AUDIO', 'android.permission.VIBRATE'}
+got = set(perm_names)
+check('权限恰好为 {RECORD_AUDIO, VIBRATE}', got == EXPECT_PERMS,
+      '实际集合=' + repr(got))
+# ★ v3.18：语音改成内置 Vosk 本地模型（模型在包里）→ 回到零联网底线，不再声明 INTERNET
+check('绝不声明 INTERNET（零联网底线）', 'android.permission.INTERNET' not in got,
+      'INTERNET 未出现 ✓' if 'android.permission.INTERNET' not in got else '意外声明了 INTERNET')
+# v3.4 口径变更（用户拍板加「系统语音·可能联网」开关）：不再是"绝不声明 INTERNET"，
+# 而是"**默认零联网**"—— 开关关着时这条备用路线不会被走到。
+# ★ v3.18：离线语音的资源必须在包里，否则长按会走到"不支持"——这里独立断言一次
+say('\n-- 离线语音资源（sherpa-onnx 流式）--')
+try:
+    with zipfile.ZipFile(APK) as _z:
+        _names = set(_z.namelist())
+        _so = 'lib/arm64-v8a/libsherpa-onnx-jni.so'
+        check('含 native 库 ' + _so, _so in _names,
+              ('{:,} 字节'.format(_z.getinfo(_so).file_size)) if _so in _names else '缺失')
+        check('含 onnxruntime', 'lib/arm64-v8a/libonnxruntime.so' in _names, '')
+        _mdl = [n for n in _names if n.startswith('assets/model/') and 'encoder' in n]
+        check('含流式模型 assets/model/*encoder*.onnx', bool(_mdl), _mdl[0] if _mdl else '缺失')
+        # ★ v3.29：模型必须 STORED（不压缩）—— AssetManager 的内存映射打不开压缩 asset，
+        # sherpa 会静默给出空结果（"声音正常却永远听不清"的真因）。这条断言把它钉死。
+        if _mdl:
+            _ci = _z.getinfo(_mdl[0])
+            check('模型以 STORED（未压缩）入包', _ci.compress_type == zipfile.ZIP_STORED,
+                  'compress_type=' + str(_ci.compress_type) + '（0=STORED, 8=DEFLATED）')
+        _all = [n for n in _names if n.startswith('assets/model/')]
+        say('  模型条目数 = %d' % len(_all))
+except Exception as _e:
+    ok_all = False
+    say('  !! 检查离线语音资源出错：%r' % (_e,))
 
 # ---- 3. 签名 ----
 say('\n-- 签名 --')
@@ -152,10 +207,16 @@ try:
             in_apk = z.read('assets/www/index.html')
             with open(HTML, 'rb') as f:
                 on_disk = f.read()
-            check('包内页面 == 项目 鱼事.html', in_apk == on_disk,
+            # 打包时 build.py 会把 APP_VERSION 常量写成 manifest 的 versionName（版本号只有一处
+            # 真相源），所以比较前先把这一行归一化成同一个标记；其余字节必须完全相同。
+            _pat = re.compile(rb"const APP_VERSION = '[^']*'")
+            a_norm = _pat.sub(b"const APP_VERSION = '<VER>'", in_apk)
+            b_norm = _pat.sub(b"const APP_VERSION = '<VER>'", on_disk)
+            check('包内页面 == 项目 鱼事.html（仅允许版本号注入）', a_norm == b_norm,
                   '{:,} 字节 vs {:,} 字节'.format(len(in_apk), len(on_disk)))
-            check('包内页面 sha256 一致',
-                  hashlib.sha256(in_apk).hexdigest() == hashlib.sha256(on_disk).hexdigest(), '')
+            check('包内页面 sha256 一致（版本号归一化后）',
+                  hashlib.sha256(a_norm).hexdigest() == hashlib.sha256(b_norm).hexdigest(),
+                  '包内版本 = ' + ((_pat.search(in_apk) or [b'?'])[0].decode()))
         elif not os.path.exists(HTML):
             say('  !! 找不到 ' + HTML)
 except Exception as e:
