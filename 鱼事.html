@@ -1016,6 +1016,16 @@ html.soft-render .mask .modal{
   background:color-mix(in srgb,var(--bg) 97%,transparent);
   -webkit-backdrop-filter:none;backdrop-filter:none;
 }
+/* ★ 3.5.6 修「下拉展开像透明的」的真凶（用户 2026-09-27 第二次提同一处）：
+   `.glass>*`（第 210 行）给每个直接子元素都发了 `position:relative;z-index:1`，
+   于是弹层里的 `.row`（装「分区」的那个）自己成了一个层叠上下文；
+   里面展开的 `.sel-pop`（z-index:30）被**关在 .row 里**，出不去。
+   而「重要程度」那个 `.field` 是 DOM 里更靠后的兄弟、同样是 z-index:1 ——
+   于是整条压在展开列表之上：用户看到的就是"重要程度 / 普通 / 空的圆圈
+   浮在下拉上面"，读起来像下拉是透明的。
+   改法：弹层直接子元素不建层叠上下文（z-index:auto 保留 position:relative，
+   相对 .glass::before 的层级关系不变），z-index:30 的浮层就能落到整层之上。 */
+.mask .modal>*{z-index:auto}
 @keyframes rise{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:none}}
 .modal h3{margin:0 0 20px;font-family:var(--font-display);font-weight:900;font-size:26px;letter-spacing:-.03em}
 .field{margin-bottom:16px}
@@ -1058,7 +1068,11 @@ html.soft-render .mask .modal{
 .sel-pop{
   position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;
   border:1px solid var(--line2);border-radius:16px;padding:6px;
-  background:color-mix(in srgb,var(--bg) 97%,transparent);
+  /* ★ 3.5.6：原来写 color-mix(...97%,transparent)，剩的 3% 透明会把
+     **同一个 .row 里那个「标题」输入框的字**淡淡透出来（用户截图里
+     下拉中间那行灰字）。浮层已经压在弹层上了，没有任何理由再透一层，
+     跟 `.mask .modal` 一样给实底。 */
+  background:var(--bg);
   box-shadow:0 18px 50px color-mix(in srgb,var(--glass-edge) 38%,transparent);
   max-height:236px;overflow:auto;overscroll-behavior:contain;
   display:none;animation:rise .18s var(--mo-soft) both;
@@ -5552,7 +5566,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '3.5.5';
+const APP_VERSION = '3.5.6';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
