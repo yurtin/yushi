@@ -33,7 +33,9 @@
 
 ## 直接用
 
-**安卓**：到 [Releases](https://github.com/yurtin/yushi/releases/latest) 下载最新 `鱼事-v*.apk` 安装。
+**安卓**：到 [Releases](https://github.com/yurtin/yushi/releases/latest) 下载最新的
+`yushi-v3.5.7.apk` 安装（在 Releases 上是 ASCII 名，本机构建产物叫 `鱼事-v3.5.7.apk`，
+同一个文件）。
 装之前不用做任何事；第一次长按圆钮说话时会申请一次麦克风权限，不给也能用键盘输入。
 
 **iOS**：用 **Safari** 打开 <https://daibanji.app.workbuddy.host/> →
