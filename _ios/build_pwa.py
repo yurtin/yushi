@@ -86,6 +86,14 @@ def build_index(version):
         html = f.read()
     if '</head>' not in html or '</body>' not in html:
         sys.exit('!! 源文件里找不到 </head> 或 </body>，注入位置对不上')
+    # ★ 2026-09-30 修复：页面里显示的版本号也要一起注入。
+    #   原来只有安卓那条链（_android/build.py）注入 APP_VERSION，PWA 这条链没有 ——
+    #   于是「设置」页显示的版本永远比包本身落后一格（实测本地 dist 里 manifest/sw 都是 3.5.7，
+    #   页面却写着 3.5.6）。版本号只有一处真相源（AndroidManifest.xml），两条链都必须派生它。
+    html, _n = re.subn(r"const APP_VERSION = '[^']*'",
+                       "const APP_VERSION = '%s'" % version, html, count=1)
+    if not _n:
+        sys.exit('!! 页面里找不到 APP_VERSION 常量，版本号无法注入（会显示错版本）')
     out = html.replace('</head>', HEAD_BLOCK + '</head>', 1)
     out = out.replace('</body>', SW_REGISTER + '</body>', 1)
     # 同一份 HTML 不该出现两个 manifest 引用（重复注入会留下两份）
