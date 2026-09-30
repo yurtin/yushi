@@ -8,8 +8,8 @@
      3.5.0 → 3050000（旧的 3.1–3.39 是 30100–33900，新方案稳压它们一头，升级不会倒挂）。 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.yushi.app"
-    android:versionCode="3050600"
-    android:versionName="3.5.6">
+    android:versionCode="3050700"
+    android:versionName="3.5.7">
 
     <!--
       零联网仍是底线，但本版破了"零权限"：为支持长按圆钮的设备端离线语音识别，加了两条权限。

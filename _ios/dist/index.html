@@ -2615,12 +2615,37 @@ function parseSmart(input){
     }
   }
 
-  // 区间 914~919
+  /* 区间 914~919 / 920~923 交报告 / 交报告 920~923
+     ★ 修复（用户实测："我输入 920~923，只识别了 9月20号"）：
+       原来这条正则**只在行尾**匹配（结尾写了 `\s*$`），而你的习惯是日期写在最前面，
+       于是「920~923 交报告」整条掉进下面的「行首数字」分支 —— 920 被当成日期、
+       `~923 交报告` 全进标题。看起来就是"区间没被识别"。
+     现在行首 / 行中 / 行尾都收，但对 1~2 位数字保持严格（`买3~5个苹果` 不能变成 3月5日）：
+       · 两端都是 3~4 位（或 M.D）→ 任何位置都认：920~923 / 914~919 / 1020~1023
+       · 有一端是 1~2 位       → 只认贴边（行首或行尾）的：读aiagent入门书91～915 照旧
+     分隔符也补齐：原来只认 ~ ～ - — －，漏了 en dash – / 减号 − / 波浪线 〜 / 数学 ∼。
+     这五个在输入法里长得几乎一样，漏一个就等于用户白写（实测漏掉时会退化成
+     "只认到 9月23日、标题剩 920〜"）。 */
   if (!date){
-    const rm = text.match(/(\d{1,2}\.\d{1,2}|\d{1,4})\s*[~～\-—－]\s*(\d{1,2}\.\d{1,2}|\d{1,4})\s*$/);
-    if (rm){
+    const STRONG = /^(\d{1,2}\.\d{1,2}|\d{3,4})$/;
+    const re = /(\d{1,2}\.\d{1,2}|\d{1,4})\s*[~～\-—－–−〜∼]\s*(\d{1,2}\.\d{1,2}|\d{1,4})/g;
+    let rm;
+    while ((rm = re.exec(text))){
+      const head = text.slice(0, rm.index), tail = text.slice(rm.index + rm[0].length);
+      const leading = !head.trim(), trailing = !tail.trim();
+      const strong = STRONG.test(rm[1]) && STRONG.test(rm[2]);
+      // 前面：贴行首、或前面是空白/顿号；贴行尾的区间不受前面限制（`读…书91～915` 是既有用法）
+      if (!(leading || trailing || /[\s、,，]$/.test(head))) continue;
+      // 后面：贴行尾、或后面是空白/顿号；贴行首的区间只有两端都强才能粘着正文（920~923交报告）
+      if (!(trailing || /^[\s、,，]/.test(tail) || (leading && strong))) continue;
+      // 行中（前后都是字）必须是强信号，否则 `买 3~5个苹果` 会变成 3月5日
+      if (!leading && !trailing && !strong) continue;
       const a = numToDate(rm[1]), b = numToDate(rm[2]);
-      if (a && b){ date = a.date; dateEnd = b.date; text = text.slice(0, rm.index).trim(); }
+      if (!a || !b) continue;
+      date = a.date; dateEnd = b.date;
+      // 保留 head 里的连续空格（作业长条靠它切标题与详细要求，见 splitHw）
+      text = (head.replace(/\s+$/, '') + ' ' + tail.trim()).trim();
+      break;
     }
   }
 
