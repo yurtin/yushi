@@ -7939,6 +7939,9 @@ modal.addEventListener('click', e => {
     return;
   }
   if (act === 'promote'){ openSeedPromote(it); return; }
+  /* ★ v5.0 第 3 批：AI 质疑（一次一个问题）。不 await —— 弹层已经关了，
+     结果回来时自己 refresh；期间用户可以去干别的。 */
+  if (act === 'aiask'){ aiAsk(it); return; }
   if (act === 'edit'){ openEdit(it); return; }
   if (act === 'mergepick'){ ideaUI.mergeMode = true; ideaUI.mergeSel.clear(); ideaUI.mergeSel.add(it.id); refresh(); return; }
   if (act === 'seeduse'){ seedUse(it); return; }
