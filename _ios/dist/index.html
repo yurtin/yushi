@@ -2629,6 +2629,44 @@ html.soft-render .mask.sheet-mode .modal{
 /* 长按起手：给一点"按住了"的反馈。**只缩不放**，不做位移 —— 卡片在滚动区里，
    任何位移都会和"按住想上下滑一点"打架。 */
 .idea-card.pressing{transform:scale(.985)}
+/* ★ v5.0 拖过去合并时的目标卡片：给一圈强调色描边。
+   光靠第二下震动是不知道"落在哪张上"的 —— 震动只说明"锁定了"，不说明"锁的是谁"。 */
+.idea-card.drop-target{box-shadow:0 0 0 2px var(--accent), 0 8px 24px rgba(0,0,0,.14)}
+/* ★ v5.0 长按手势态的方向提示。只在"已经长按了"那一两秒里出现，
+   所以不做成常驻 UI。贴在底栏上方居中：离拇指近，也不挡卡片本身。 */
+.seed-hud{
+  position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));
+  transform:translate(-50%,8px);
+  z-index:70;display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:center;
+  padding:8px 12px;border-radius:16px;max-width:calc(100% - 24px);
+  background:var(--panel-solid,var(--bg));border:1px solid var(--line,var(--pill));
+  box-shadow:0 10px 28px rgba(0,0,0,.16);
+  opacity:0;pointer-events:none;
+  transition:opacity .16s ease, transform .16s ease;
+}
+.seed-hud.on{opacity:1;transform:translate(-50%,0)}
+.seed-hud .sg{
+  font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;
+  padding:5px 10px;border-radius:999px;
+  transition:background .12s ease, color .12s ease;
+}
+.seed-hud .sg.on{background:var(--accent);color:#fff}
+.seed-hud .sg-tip{font-weight:600;color:var(--faint);padding-left:2px}
+.seed-hud.over .sg-tip{color:var(--accent)}
+@media (prefers-reduced-motion: reduce){
+  .seed-hud{transition:none}
+}
+/* ★ v5.0 手势说明弹层里的行：左边动作、右边后果，一眼对得上 */
+.gh-list{display:grid;gap:10px;margin:6px 0 4px}
+.gh-row{
+  display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;
+  padding:10px 12px;border-radius:14px;
+  background:var(--bg);border:1px solid var(--line,var(--pill));
+}
+.gh-row b{flex:0 0 auto;font-size:13px;color:var(--fg);min-width:9em}
+.gh-row span{flex:1;min-width:12em;font-size:12.5px;line-height:1.6;color:var(--muted)}
+/* 「？」是纯图标按钮，别让它被 .btn 的左右内边距撑成一条长胶囊 */
+.btn.ico{padding:6px 12px;min-width:36px;text-align:center;font-weight:700}
 @media (prefers-reduced-motion: no-preference){
   .idea-card{transition:transform 140ms ease}
 }
@@ -3339,9 +3377,10 @@ const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', t
        lastScanAt     上次 AI 关联扫描的时间戳（距今 > 24h 才再扫）
        ideaReview     「想法回顾」总开关（设置页），默认开
        ideaReviewDone 今天已经把回顾抽屉处理完了（存日期）—— 当天不再推，次日自动失效
-       captureZone    「没写时间的条目默认去哪」：'long'（默认，老习惯）| 'idea' */
+       captureZone    「没写时间的条目默认去哪」：'long'（默认，老习惯）| 'idea'
+       ideaGestureSeen 想法页的手势说明是否已经自动弹过一次 */
   ideaUsedAt: null, lastOpenedSeed: null, lastScanAt: 0, ideaReview: true, ideaReviewDone: null,
-  captureZone: 'long' };
+  captureZone: 'long', ideaGestureSeen: false };
 /* 清单页的四个分区（渲染顺序见 renderList）。折叠状态存的就是这几个键，
    load() 拿它当白名单过滤 —— 不让数据里的任意字符串混进 class 名。 */
 /* ★ v5.0：「考虑」已并入想法（行尾 ? 直接建种子），分区里不再有 consider。
@@ -3453,6 +3492,7 @@ function load(){
       S.ideaReview = o.ideaReview !== false;
       S.ideaReviewDone = typeof o.ideaReviewDone === 'string' ? o.ideaReviewDone : null;
       S.captureZone = o.captureZone === 'idea' ? 'idea' : 'long';
+      S.ideaGestureSeen = o.ideaGestureSeen === true;
     }
   } catch (e){}
   syncTags();
@@ -3471,7 +3511,7 @@ function save(){
       /* ★ v5.0 想法系统的全局状态 */
       ideaUsedAt: S.ideaUsedAt, lastOpenedSeed: S.lastOpenedSeed,
       lastScanAt: S.lastScanAt, ideaReview: S.ideaReview, ideaReviewDone: S.ideaReviewDone,
-      captureZone: S.captureZone,
+      captureZone: S.captureZone, ideaGestureSeen: S.ideaGestureSeen,
       voiceVersion: 2   /* 语音默认值只迁移一次，之后用户自己的开关说了算（见 load 的说明） */
     }));
     saveFailed = false;
@@ -3493,7 +3533,7 @@ function snapshot(){
     /* ★ v5.0：想法系统的全局状态也进备份，否则换设备后回顾的频次判定会从头开始 */
     ideaUsedAt: S.ideaUsedAt, lastOpenedSeed: S.lastOpenedSeed,
     lastScanAt: S.lastScanAt, ideaReview: S.ideaReview, ideaReviewDone: S.ideaReviewDone,
-    captureZone: S.captureZone
+    captureZone: S.captureZone, ideaGestureSeen: S.ideaGestureSeen
   };
 }
 /* 去空白、去空串、去重（保留先后顺序） */
@@ -4186,6 +4226,7 @@ function reviewDrawerHTML(){
   </div>`;
 }
 function renderIdeas(){
+  maybeGestureHelp();                       // 首次进想法页自动展开一次手势说明（只一次）
   /* ★ v5.0：用 ideaUI.q / ideaUI.tags，**不再读 S.q / S.filterTags**。
      匹配范围也从「标题 + 原文」扩到「标题 + 原文 + 全部时间轴文本」——
      原先搜不到那条你明明写进续写里的关键词。字面匹配，不做语义。 */
@@ -4212,7 +4253,8 @@ function renderIdeas(){
       <button class="btn primary idea-new" data-act="seednew">＋ 新想法</button>
       ${ideaUI.mergeMode
         ? `<span class="len">已选 <b class="mono">${nSel}</b> 条</span><button class="btn" data-act="mergecancel">取消</button>`
-        : `<button class="btn" data-act="mergestart"${all.length ? '' : ' disabled'}>☰ 多选</button>`}
+        : `<button class="btn ico" data-act="gesturehelp" title="手势说明" aria-label="手势说明">？</button>
+           <button class="btn" data-act="mergestart"${all.length ? '' : ' disabled'}>☰ 多选</button>`}
     </div>
     <div class="idea-searchbar${rv()}"${rvd(35)}>
       <input class="search" id="ideaSearch" type="text" aria-label="搜想法"
@@ -4476,6 +4518,35 @@ function seedPromote(it, task){
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
   return task;
+}
+/* ★ v5.0 手势说明。长按是隐藏手势，方向滑更是 —— 没有说明就永远没人发现。
+   两个入口叠加：右上角一个 `?` 随时可查；首次进想法页自动展开一次。
+   为什么两个都要：`?` 解决"以后想再看"；自动一次解决"根本不知道有这东西"。
+   只自动一次（S.ideaGestureSeen），不做成每次都弹的骚扰。 */
+function openGestureHelp(){
+  mask.classList.remove('sheet-mode');
+  modal.innerHTML =
+    `<h3 id="modalTitle">想法页的手势</h3>
+     <div class="gh-list">
+       <div class="gh-row"><b>长按卡片</b><span>松手不动 → 打开动作菜单（全部动作都在那儿）</span></div>
+       <div class="gh-row"><b>长按后 ← 左滑</b><span>编辑这条</span></div>
+       <div class="gh-row"><b>长按后 右滑 →</b><span>立项：把它变成待办、送去清单</span></div>
+       <div class="gh-row"><b>长按后 ↓ 下滑</b><span>续写：现在多了什么信息</span></div>
+       <div class="gh-row"><b>长按后拖到另一条上</b><span>合并这两条（落到目标上会再震一下）</span></div>
+       <div class="gh-row"><b>右上角 ☰ 多选</b><span>批量：合并 / 立项 / 编辑 / 续写 / 生长 / 收起来 / 删除</span></div>
+     </div>
+     <div class="foot"><div class="spacer"></div>
+       <button class="btn primary" id="gh_ok">知道了</button></div>`;
+  openMask();
+  document.getElementById('gh_ok').onclick = closeModal;
+}
+function maybeGestureHelp(){
+  if (S.ideaGestureSeen) return;
+  if (!S.items.some(isSeed)) return;         // 一条想法都没有时先别打扰
+  S.ideaGestureSeen = true; save();
+  setTimeout(() => {
+    if (S.view === 'idea' && !mask.classList.contains('on')) openGestureHelp();
+  }, 600);
 }
 /* ---------------- ★ v5.0 多选批量：逐条队列（第 2 批第 1 块） ----------------
    背景：多选之后点「立项」这类动作，**不能把 N 个弹层同时塞进一屏**（用户原话：
@@ -6076,6 +6147,7 @@ view.addEventListener('click', e => {
   if (act === 'batchedit'){ batchStart('edit'); return; }
   if (act === 'batchspark'){ batchStart('spark'); return; }
   if (act === 'batchgrow'){ batchStart('grow'); return; }
+  if (act === 'gesturehelp'){ openGestureHelp(); return; }
   if (act === 'seednew'){ openSeedNew(); return; }
   /* ---- ★ v5.0 想法页自己的标签筛选（不碰清单页的 S.filterTags）---- */
   if (act === 'ideatag'){
@@ -6642,39 +6714,138 @@ mask.addEventListener('click', e => { if (e.target === mask) closeModal(); });
    让"弹层是否打开"和"页面是否上锁"有机会不同步。 */
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && mask.classList.contains('on')) closeModal(); });
 
-/* ---------------- ★ v5.0 想法卡：长按 → 动作菜单 ---------------- */
-/* 阈值取 400ms（底栏圆钮那个语音长按是 350ms）：卡片属于滚动内容，太短会和
-   "按住想上下滑一点"打架。手指移动超过 10px 就当滚动，直接取消 —— 否则翻列表会误弹菜单。 */
+/* ---------------- ★ v5.0 想法卡：长按 → 手势 / 动作菜单 ----------------
+   阈值取 400ms（底栏圆钮那个语音长按是 350ms）：卡片属于滚动内容，太短会和
+   "按住想上下滑一点"打架。手指移动超过 10px 就当滚动，直接取消。
+
+   长按满 400ms 之后进入**手势态**，出现方向提示：
+     左滑 → 编辑          右滑 → 立项（清单在想法右边，"把它送过去"）
+     下滑 → 续写          拖到另一张卡上 → 合并
+     松手没动 → 打开动作菜单（兜底，也是可发现性的来源）
+
+   为什么不做"裸左右滑直接触发"：①安卓有**边缘返回手势**，贴边起手会被系统抢走；
+   ②没有任何提示，用户永远不知道能滑。长按后才出方向 —— 和底栏圆钮那套**同一个语言**。
+
+   为什么"拖到另一条上"能和"下滑续写"共存：判定看**落点**而不是看方向 ——
+   指针停在另一张卡上就是合并，否则才看位移。这也正好是用户要的"两段确认"：
+   长按震一下、落到另一张卡上再震一下才合并；只长按后上下滑不会。 */
 const SEED_LONG_MS = 400;
-let seedPressTimer = 0, seedPressCard = null, seedPressFrom = null;
+const SEED_SWIPE_PX = 44;            // 方向判定阈值：太短会把"手抖"也当成滑动
+let seedPressTimer = 0, seedPressCard = null, seedPressFrom = null, seedG = null;
+
+/* 手势态的方向提示。挂在 body 上、进手势态才显示 —— 不做成常驻 UI，
+   它只在"你已经长按了"这 1~2 秒里有用。 */
+function seedHud(){
+  let el = document.getElementById('seedHud');
+  if (!el){
+    el = document.createElement('div');
+    el.id = 'seedHud';
+    el.className = 'seed-hud';
+    el.setAttribute('aria-hidden', 'true');
+    el.innerHTML = `<span class="sg" data-dir="left">← 编辑</span>` +
+      `<span class="sg" data-dir="down">↓ 续写</span>` +
+      `<span class="sg" data-dir="right">立项 →</span>` +
+      `<span class="sg sg-tip">拖到另一条上 = 合并</span>`;
+    document.body.appendChild(el);
+  }
+  return el;
+}
+function seedHudShow(on){
+  const el = seedHud();
+  el.classList.toggle('on', !!on);
+  if (!on){ el.querySelectorAll('.sg.on').forEach(s => s.classList.remove('on')); el.classList.remove('over'); }
+}
+function seedHudMark(dir, targetId){
+  const el = seedHud();
+  el.querySelectorAll('.sg[data-dir]').forEach(s => s.classList.toggle('on', !!dir && s.dataset.dir === dir));
+  el.classList.toggle('over', !!targetId);
+}
 function seedPressCancel(){
   if (seedPressTimer){ clearTimeout(seedPressTimer); seedPressTimer = 0; }
   if (seedPressCard){ seedPressCard.classList.remove('pressing'); seedPressCard = null; }
-  seedPressFrom = null;
+  if (seedG){
+    if (seedG.targetEl) seedG.targetEl.classList.remove('drop-target');
+    seedHudShow(false);
+  }
+  seedPressFrom = null; seedG = null;
 }
 view.addEventListener('pointerdown', e => {
   if (e.button) return;                                   // 只认主键 / 单指
   if (e.target.closest && e.target.closest('button, [data-act], a, input')) return;  // 按钮和角标有自己的动作
   const card = e.target.closest && e.target.closest('.idea-card');
-  if (!card || ideaUI.mergeMode) return;                  // 多选态下长按不弹菜单，免得和勾选打架
+  if (!card || ideaUI.mergeMode) return;                  // 多选态下长按不触发，免得和勾选打架
   const seed = card.querySelector('.item.seed[data-id]');
   if (!seed) return;
   seedPressFrom = { x: e.clientX, y: e.clientY };
   seedPressCard = card;
   card.classList.add('pressing');
   seedPressTimer = setTimeout(() => {
-    const id = seed.dataset.id;
-    seedPressCancel();
-    if (navigator.vibrate){ try { navigator.vibrate(10); } catch (_){} }
-    const it = S.items.find(x => x.id === id);
-    if (it) openSeedSheet(it);
+    seedPressTimer = 0;
+    const it = S.items.find(x => x.id === seed.dataset.id);
+    if (!it){ seedPressCancel(); return; }
+    if (navigator.vibrate){ try { navigator.vibrate(10); } catch (_){} }   // 第一下：进入了
+    seedG = { card, it, dir: '', target: '', buzzed: false };
+    seedHudShow(true); seedHudMark('', '');
   }, SEED_LONG_MS);
 });
 view.addEventListener('pointermove', e => {
-  if (!seedPressTimer || !seedPressFrom) return;
-  if (Math.abs(e.clientX - seedPressFrom.x) > 10 || Math.abs(e.clientY - seedPressFrom.y) > 10) seedPressCancel();
+  if (!seedPressFrom) return;
+  if (seedPressTimer){                                    // 还没到长按：动一下就按"滚动"处理
+    if (Math.abs(e.clientX - seedPressFrom.x) > 10 || Math.abs(e.clientY - seedPressFrom.y) > 10) seedPressCancel();
+    return;
+  }
+  if (!seedG) return;
+  const dx = e.clientX - seedPressFrom.x, dy = e.clientY - seedPressFrom.y;
+  /* 落点优先：指针停在**另一张**卡上 = 拖过去合并（第二下震动就在这里） */
+  let target = '';
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  const tCard = under && under.closest ? under.closest('.idea-card') : null;
+  const tSeed = tCard ? tCard.querySelector('.item.seed[data-id]') : null;
+  if (tSeed && tSeed.dataset.id !== seedG.it.id) target = tSeed.dataset.id;
+  if (target !== seedG.target){
+    seedG.target = target;
+    if (target && !seedG.buzzed){
+      seedG.buzzed = true;
+      if (navigator.vibrate){ try { navigator.vibrate(12); } catch (_){} }
+    }
+    if (!target) seedG.buzzed = false;
+  }
+  let dir = '';
+  if (!target){
+    if (Math.abs(dx) > SEED_SWIPE_PX && Math.abs(dx) > Math.abs(dy)) dir = dx > 0 ? 'right' : 'left';
+    else if (dy > SEED_SWIPE_PX) dir = 'down';
+  }
+  /* 目标卡片给一圈强调色描边 —— 光靠震动看不见是哪一张 */
+  const tEl = target ? tCard : null;
+  if (seedG.targetEl !== tEl){
+    if (seedG.targetEl) seedG.targetEl.classList.remove('drop-target');
+    seedG.targetEl = tEl;
+    if (tEl) tEl.classList.add('drop-target');
+  }
+  seedG.dir = dir;
+  seedHudMark(dir, target);
 });
-view.addEventListener('pointerup', seedPressCancel);
+view.addEventListener('pointerup', () => {
+  const g = seedG;
+  seedPressCancel();
+  if (!g) return;
+  if (g.target){                                          // 落到另一条上 → 合并这两条
+    const b = S.items.find(x => x.id === g.target);
+    if (b && isSeed(b)){
+      const nx = seedMerge([g.it.id, b.id]);
+      refresh();
+      if (nx) openEdit(nx);
+    }
+    return;
+  }
+  if (g.dir === 'right'){ openSeedPromote(g.it); return; }   // 右滑 → 立项（送去清单）
+  if (g.dir === 'left'){ openEdit(g.it); return; }           // 左滑 → 编辑
+  if (g.dir === 'down'){                                     // 下滑 → 续写
+    S.lastOpenedSeed = g.it.id; S.ideaUsedAt = ymd(new Date());
+    ideaUI.sparkOpen = g.it.id; save(); refresh(); return;
+  }
+  openSeedSheet(g.it);                                       // 没动 → 菜单（兜底 + 可发现）
+});
 view.addEventListener('pointercancel', seedPressCancel);
 view.addEventListener('scroll', seedPressCancel, true);   // 捕获阶段：内部任何一层滚动都要取消
 
@@ -7552,6 +7723,7 @@ window.addEventListener('drop', e => {
           if (typeof o.ideaReview === 'boolean') S.ideaReview = o.ideaReview;
           if (typeof o.ideaReviewDone === 'string') S.ideaReviewDone = o.ideaReviewDone;
           if (o.captureZone === 'idea' || o.captureZone === 'long') S.captureZone = o.captureZone;
+          if (typeof o.ideaGestureSeen === 'boolean') S.ideaGestureSeen = o.ideaGestureSeen;
           save(); applyHelp(); refresh();
           toast('已从备份恢复 ' + S.items.length + ' 条');
         });
@@ -7802,7 +7974,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '4.1.1';
+const APP_VERSION = '4.2.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
