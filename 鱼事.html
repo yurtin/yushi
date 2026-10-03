@@ -1492,6 +1492,11 @@ html.soft-render .feature-card:hover{transform:none}
    选中态沿用全站 `.pill.on`，不新造一套"选中"语言。 */
 .seg-cap{display:flex;gap:6px;flex:0 0 auto;align-self:center}
 .seg-cap .pill{padding:6px 14px;font-size:13px}
+/* ★ v5.0：设置页里"清空示例"在没有示例时禁用 —— 灰掉比"点了弹个提示"更早说明情况。
+   （pointer-events:none 是给触摸端的：disabled 在部分 WebView 里仍会收到 pointerdown） */
+.seg-cap .pill[disabled],.pill.is-off{opacity:.4;pointer-events:none}
+/* 空态里的动作按钮：空态原本只有一段文字，加一个入口时要让它跟文字留出呼吸 */
+.empty-acts{margin-top:14px;display:flex;justify-content:center}
 .set-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 16px;
   padding:20px 0 4px;border-top:1px solid var(--line);margin-top:16px}
 /* v3.3（用户："外观下的主题部分太大了，字窝在左边、按钮弄到右边，占的太多"）：
@@ -4582,7 +4587,11 @@ function renderIdeas(){
   h += reviewDrawerHTML();
   if (!all.length){
     h += `<section class="glass zone zone-wide${rv()}" data-z="idea"${rvd(60)}>
-      <div class="empty">还没有想法。点上面的 <b>＋ 新想法</b> 记一条 —— 看到一句好词、一个不懂的术语、半截念头，都可以先扔进来。<br>它跟待办不是一回事：待办是试管，装一件定了型的事；想法是种子，会长、会岔、会跟别的念头合并。</div>
+      <div class="empty">还没有想法。点上面的 <b>＋ 新想法</b> 记一条 —— 看到一句好词、一个不懂的术语、半截念头，都可以先扔进来。<br>它跟待办不是一回事：待办是试管，装一件定了型的事；想法是种子，会长、会岔、会跟别的念头合并。
+        <div class="empty-acts">
+          <button class="btn" data-act="demofill">先放一批示例进来看看</button>
+        </div>
+      </div>
     </section>`;
     view.innerHTML = h;
     return;
@@ -4922,6 +4931,101 @@ function seedMerge(ids){
   if (nx) toast('合并成一条新想法，原来两条都留着');
   return nx;
 }
+/* ---------------- ★ v5.0 示例数据（只为试功能，不碰你自己的数据） ----------------
+   三条硬规则，缺一条都不行：
+     ① **只加不盖** —— 你已有的条目一条都不动，示例只是接到列表最前面；
+     ② **每条都带 demo 标记** —— 一键清空只删带标记的，物理上删不到你自己的条目；
+     ③ **设置页显示条数** —— 你随时能看到"现在有几条是示例"，不用猜。
+   为什么要这套：这一版新加的东西（层级缩进、合并血缘、回顾池、树状图分层、沉睡/收起）
+   都要有**形状正确的数据**才看得出来；空库点进去只能看到空态，等于没做。
+   日期都是**相对今天算**的（不是写死的绝对日期），所以放进来永远是"今天到期""逾期 2 天"，
+   过几天再放也不会变成一堆过期条目。 */
+function demoFill(){
+  const D = n => ymd(new Date(Date.now() + n * 86400000));
+  const old = n => Date.now() - n * 86400e3;
+  const mk = (id, title, o) => Object.assign({
+    id, raw: title, title, kind: 'task',
+    date: null, dateEnd: null, monthOnly: false, time: null, repeat: null,
+    zone: 'long', tags: [], done: false, doneAt: null,
+    createdAt: old(5), hw: null, pri: 0, parent: null, goal: false, demo: true
+  }, o);
+  const sk = (id, title, o) => Object.assign({
+    id, raw: title, title, kind: 'seed',
+    date: null, dateEnd: null, monthOnly: false, time: null, repeat: null,
+    zone: 'idea', tags: [], done: false, doneAt: null,
+    createdAt: old(5), hw: null, pri: 0, parent: null,
+    sparks: [], bornFrom: null, promoted: null, suggest: [], reviewedAt: null, aiUse: null,
+    demo: true
+  }, o);
+  const sp = (at, text) => ({ at, text });
+
+  const items = [
+    /* ---- 清单页：到期 / 逾期 / 长期 / 短期 / 循环 / 复合目标 / 优先级 / 标签 ---- */
+    mk('demo-t01', '交侦查学作业', { date: D(0), time: '20:00', zone: 'short', tags: ['学习'], pri: 2 }),
+    mk('demo-t02', '给朱淑媛打个电话', { date: D(0), zone: 'short', tags: ['生活'] }),
+    mk('demo-t03', '去操场跑三公里', { date: D(0), zone: 'short', tags: ['生活'] }),
+    mk('demo-t04', '把借的书还回图书馆', { date: D(-2), zone: 'short', tags: ['学习'] }),          /* 逾期 2 天 */
+    mk('demo-t05', '给导师回邮件', { date: D(-4), zone: 'short', tags: ['学习'], pri: 1 }),        /* 逾期 4 天 */
+    mk('demo-t06', '读完《卡片笔记写作法》', { zone: 'long', tags: ['学习'] }),
+    mk('demo-t07', '学会游泳', { zone: 'long', tags: ['生活'] }),
+    mk('demo-t08', '复习刑事诉讼法', { date: D(7), zone: 'short', tags: ['学习'], pri: 1 }),
+    mk('demo-t09', '整理上个月的案件笔记', { date: D(12), zone: 'short', tags: ['工作'] }),
+    mk('demo-t10', '每周给家里打电话', { date: D(0), zone: 'repeat', repeat: 7, tags: ['生活'] }),
+    /* 复合目标：父条没日期 + 两个带日期的子任务 —— 清单页会把它们折在一起收 */
+    mk('demo-t11', '做完学年论文', { zone: 'long', goal: true }),
+    mk('demo-t12', '读完十篇文献', { date: D(5), parent: 'demo-t11', tags: ['学习'] }),
+    mk('demo-t13', '写出提纲', { date: D(10), parent: 'demo-t11', tags: ['学习'] }),
+    mk('demo-t14', '确认下周的值班安排', { zone: 'long', pri: 2 }),
+
+    /* ---- 想法页：三层父子 / 续写时间轴 / 合并血缘 / 沉睡 / 已收起 / 刚写入 ---- */
+    sk('demo-s01', '做一个自由排版式的 App', { createdAt: old(40), tags: ['学习'],
+      sparks: [sp(D(-40), '起因：现有待办 App 的排版全是固定模板'),
+        sp(D(-36), '核心不是"自由"，是"我想怎么摆就怎么摆"的那种手感'),
+        sp(D(-30), '先画卡片流，别一上来就做画布')] }),
+    sk('demo-s02', '拖拽排序的手感', { parent: 'demo-s01', createdAt: old(35),
+      sparks: [sp(D(-35), '参考 iOS 长按拖动的"抬起"反馈'), sp(D(-33), '列表要让位，但不能跳')] }),
+    sk('demo-s03', '自由排版 vs 结构化', { parent: 'demo-s01', createdAt: old(31),
+      sparks: [sp(D(-31), '核心是我要拿它干嘛，不是哪个好看')] }),
+    sk('demo-s04', '那到底给谁用', { parent: 'demo-s03', createdAt: old(28),
+      sparks: [sp(D(-28), '如果只有我自己用，就不用考虑上手成本')] }),
+    sk('demo-s05', '深夜写东西为什么更快', { createdAt: old(20),
+      sparks: [sp(D(-20), '因为没人打断？'), sp(D(-18), '还是因为白天一直在做别人的事')] }),
+    sk('demo-s06', '用「想法银行」代替待办清单', { createdAt: old(120), tags: ['学习'],
+      sparks: [sp(D(-120), '待办是"要还的债"，想法是"存进去的利息"'),
+        sp(D(-110), '但存进去不取也会烂掉'),
+        sp(D(-100), '需要一个"到期提醒"，但不是催，是"给你看看"'),
+        sp(D(-95), '这其实就是回顾抽屉的雏形')] }),
+    sk('demo-s07', '语音输入到底该放在哪', { createdAt: old(10) }),
+    sk('demo-s08', '长按和手势哪个更好记', { createdAt: old(10) }),
+    sk('demo-s09', '输入方式要统一成一套', { createdAt: old(9), bornFrom: ['demo-s07', 'demo-s08'] }),
+    sk('demo-s10', '想法之间的连线该不该画出来', { createdAt: old(60),
+      sparks: [sp(D(-60), '画出来会像蜘蛛网'), sp(D(-55), '但不画又看不出关系'),
+        sp(D(-50), '也许该用缩进表达层级，连线只留给"合并"')] }),
+    sk('demo-s11', '给想法加一个「体重」', { createdAt: old(90),
+      sparks: [sp(D(-90), '越常想越重？'), sp(D(-85), '还是越久没动越重')] }),
+    sk('demo-s12', '读书笔记要不要单独一页', { createdAt: old(200), done: true, doneAt: old(5) }),
+    sk('demo-s13', '试过用语音记想法，没起来', { createdAt: old(200), done: true, doneAt: old(50) }),
+    sk('demo-s14', '今天刚冒出来的一个念头', { createdAt: Date.now() }),   /* 测"刚写入不进回顾" */
+    sk('demo-s15', '标签测试：学习与生活', { createdAt: old(15), tags: ['学习', '生活'] })
+  ];
+  /* 只加不盖：接到最前面，你自己的条目顺序一条不动 */
+  S.items = items.concat(S.items);
+  save(); refresh();
+  toast('放进来 ' + items.length + ' 条示例（随时可一键清掉）');
+}
+function demoCount(){ return S.items.filter(i => i.demo).length; }
+function demoClear(){
+  const gone = demoCount();
+  if (!gone){ toast('现在没有示例数据'); return; }
+  const keep = S.items.slice();
+  S.items = S.items.filter(i => !i.demo);
+  /* 示例可能是别的条目的父节点 → 下面那层上浮为根，**不级联删**（跟批量删除一个规则） */
+  S.items.forEach(x => { if (x.parent && !S.items.some(y => y.id === x.parent)) x.parent = null; });
+  save(); refresh();
+  toast('清掉 ' + gone + ' 条示例', '撤销', () => { S.items = keep; save(); refresh(); });
+}
+
+
 /* 种子的勾：不叫"完成"，叫"用完了" —— 只沉到想法页底部的"用完了"一组，不播待办的 CRT 退场 */
 function seedUse(it){
   /* ★ v5.0：这叫「收起来」，不叫完成 —— 想法没有"做完"这回事，只是暂时不想看了。
@@ -5213,6 +5317,27 @@ function renderSettings(){
                     data-capzone="long" aria-pressed="${S.captureZone !== 'idea' ? 'true' : 'false'}">长期</button>
             <button type="button" class="pill${S.captureZone === 'idea' ? ' on' : ''}"
                     data-capzone="idea" aria-pressed="${S.captureZone === 'idea' ? 'true' : 'false'}">想法</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ★ v5.0 示例数据：给"想试功能但还没攒够数据"的人用。
+           三条硬规则写在 demoFill 上方：只加不盖 / 每条带 demo 标记 / 设置页显示条数。
+           清空按钮在没有示例时是禁用的 —— 免得用户点一下以为删掉了自己的东西。 -->
+      <section class="glass set-card${rv()}"${rvd(170)}>
+        <h3>示例数据</h3>
+        <p class="set-sub">只为试功能用。示例条目和你自己的条目**完全分开** —— 一键清空只删带标记的那些，删不到你自己的。</p>
+        <div class="set-row">
+          <div class="set-txt">
+            <b>现在有 <span class="mono">${demoCount()}</span> 条示例</b>
+            <span>放进来的是：今天到期 / 逾期 / 长期 / 短期 / 循环 / 复合目标 / 高优先的待办，
+              以及带三层父子、续写时间轴、合并血缘、沉睡、已收起的想法 —— 这一版新加的东西都能立刻看到形状。
+              日期按"今天"算，过几天再放也不会变成一堆过期条目。</span>
+          </div>
+          <div class="seg-cap">
+            <button type="button" class="pill" data-act="demofill">放一批进来</button>
+            <button type="button" class="pill${demoCount() ? '' : ' is-off'}" data-act="democlear"
+                    ${demoCount() ? '' : 'disabled'} aria-disabled="${demoCount() ? 'false' : 'true'}">清空示例</button>
           </div>
         </div>
       </section>
@@ -6457,6 +6582,9 @@ view.addEventListener('click', e => {
   if (act === 'batchspark'){ batchStart('spark'); return; }
   if (act === 'batchgrow'){ batchStart('grow'); return; }
   if (act === 'gesturehelp'){ openGestureHelp(); return; }
+  /* ★ v5.0 示例数据：只加不盖、每条带 demo 标记、一键清只删带标记的（见 demoFill 上方注释） */
+  if (act === 'demofill'){ demoFill(); return; }
+  if (act === 'democlear'){ demoClear(); return; }
   /* ★ v5.0 主视图切换：清单页/统计页那套 .seg 分段开关（用户要求"跟它们差不多"）。
      两个按钮各带一个确定的目标值（data-lay），不是"点一下就翻面"——
      分段开关的语义是**选一个**，不是**切一下**；两者在无障碍上也不一样（aria-pressed vs 无状态）。
