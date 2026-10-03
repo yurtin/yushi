@@ -759,6 +759,18 @@ body:not([data-view="settings"]) .pdaim-footer{display:none}
   transition:background var(--mo-quick) ease;
 }
 .zone>header:active::before,.zone.pressing>header::before{background:var(--tap)}
+/* ★ v5.0：**没有 header 的卡片**（想法卡 / 设置卡）也要有同一个"按下一层灰罩"。
+   清单与统计的卡靠上面的 `.zone>header::before` 承担；这两种卡没有 header，
+   于是四个屏里只有它们点了没反应 —— 用户提的就是这个不一致（四屏形制现在一样了）。
+   为什么仍然走 .tapping 类而不是 :active：:active 会沿激活链命中祖先，
+   点卡片里的按钮 / 输入框时整张卡也会跟着灰，叠成"灰两层"。委托里把控件排除掉即可。
+   z-index:-1 让它画在卡片背景之上、内容之下（.glass 有 isolation:isolate，不会漏到卡外）。 */
+.idea-card,.set-card{position:relative}
+.idea-card::after,.set-card::after{
+  content:'';position:absolute;inset:0;border-radius:inherit;background:transparent;
+  pointer-events:none;z-index:-1;transition:background var(--mo-quick) ease;
+}
+.idea-card.tapping::after,.set-card.tapping::after{background:var(--tap)}
 /* ★ v3.38（用户："点击『长期』展开后字体会变蓝……点击哪个哪个才变蓝，而且缩起之后还一直保持变蓝，
    直到我点下一个才改变。这个变蓝没必要"）：
    根因是把颜色挂在 `:hover` 上 —— 触摸设备点一下就命中 `:hover`，而且**手指抬起来不会撤销**，
@@ -1476,6 +1488,10 @@ html.soft-render .feature-card:hover{transform:none}
   margin:22px 0 0;font-size:13px;font-weight:900;letter-spacing:.2em;text-transform:uppercase;color:var(--fg);
 }
 .set-card > .set-sub{margin:8px 0 0;font-size:12.5px;line-height:1.6;color:var(--faint);font-weight:600}
+/* ★ v5.0：设置页的两选一（没写时间的条目默认去哪）。两颗 pill 并排，
+   选中态沿用全站 `.pill.on`，不新造一套"选中"语言。 */
+.seg-cap{display:flex;gap:6px;flex:0 0 auto;align-self:center}
+.seg-cap .pill{padding:6px 14px;font-size:13px}
 .set-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 16px;
   padding:20px 0 4px;border-top:1px solid var(--line);margin-top:16px}
 /* v3.3（用户："外观下的主题部分太大了，字窝在左边、按钮弄到右边，占的太多"）：
@@ -2426,6 +2442,22 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
    16px 一步；第 5 层起加 .flat（不再位移），层级改由卡上的「第 N 层」小标表达。 */
 .seed-node{display:block;min-width:0}
 .seed-kids{display:grid;gap:14px;padding-left:16px;margin-top:14px;min-width:0}
+/* ★ v5.0：**缩进之外再加连接线**。用户实测反馈：「单纯缩进一下看不太出来」
+   —— 是下一级、还是另外一棵，光靠位移分不清。
+   做法是常见的树形骨架：每个孩子一根拐角横线接到左边那条竖脊上；
+   竖脊由"除最后一个之外"的孩子自己往下画一段（含 14px 的行距），
+   所以线的末端正好停在最后一个孩子的拐角处，不会拖出一截无意义的尾巴。 */
+.seed-kids > .seed-node{position:relative}
+.seed-kids > .seed-node::after{
+  content:'';position:absolute;left:-9px;top:26px;width:9px;height:1px;
+  background:var(--line,var(--pill));opacity:.65;
+}
+.seed-kids > .seed-node:not(:last-child)::before{
+  content:'';position:absolute;left:-9px;top:26px;bottom:-14px;width:1px;
+  background:var(--line,var(--pill));opacity:.65;
+}
+.seed-kids.flat > .seed-node::after,
+.seed-kids.flat > .seed-node::before{display:none}   /* 第 5 层起不再缩进，线也一并收掉 */
 .seed-kids.flat{padding-left:0}
 .seed-kids[hidden]{display:none}
 
@@ -3235,15 +3267,17 @@ const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', t
        lastOpenedSeed 最近点开过的种子 id —— 回顾槽位 2（"跟最近这条有关"）用它
        lastScanAt     上次 AI 关联扫描的时间戳（距今 > 24h 才再扫）
        ideaReview     「想法回顾」总开关（设置页），默认开
-       ideaReviewDone 今天已经把回顾抽屉处理完了（存日期）—— 当天不再推，次日自动失效 */
-  ideaUsedAt: null, lastOpenedSeed: null, lastScanAt: 0, ideaReview: true, ideaReviewDone: null };
+       ideaReviewDone 今天已经把回顾抽屉处理完了（存日期）—— 当天不再推，次日自动失效
+       captureZone    「没写时间的条目默认去哪」：'long'（默认，老习惯）| 'idea' */
+  ideaUsedAt: null, lastOpenedSeed: null, lastScanAt: 0, ideaReview: true, ideaReviewDone: null,
+  captureZone: 'long' };
 /* 清单页的四个分区（渲染顺序见 renderList）。折叠状态存的就是这几个键，
    load() 拿它当白名单过滤 —— 不让数据里的任意字符串混进 class 名。 */
 /* ★ v5.0：「考虑」已并入想法（行尾 ? 直接建种子），分区里不再有 consider。
    老存档里 foldedZones 含 'consider' 的会被这里过滤掉 —— 那个分区已经不存在了。 */
 const ZONES = ['long', 'short', 'repeat', 'idea'];
 /* ★ v3.50 随手记 / 种子（第 2 批）：一条条目有两种**形状**，不是两种数据。
-     kind:'task'（缺省）＝已定型要消耗的待办；kind:'seed' ＝还没定型的想法，会长、会分叉、会合并。
+     kind:'task'（缺省）＝已定型要消耗的待办；kind:'seed' ＝还没定型的想法，会长、会长出、会合并。
      形状与「分区」是两条轴：分区回答"要不要做"，kind 回答"定没定型"。
      所以种子复用同一份存储、同一个编辑器、同一个 itemHTML —— 不新开一套数据管道。
         sparks:   [{at:'2026-09-29', text:'...'}]  种子自己长出来的时间轴（正序）
@@ -3347,6 +3381,7 @@ function load(){
       S.lastScanAt = Number.isFinite(o.lastScanAt) ? o.lastScanAt : 0;
       S.ideaReview = o.ideaReview !== false;
       S.ideaReviewDone = typeof o.ideaReviewDone === 'string' ? o.ideaReviewDone : null;
+      S.captureZone = o.captureZone === 'idea' ? 'idea' : 'long';
     }
   } catch (e){}
   syncTags();
@@ -3365,6 +3400,7 @@ function save(){
       /* ★ v5.0 想法系统的全局状态 */
       ideaUsedAt: S.ideaUsedAt, lastOpenedSeed: S.lastOpenedSeed,
       lastScanAt: S.lastScanAt, ideaReview: S.ideaReview, ideaReviewDone: S.ideaReviewDone,
+      captureZone: S.captureZone,
       voiceVersion: 2   /* 语音默认值只迁移一次，之后用户自己的开关说了算（见 load 的说明） */
     }));
     saveFailed = false;
@@ -3385,7 +3421,8 @@ function snapshot(){
     foldedZones: S.foldedZones, theme: S.theme, listMode: S.listMode, voice: S.voice,
     /* ★ v5.0：想法系统的全局状态也进备份，否则换设备后回顾的频次判定会从头开始 */
     ideaUsedAt: S.ideaUsedAt, lastOpenedSeed: S.lastOpenedSeed,
-    lastScanAt: S.lastScanAt, ideaReview: S.ideaReview, ideaReviewDone: S.ideaReviewDone
+    lastScanAt: S.lastScanAt, ideaReview: S.ideaReview, ideaReviewDone: S.ideaReviewDone,
+    captureZone: S.captureZone
   };
 }
 /* 去空白、去空串、去重（保留先后顺序） */
@@ -3435,7 +3472,10 @@ function addItem(text){
   if (p.zone === 'idea'){
     it.kind = 'seed';
     it.zone = 'idea';
-    it.sparks = [{ at: ymd(new Date()), text: p.title }];
+    /* ★ v5.0：sparks 从**空**开始。时间轴的第一步是"种子本身"（渲染时用 createdAt + title
+       画成实心点），再往 sparks 里塞一句一模一样的，用户看到的就是"刚记下就自己续写了一遍"
+       —— v3.6.0 的真 bug。续写才往里加东西。 */
+    it.sparks = [];
     it.bornFrom = null; it.promoted = null; it.hw = null; it.repeat = null;
     it.suggest = []; it.reviewedAt = null; it.aiUse = null;
   }
@@ -3629,7 +3669,7 @@ function seedHTML(it, info){
         <span class="chip seedchip">种子</span>
         ${pri ? `<span class="chip prichip p${pri}">${pri === 2 ? '紧急' : '重要'}</span>` : ''}
         ${sparks.length ? `<span class="chip">${sparks.length} 步</span>` : ''}
-        ${kidCount ? `<span class="chip kidchip" title="它长出了几条">子 ${kidCount}</span>` : ''}
+        ${kidCount ? `<span class="chip kidchip" title="从这里还长出了 ${kidCount} 条">↳ ${kidCount}</span>` : ''}
         ${sugN ? `<span class="chip suggestchip" data-act="suggestopen" data-id="${esc(it.id)}" role="button" tabindex="0" title="AI 觉得它可能该挂在别的想法下面">✦ ${sugN}</span>` : ''}
         ${sleeping ? `<span class="chip sleepchip" title="最后动过是 ${sleepDays} 天前">${sleepDays} 天前</span>` : ''}
         ${depth >= 5 ? `<span class="chip depthchip" title="缩进最多 4 层，这已经是第 ${depth} 层">第 ${depth} 层</span>` : ''}
@@ -3637,10 +3677,11 @@ function seedHTML(it, info){
         ${src ? `<span class="chip srcchip" title="合并自这些想法">来自 ${esc(src)}</span>` : ''}
         ${tags}
       </div>
-      /* ★ v5.0：卡片上那 5 枚小按钮搬进**长按菜单**了（见 openSeedSheet）。
-         卡片只剩内容；长按是隐藏手势，所以留一行极淡的说明保证能被发现。 */
+      <!-- ★ v5.0：卡片上那 5 枚小按钮搬进**长按菜单**了（见 openSeedSheet）。
+           卡片只剩内容；长按是隐藏手势，所以留一行极淡的说明保证能被发现。
+           注意这里必须是 HTML 注释：模板字符串里的 /* */ 会被当成文字渲染出来 —— v3.6.0 就是这么错的。 -->
       <div class="acts seed-acts">
-        <span class="seed-longhint">长按卡片：续写 / 分叉 / 立项 / 编辑 / 合并 / 收起来 / 删除</span>
+        <span class="seed-longhint">长按卡片：续写 / 长出 / 立项 / 编辑 / 合并 / 收起来 / 删除</span>
       </div>
     </div>
   </div>`;
@@ -4049,7 +4090,7 @@ function reviewDrawerHTML(){
     return `<div class="review-item" data-id="${esc(it.id)}">
       <div class="ri-why">${esc(reviewWhy(it))}</div>
       <div class="ri-title">${esc(it.title)}</div>
-      <div class="ri-sub">${(Array.isArray(it.sparks) ? it.sparks.length : 0)} 步${kids ? ' · 子 ' + kids : ''}</div>
+      <div class="ri-sub">${(Array.isArray(it.sparks) ? it.sparks.length : 0)} 步${kids ? ' · ↳ ' + kids : ''}</div>
       <div class="ri-acts">
         <button type="button" class="mini" data-act="sparkadd" data-rev="1" data-id="${esc(it.id)}">＋ 续写</button>
         <button type="button" class="mini" data-act="promote" data-rev="1" data-id="${esc(it.id)}">↙ 立项</button>
@@ -4094,7 +4135,7 @@ function renderIdeas(){
   let h = `<div class="section-intro${rv()}">
       <p class="section-kicker">Idea</p>
       <h2>想法</h2>
-      <p class="intro-note">还没定型的念头放这儿。<b>续写</b>＝这条又长出了什么；<b>分叉</b>＝从它岔出一条<b>子想法</b>（会缩进在它下面）；<b>合并</b>＝勾两条以上，生出一条新的，原来两条都留着；<b>立项</b>＝把它变成一条待办。<br>它不是待办，不需要被"做完"。用过了在卡片上长按 → <b>收起来</b>，它就暗下去、沉到底部「用过了」；点「继续想」又亮回来 —— 毕竟想法是可以继续生长的。</p>
+      <p class="intro-note">还没定型的念头放这儿。<b>续写</b>＝这条又长出了什么；<b>长出</b>＝从它分出去一条新的（会缩进在它下面）；<b>合并</b>＝勾两条以上，生出一条新的，原来两条都留着；<b>立项</b>＝把它变成一条待办。<br>它不是待办，不需要被"做完"。用过了在卡片上长按 → <b>收起来</b>，它就暗下去、沉到底部「用过了」；点「继续想」又亮回来 —— 毕竟想法是可以继续生长的。</p>
     </div>
     <div class="idea-toolbar${rv()}"${rvd(30)}>
       <button class="btn primary idea-new" data-act="seednew">＋ 新想法</button>
@@ -4234,15 +4275,16 @@ function seedAddSpark(it, text){
   it.sparks.push({ at: ymd(new Date()), text: tx });
   save(); return true;
 }
-/* 分叉：从这条岔出一条新的。新种子保留原文作为"来自"的线索，但**不复制**时间轴 ——
-   时间轴是这条种子自己的生长记录，复制过去会让两条看起来一模一样，反而看不出分叉。
-   挂在标题上留痕（来源标题），这样一眼能看出它是从哪儿岔出来的。 */
-function seedFork(it, title){
+/* 长出：从这条分出去一条新的。新种子保留原文作为"来自"的线索，但**不复制**时间轴 ——
+   时间轴是这条种子自己的生长记录，复制过去会让两条看起来一模一样，反而看不出是从哪儿长出来的。 */
+function seedGrow(it, title){
   const t = String(title || '').trim();
-  if (!t){ toast('写点什么再分叉'); return null; }
-  /* ★ v5.0：分叉现在是**长出一条子想法**（parent 指向它），不再是平铺的第二条种子。
-     缩进本身就把"来自谁"说清楚了，所以不再往 bornFrom 里塞来源 ——
+  if (!t){ toast('写点什么再长出'); return null; }
+  /* ★ v5.0：长出＝**挂到这条下面的一条新想法**（parent 指向它），不再是平铺的第二条种子。
+     父子的缩进本身就把"从谁出来"说清楚了，所以不再往 bornFrom 里塞来源 ——
      bornFrom 从此只表示"合并自哪几条"，一个字段一个意思，不兼职。
+     **措辞上刻意不说"子想法"**：这条新想法有时是"归属"（本来就是它的一部分），
+     有时是"在它身上发展出来的新东西" —— 用"子/父"会把关系说死。
      新种子默认展开父节点，否则刚长出来的那条会被折叠在下面、看不见。 */
   const nx = newSeed(t, { tags: [...(it.tags || [])], pri: it.pri || 0, parent: it.id });
   if (!nx) return null;
@@ -4255,24 +4297,29 @@ function seedFork(it, title){
 /* ★ v5.0：把一条已有条目**就地**变成想法（录入提示条的那个按钮用）。
    与 addItem 里「行尾 ?」那条路保持同一形状 —— 两条路造出来的种子必须一模一样，
    否则一条有时间轴起点、一条是空轴，用户会以为是坏的。 */
-function taskToSeed(it){
+function taskToSeed(it, quiet){
   if (!it || isSeed(it)) return null;
   it.kind = 'seed';
   it.zone = 'idea';
   it.date = null; it.dateEnd = null; it.monthOnly = false; it.time = null; it.repeat = null;
   it.hw = null; it.promoted = null; it.bornFrom = null; it.parent = null;
+  /* 只有"原文比标题更长"时才把原文当第一步 —— 否则标题和第一步一模一样，看着像重复 */
   if (!Array.isArray(it.sparks) || !it.sparks.length){
-    it.sparks = [{ at: ymd(new Date()), text: it.raw || it.title }];
+    const extra = String(it.raw || '').trim();
+    it.sparks = (extra && extra !== String(it.title || '').trim())
+      ? [{ at: ymd(new Date()), text: extra }] : [];
   }
   if (!Array.isArray(it.suggest)) it.suggest = [];
   if (it.reviewedAt === undefined) it.reviewedAt = null;
   if (it.aiUse === undefined) it.aiUse = null;
   S.ideaUsedAt = ymd(new Date());
   save(); refresh();
-  toast('已存成想法 —— 在底栏左端那颗灯泡里', '去看看', () => {
-    S.view = 'idea'; ANIM = true; refresh();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  });
+  if (!quiet){
+    toast('已存成想法 —— 在底栏左端那颗灯泡里', '去看看', () => {
+      S.view = 'idea'; ANIM = true; refresh();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
   return it;
 }
 /* ★ v5.0 立项三步走（用户定稿）：点「立项」→ 预填 → 弹确认页 → 确认才真立项。
@@ -4313,10 +4360,12 @@ function seedFromTask(it){
   if (!it || isSeed(it)) return null;
   const t = String(it.raw || it.title || '').trim();
   if (!t){ toast('这条待办没内容'); return null; }
+  /* 第一步只在"原文确实比标题多出东西"时才写 —— 否则标题和第一步一模一样，看着像重复 */
+  const hasExtra = t !== String(it.title || '').trim();
   return newSeed(it.title || t, {
     raw: t, tags: [...(it.tags || [])], pri: it.pri || 0,
     bornFrom: [it.id],
-    sparks: [{ at: ymd(new Date()), text: t }]
+    sparks: hasExtra ? [{ at: ymd(new Date()), text: t }] : []
   });
 }
 /* 立项后的双向活链（1.13）中的**读**这一半：谁是从这条待办立项出来的 */
@@ -4401,7 +4450,7 @@ function openSeedSheet(it){
     `<div class="sheet-head"><b>${esc(it.title)}</b></div>
      <div class="sheet-list">
        ${item('sparkadd', '＋ 续写', '现在多了什么信息')}
-       ${item('fork', '⑂ 分叉', '从它岔出一条子想法')}
+       ${item('fork', '⑂ 长出', '从这里分出去一条新的')}
        ${item('promote', '↙ 立项', '把它变成一条待办')}
        ${item('edit', '✎ 编辑', '改标题 / 标签 / 重要程度')}
        ${item('mergepick', '⧉ 合并', '选上它，再勾别的')}
@@ -4621,6 +4670,23 @@ function renderSettings(){
           </div>
           <button class="switch" data-set="ideaReview" role="switch" aria-label="想法回顾"
                   aria-checked="${S.ideaReview ? 'true' : 'false'}"></button>
+        </div>
+        <!-- ★ v5.0：录入界面（中间那颗圆钮）新建条目时，**没写时间**的默认去哪。
+             默认仍是「长期」—— 不改老习惯；切成「想法」之后，没写时间的一律直接长成想法。
+             为什么做成设置而不是录入时的开关：录入那一刻不该逼人做决定（调研的硬结论），
+             而"我平时记的到底是任务还是念头"这件事，回答一次就够了。 -->
+        <div class="set-row">
+          <div class="set-txt">
+            <b>没写时间的条目默认去哪</b>
+            <span>新建时如果一句话里没解析出任何日期，它算「长期待办」还是直接算「想法」。
+              选「想法」的话，随手记下的半截念头不用再点一次「存入想法」。</span>
+          </div>
+          <div class="seg-cap" role="group" aria-label="没写时间的条目默认去哪">
+            <button type="button" class="pill${S.captureZone !== 'idea' ? ' on' : ''}"
+                    data-capzone="long" aria-pressed="${S.captureZone !== 'idea' ? 'true' : 'false'}">长期</button>
+            <button type="button" class="pill${S.captureZone === 'idea' ? ' on' : ''}"
+                    data-capzone="idea" aria-pressed="${S.captureZone === 'idea' ? 'true' : 'false'}">想法</button>
+          </div>
         </div>
       </section>
 
@@ -5579,7 +5645,22 @@ function commitEntry(){
        不点就自己消失，不阻塞，也不改变"默认算待办"这件事。
        只在新建时给；编辑已有条目不弹（否则每次改长期都要被问一遍）。 */
     const tActs = [{ label: '撤销', fn: () => { S.items = S.items.filter(x => x.id !== it.id); save(); refresh(); } }];
-    if (!it.date && !isSeed(it)) tActs.unshift({ label: '存入想法', fn: () => taskToSeed(it) });
+    if (!it.date && !isSeed(it)){
+      if (S.captureZone === 'idea'){
+        /* ★ v5.0：设置里把默认落点切成「想法」→ 没写时间的一律直接长成想法。
+           录入那一刻仍然不做任何决定，只是落点变了。 */
+        taskToSeed(it, true);
+        toast('已存成想法 —— 在底栏左端那颗灯泡里', '去看看', () => {
+          S.view = 'idea'; ANIM = true; refresh();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+        const sec0 = document.getElementById('view');
+        if (sec0 && sec0.getBoundingClientRect().top > window.innerHeight * 0.6)
+          sec0.scrollIntoView({ behavior:'smooth', block:'start' });
+        return;
+      }
+      tActs.unshift({ label: '存入想法', fn: () => taskToSeed(it) });
+    }
     toast('已加入「' + zl + '」' + (it.date ? ' · ' + dateLabel(it) : '') +
           ((it.tags && it.tags.length) ? ' · ' + it.tags.join('/') : ''),
       tActs, 6000);
@@ -5672,7 +5753,7 @@ view.addEventListener('keydown', e => {
 });
 
 view.addEventListener('click', e => {
-  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode]');
+  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone]');
   if (!el) return;
 
   /* 分区折叠（长期 / 短期 / 循环 / 考虑）：复用 .zone 高度过渡（foldZoneWithMotion），
@@ -5821,6 +5902,15 @@ view.addEventListener('click', e => {
     refresh(); return;
   }
   if (act === 'ideatagclear'){ ideaUI.tags = []; refresh(); return; }
+  /* ★ v5.0：「没写时间的条目默认去哪」—— 只改默认落点，不改录入流程本身 */
+  if (el.dataset.capzone){
+    S.captureZone = el.dataset.capzone === 'idea' ? 'idea' : 'long';
+    save(); refresh();
+    toast(S.captureZone === 'idea'
+      ? '以后没写时间的条目直接长成想法'
+      : '以后没写时间的条目还是进「长期」');
+    return;
+  }
   /* ---- ★ v5.0 回顾抽屉 ---- */
   if (act === 'reviewtoggle'){
     const cur = ideaUI.reviewOpen === null ? (reviewDaysSinceUse() > 7) : !!ideaUI.reviewOpen;
@@ -5883,7 +5973,7 @@ view.addEventListener('click', e => {
     refresh(); return;
   }
   if (act === 'sparkcancel'){ ideaUI.sparkOpen = null; refresh(); return; }
-  if (act === 'fork' && it){ openSeedPrompt('从「' + it.title + '」分叉', '新想法的第一句', '从这儿岔出去的另一条', v => { if (seedFork(it, v)) refresh(); }); return; }
+  if (act === 'fork' && it){ openSeedPrompt('从「' + it.title + '」长出', '新的想法第一句', '从这里分出去的那条', v => { if (seedGrow(it, v)) refresh(); }); return; }
   if (act === 'promote' && it){ openSeedPromote(it); return; }
   if (act === 'gototask' && it){
     const t = it.promoted && S.items.find(x => x.id === it.promoted);
@@ -6023,12 +6113,21 @@ function resetFoldZone(sec){
    capture 阶段监听：条目里的按钮仍先处理自己的事，互不干扰。 */
 document.addEventListener('pointerdown', e => {
   const h = e.target && e.target.closest ? e.target.closest('[data-zfold]') : null;
-  document.querySelectorAll('.zone.pressing').forEach(z => z.classList.remove('pressing'));
-  if (h){ const z = h.closest('.zone'); if (z) z.classList.add('pressing'); }
+  document.querySelectorAll('.zone.pressing, .idea-card.tapping, .set-card.tapping')
+    .forEach(z => z.classList.remove('pressing', 'tapping'));
+  if (h){ const z = h.closest('.zone'); if (z) z.classList.add('pressing'); return; }
+  /* ★ v5.0：没有 header 的卡片（想法卡 / 设置卡）走同一套按下反馈。
+     按钮 / 输入框 / 链接不算 —— 它们有自己的 :active，叠在一起会"灰两层"。 */
+  const t = e.target;
+  if (t && t.closest && !t.closest('button, a, input, textarea, select, [data-act]')){
+    const c = t.closest('.idea-card, .set-card');
+    if (c) c.classList.add('tapping');
+  }
 }, true);
 ['pointerup', 'pointercancel'].forEach(nm =>
   document.addEventListener(nm, () => {
-    document.querySelectorAll('.zone.pressing').forEach(z => z.classList.remove('pressing'));
+    document.querySelectorAll('.zone.pressing, .idea-card.tapping, .set-card.tapping')
+      .forEach(z => z.classList.remove('pressing', 'tapping'));
   }, true));
 
 function foldZoneWithMotion(el){
@@ -6377,8 +6476,8 @@ modal.addEventListener('click', e => {
   if (!it) return;
   if (act === 'sparkadd'){ ideaUI.sparkOpen = it.id; refresh(); return; }
   if (act === 'fork'){
-    openSeedPrompt('从「' + it.title + '」分叉', '新想法的第一句', '从这儿岔出去的另一条',
-      v => { if (seedFork(it, v)) refresh(); });
+    openSeedPrompt('从「' + it.title + '」长出', '新的想法第一句', '从这里分出去的那条',
+      v => { if (seedGrow(it, v)) refresh(); });
     return;
   }
   if (act === 'promote'){ openSeedPromote(it); return; }
@@ -7077,11 +7176,10 @@ function openItemEditor(it, isNew, onSaved){
     if (it.zone === 'idea'){
       it.kind = 'seed';
       if (!Array.isArray(it.sparks)) it.sparks = [];
-      /* ★ v5.0：刚变成种子、时间轴还空着 → 拿标题起第一步。
-         否则想法卡是一条没有起点的空轴，看着像坏了。
-         已经有 sparks 的（真种子、续写过的）一律不动。 */
-      if (!it.sparks.length) it.sparks.push({ at: ymd(new Date()), text: it.raw || it.title });
-      /* 字段形状跟 newSeed() 对齐 —— 两条路（新建 / 编辑器改分区）造出来的种子必须一样 */
+      /* ★ v5.0：**不再**自动往 sparks 里塞第一条。
+         时间轴的第一步是"种子本身"（渲染时用 createdAt + title 画），
+         自动塞一条相同文本的 spark，用户会看到"刚记下就自己续写了一遍"——v3.6.0 的真 bug。
+         合并之后紧接着 openEdit 的场景最容易被看见：合并出的种子一保存就多出一模一样的一步。 */
       if (!Array.isArray(it.suggest)) it.suggest = [];
       if (it.reviewedAt === undefined) it.reviewedAt = null;
       if (it.aiUse === undefined) it.aiUse = null;
@@ -7231,6 +7329,7 @@ window.addEventListener('drop', e => {
           if (Number.isFinite(o.lastScanAt)) S.lastScanAt = o.lastScanAt;
           if (typeof o.ideaReview === 'boolean') S.ideaReview = o.ideaReview;
           if (typeof o.ideaReviewDone === 'string') S.ideaReviewDone = o.ideaReviewDone;
+          if (o.captureZone === 'idea' || o.captureZone === 'long') S.captureZone = o.captureZone;
           save(); applyHelp(); refresh();
           toast('已从备份恢复 ' + S.items.length + ' 条');
         });
@@ -7481,7 +7580,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '3.6.0';
+const APP_VERSION = '4.0.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
