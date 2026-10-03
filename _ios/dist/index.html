@@ -1706,6 +1706,30 @@ input:focus-visible,textarea:focus-visible{outline:none!important}
 @keyframes fall{from{opacity:1;transform:none}to{opacity:0;transform:translateY(10px) scale(.985)}}
 .mask.closing{animation:fadeout .17s ease both}
 .mask.closing .modal{animation:fall .17s cubic-bezier(.4,0,.7,1) both}
+/* ★ v5.0「去程」退场：往哪个方向送走，弹层就往哪边收。
+   配合「立项」的语义 —— 把这条想法送去清单（底栏右边那个页签）。
+   曲线刻意**不带过冲**：它是在"送走"，不是在"弹开"；
+   过冲留给"东西回来了"那类动作（比如继续想）。 */
+.mask.exit-right .modal{animation:leaveR .22s cubic-bezier(.4,0,.2,1) both}
+.mask.exit-left  .modal{animation:leaveL .22s cubic-bezier(.4,0,.2,1) both}
+@keyframes leaveR{from{transform:translateX(0) scale(1);opacity:1}
+                  to{transform:translateX(28%) scale(.97);opacity:0}}
+@keyframes leaveL{from{transform:translateX(0) scale(1);opacity:1}
+                  to{transform:translateX(-28%) scale(.97);opacity:0}}
+@media (prefers-reduced-motion: reduce){
+  .mask.exit-right .modal,.mask.exit-left .modal{animation:fall .12s ease both}
+}
+/* ★ v5.0：目标页签的"收到"回执 —— 一次性的颜色/位移脉冲，播完自动回常态。
+   实测过的坑：把颜色挂在 :hover 上会在触摸端**粘住**（见 .zone>header 那段），
+   所以这里走 animation 而不是 hover/类态。
+   只用 color + transform：两者都能走合成器。**不用 filter** ——
+   动画化的 filter 在安卓 WebView 上会被丢回软件光栅化（早期版本踩过）。 */
+.tab.tab-ping{animation:tabPing .46s cubic-bezier(.2,.9,.25,1) 1}
+@keyframes tabPing{
+  0%  {color:var(--muted); transform:translateY(0)    scale(1)}
+  38% {color:var(--accent);transform:translateY(-3px) scale(1.15)}
+  100%{color:var(--muted); transform:translateY(0)    scale(1)}
+}
 
 /* ---------- 4. 打勾 / 删除的退场动画 ----------
    ★ 3.5.2（用户重新定义，两条都照这个来）：
@@ -4411,6 +4435,12 @@ function openSeedPromote(it, sparkText, sparkIdx){
     seedPromote(it, task);
     /* 部分转化：只把被点的那一步标记成已立项，其余一步不动 */
     if (sparkIdx != null && it.sparks[sparkIdx]){ it.sparks[sparkIdx].promotedTo = task.id; save(); refresh(); }
+  }, {
+    /* ★ v5.0「去程」：立项＝把这条想法送去**清单**（底栏右边那个页签），
+       所以确认页往右收 + 清单页签亮一下当回执。
+       批量立项时**不脉冲** —— 一次处理 4 条就闪 4 次，那不是回执是噪音。 */
+    dir: 'right',
+    ping: (typeof batchQ !== 'undefined' && batchQ.kind === 'promote') ? null : 'list'
   });
 }
 /* 「重新想」：待办做不下去 → 重新种下一条想法（1.11）。
@@ -6487,10 +6517,30 @@ const mask = document.getElementById('mask'), modal = document.getElementById('m
       会把刚填好的新弹窗内容清空（症状是"弹窗闪一下就空了"）；
    ② prefers-reduced-motion：用户已声明不要动效，别让他白等这 170ms，直接关。 */
 const MASK_OUT_MS = 170;
+/* ★ v5.0：「去程」退场比默认那次长一点 —— 位移 + 淡出要看得清是被"送走"的，
+   170ms 只够淡出，看起来像凭空消失。 */
+const MASK_EXIT_MS = 220;
 let maskOutTimer = 0;
 /* ★ v5.0：弹层关闭后触发一次的回调。批量逐条处理用它推进队列（见 batchStep）。 */
 let modalAfterClose = null;
 function setModalAfterClose(fn){ modalAfterClose = fn; }
+/* ★ v5.0：这一次关闭的"去程"。只在**保存成功**那条路上设置（取消不走），
+   形状 { dir:'right'|'left', ping:'list'|null }。
+   为什么方向绑动作语义而不是手势方向：立项＝把想法送去清单（底栏右边那个页签），
+   不管你是从长按菜单点的、还是从批量里点的、还是以后右滑触发的，去向都是同一个 ——
+   否则同一个动作会有两种去向，反而更糊涂。 */
+let modalExit = null;
+/* 目标页签闪一下当"收到"的回执。**不改任何真实状态** ——
+   页签的 aria-current 全程不变，页面也不跳（会跳的话那是另一个动作，不是回执）。 */
+function pulseTab(view){
+  if (reduceMotion()) return;
+  const t = document.querySelector('.tab[data-view="' + view + '"]');
+  if (!t) return;
+  t.classList.remove('tab-ping');
+  void t.offsetWidth;                       // 强制回流，同一个动画才播得出来第二遍
+  t.classList.add('tab-ping');
+  setTimeout(() => t.classList.remove('tab-ping'), 560);
+}
 function reduceMotion(){
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e){ return false; }
 }
@@ -6541,7 +6591,7 @@ function openMask(){
 }
 function closeModalNow(){
   clearTimeout(maskOutTimer); maskOutTimer = 0;
-  mask.classList.remove('on', 'closing');
+  mask.classList.remove('on', 'closing', 'exit-right', 'exit-left');
   /* 时刻滑轮挂在 body 上（不是 .modal 里），不主动收掉就会变成弹窗关掉后
      还浮在页面上的一层。直接摘节点，不走 closeWheel()（它要回写已经不存在的输入框）。 */
   if (typeof wheelEl !== 'undefined' && wheelEl){ wheelEl.remove(); wheelEl = null; }
@@ -6574,6 +6624,15 @@ mask.addEventListener('keydown', e => {
 function closeModal(){
   clearTimeout(maskOutTimer); maskOutTimer = 0;
   if (!mask.classList.contains('on')) return closeModalNow();   // 没开着：别白挂一个 closing
+  /* ★ v5.0「去程」：这一步保存成功时带了方向 → 往那边收 + 目标页签闪一下回执。
+     只在保存路径设置 modalExit，所以取消走的仍是原来那次下落退场。 */
+  const ex = modalExit; modalExit = null;
+  if (ex && !reduceMotion()){
+    if (ex.dir) mask.classList.add('exit-' + ex.dir);
+    if (ex.ping) pulseTab(ex.ping);
+    maskOutTimer = setTimeout(closeModalNow, MASK_EXIT_MS);
+    return;
+  }
   if (reduceMotion()) return closeModalNow();
   mask.classList.add('closing');
   maskOutTimer = setTimeout(closeModalNow, MASK_OUT_MS);
@@ -7111,7 +7170,7 @@ function teRead(){
 
 /* 编辑弹层：既有条目编辑（isNew=false）与"语音 / 快捷录入"新建（isNew=true）共用同一套。
    复用现有的 .mask/.modal/.sel/makeSel，焦点陷阱 / 滚动锁 / Escape 关闭都靠 openMask 那套，不新造。 */
-function openItemEditor(it, isNew, onSaved){
+function openItemEditor(it, isNew, onSaved, exitOnSave){
   /* ★ v5.0：「考虑」并入想法，下拉里不再有它 */
   const zoneOpts = [['short','短期'], ['long','长期'], ['idea','想法']];
   const stOpts = [['todo','未开始'], ['doing','在做'], ['submitted','已交']];
@@ -7359,6 +7418,9 @@ function openItemEditor(it, isNew, onSaved){
     /* 新建：原文栏只读，所以 parseSmart 的结果（分区/标签/重要程度）在 openEditNew 里就已落成初值，
        这里不再重解析 —— 否则用户在弹层里手动改的分区/优先级会被原文静默盖掉。 */
     if (isNew) S.items.push(it);   // 新建：先入库存，再统一 save/refresh（编辑则本来就在库里）
+    /* ★ v5.0：只有**保存**这条路上才带"去程"方向 —— 取消不该走方向性退场、
+       也不该让目标页签亮（什么都没送出去）。所以方向在这里设，不在打开弹层时设。 */
+    if (exitOnSave) modalExit = exitOnSave;
     save(); closeModal(); refresh();
     /* ★ v5.0：onSaved 是给「立项确认页」用的钩子 —— 它编辑的是一条临时新待办，
        入库之后还要回种子上补一个「已立项」的留痕。有回调就不弹通用的"已加入"，
@@ -7740,7 +7802,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '4.1.0';
+const APP_VERSION = '4.1.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
