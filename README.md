@@ -5,9 +5,13 @@
 
 同时打包成两个平台：
 
-- **安卓** —— 一个 APK（最新版见 [Releases](https://github.com/yurtin/yushi/releases)），
-  权限只有 `RECORD_AUDIO`（危险权限，运行时申请）+ `VIBRATE`（普通）；
-  **不声明 `INTERNET`**，所以是零联网的
+- **安卓** —— **两个 APK**（最新版见 [Releases](https://github.com/yurtin/yushi/releases)）：
+  - `鱼事-pure-vX.Y.Z.apk` —— 权限只有 `RECORD_AUDIO`（危险权限，运行时申请）+ `VIBRATE`（普通）；
+    **不声明 `INTERNET`**，所以是零联网的（AI 那一栏用不了，停在"关闭"）
+  - `鱼事-ai-vX.Y.Z.apk` —— 多一条 `INTERNET`，AI 那一栏可用；**默认仍然是关闭**，
+    要在设置里自己打开，关着的时候一个字都不出手机
+  两个包同源同签名，只差这一条权限。`python _android\build.py` 出纯净版，加 `--ai` 出联网版；
+  构建日志与 `_tools/verify_apk.py` 都会**硬性断言**权限集合与包名对得上（纯净版里出现 INTERNET 直接构建失败）
 - **iOS** —— 一个 PWA（渐进式 Web 应用），Safari 打开后「添加到主屏幕」即成为全屏独立 App
 
 ![分享卡](鱼事-分享图-v3.5.5.png)
@@ -137,6 +141,8 @@ python _ios/build_pwa.py
   把 `https://appassets.androidplatform.net/` 映射到 APK 内的 assets，
   请求在进网络栈之前就被拦掉，所以既不建 socket、也不需要 `INTERNET` 权限，
   同时 `localStorage` 拿到的是一个稳定正规的 https origin。
+  （★ 5.0 起：页面本身仍然这么跑；联网版多出来的 `INTERNET` 只给 AI 那一栏用 ——
+  它在设置里**默认关闭**，关着时页面一个外部请求都不发。）
 - **JDK 21 编出来的 class 会让 d8 崩**。JDK 21 会给内部类构造器的 synthetic 参数写
   `MethodParameters` 且 `name_index = 0`，d8 解析无名参数时内部 NPE，报错位置和真凶无关。
   `-g:none` 关不掉，换 `--release` 也没用，只能换 JDK。

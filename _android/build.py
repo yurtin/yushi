@@ -11,7 +11,14 @@
 老版本对非 ASCII 路径有过翻车记录，这一步保险是白送的。
 
 跑法：
-    python _android\\build.py
+    python _android\\build.py          # 纯净版：不声明 INTERNET（鱼事-pure-vX.Y.Z.apk）
+    python _android\\build.py --ai     # 联网版：加 INTERNET，AI 那一栏可用（鱼事-ai-vX.Y.Z.apk）
+
+两个包同源同签名，只有"有没有 INTERNET"一条之差：
+    · 纯净版 = 「零联网」这个卖点的实物证据，权限核验会**硬性**断言不含 INTERNET；
+    · 联网版 = 给要用 AI 的人，权限核验会硬性断言含 INTERNET。
+`AndroidManifest.xml` 里**不写** INTERNET —— 它保持纯净版的真相源，
+联网版的那一行由本脚本在构建目录的副本上注入（见 main() 第 1 步）。
 """
 import os
 import re
@@ -118,6 +125,10 @@ def resolve_keystore_pass():
             '   （这个文件已在 .gitignore 里，不会进版本库）' % KS_PROP)
 
 OUT_NAME = '鱼事-v' + VERSION_NAME + '.apk'
+# ★ 5.0：双包 —— 默认纯净版（不声明 INTERNET），--ai 出联网版。
+#   两个包名只差一个词，装机后一眼能分清自己在用哪个。
+AI_BUILD = ('--ai' in sys.argv[1:])
+OUT_NAME = '鱼事-' + ('ai' if AI_BUILD else 'pure') + '-v' + VERSION_NAME + '.apk'
 
 # 控制台是 GBK（Windows 中文默认）时，日志里的 ✓ / ☐ 这类字符会让 print 抛
 # UnicodeEncodeError —— 而它发生在**最后一行日志**，于是构建明明成功、退出码却是 1
@@ -348,6 +359,27 @@ def main():
     res_dir = os.path.join(src_app, 'res')
     src_dir = os.path.join(src_app, 'src')
 
+    # ★ 5.0 双包：联网版的那一行 INTERNET 只注入到**构建目录的副本**上。
+    #   源 manifest 永远保持"零联网"的样子，纯净版因此不可能被误改。
+    if AI_BUILD:
+        with open(manifest, encoding='utf-8') as _mf:
+            _mt = _mf.read()
+        if 'android.permission.INTERNET' in _mt:
+            die('构建目录的 manifest 里已经有 INTERNET 了 —— 源 manifest 不该有它，先查一下。')
+        _anchor = '<uses-sdk'
+        if _anchor not in _mt:
+            die('manifest 里找不到 <uses-sdk>，INTERNET 注入的锚点没了。')
+        _mt = _mt.replace(_anchor,
+                          '<!-- ★ 联网版：由 build.py 的 ai 开关注入，源 manifest 里没有这一行'
+                          '（XML 注释里不能出现两个连字符，所以这里不写命令行原文） -->\n'
+                          '    <uses-permission android:name="android.permission.INTERNET" />\n    '
+                          + _anchor, 1)
+        with open(manifest, 'w', encoding='utf-8', newline='') as _mf:
+            _mf.write(_mt)
+        log('   联网版：已注入 INTERNET 权限（只在这个构建副本上）')
+    else:
+        log('   纯净版：不声明 INTERNET')
+
     # ---------- 2. aapt2 compile ----------
     log('\n== 2/8 aapt2 compile（编资源）==')
     compiled = os.path.join(WORK, 'compiled.zip')
@@ -494,10 +526,17 @@ def main():
     for line in badging.splitlines():
         if re.match(r'^(package|sdkVersion|targetSdkVersion|application-label|launchable-activity|application-icon)', line):
             log('   [badging] ' + line)
-    _rc, perms = run('aapt2 dump permissions（应为空 = 零权限）',
+    _rc, perms = run('aapt2 dump permissions（核对双包口径）',
                      [os.path.join(BT, 'aapt2.exe'), 'dump', 'permissions', dest], allow_fail=True)
-    if 'uses-permission' not in perms:
-        log('   ✓ 未声明任何权限')
+    _has_net = 'android.permission.INTERNET' in perms
+    if AI_BUILD:
+        if not _has_net:
+            die('这是 --ai 联网版，但包里没有 INTERNET —— AI 那一栏打开也连不上。')
+        log('   ✓ 联网版：含 INTERNET')
+    else:
+        if _has_net:
+            die('这是纯净版，但包里出现了 INTERNET —— 「零联网」的承诺被打破了，不许发出这个包。')
+        log('   ✓ 纯净版：不含 INTERNET')
 
     # 包名必须和脚本里写的一致 —— 包名同时决定"系统截图文件名里带什么"
     # （Screenshot_..._com_yushi_app_...），漂了用户第一眼就能看见。

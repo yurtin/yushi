@@ -3,13 +3,14 @@
 
 构建脚本说「成功」不算数，这个脚本只信 APK 文件里实际有什么：
     包名 / 版本 / minSdk / targetSdk
-    权限（恰好 RECORD_AUDIO + VIBRATE，且绝不含 INTERNET）
+    权限（RECORD_AUDIO + VIBRATE；纯净版绝不含 INTERNET，联网版必须含）
     应用名（中文，得单独按 UTF-8 读，不能被控制台编码带歪）
     签名是否通过
     里面的 assets/www/index.html 是否和项目里的 鱼事.html 逐字节一致
     resources.arsc 是不是 STORED + 4 字节对齐
 
-跑法：python _android\\_tools\\verify_apk.py
+跑法：python _android\\_tools\\verify_apk.py [路径] [--ai]
+    不带参数 = 项目目录里最新的 鱼事-*.apk；--ai 时按联网版的口径验权限。
 """
 import hashlib
 import os
@@ -46,7 +47,11 @@ with open(_MANIFEST, encoding='utf-8') as _f:
     _man = _f.read()
 _ver_name = re.search(r'android:versionName="([^"]+)"', _man)
 VER_EXPECT = _ver_name.group(1) if _ver_name else '?'
-APK = os.path.join(PROJECT, '鱼事-v' + VER_EXPECT + '.apk')
+# ★ 5.0 双包：文件名带 pure / ai 两档；带 --ai 就挑联网版，否则挑纯净版。
+#   也可以直接给一个 APK 路径（第一个不是 -- 开头的参数）。
+_AI_ARG = ('--ai' in sys.argv[1:])
+_path_arg = next((a for a in sys.argv[1:] if not a.startswith('--')), None)
+APK = _path_arg or os.path.join(PROJECT, '鱼事-' + ('ai' if _AI_ARG else 'pure') + '-v' + VER_EXPECT + '.apk')
 
 lines = []
 ok_all = True
@@ -106,11 +111,12 @@ check('有可启动 Activity',
       'launchable-activity: name=\'%s.MainActivity\'' % PKG_EXPECT in badging, '')
 check('自适应图标', 'mipmap-anydpi-v26/ic_launcher.xml' in badging, '')
 
-# ---- 2. 权限：恰好 RECORD_AUDIO + VIBRATE，且绝不含 INTERNET ----
+# ---- 2. 权限：RECORD_AUDIO + VIBRATE（+ 联网版才有 INTERNET）----
 # v2.3 为支持长按圆钮的设备端离线语音识别，有意加这两条权限。
-# 但「纯本地、零联网」是命根子：语音走 SpeechRecognizer 的 on-device 离线识别，
-# 模型在手机本地，绝不经过任何服务器，所以 INTERNET 一个字都不能有。
-# ⚠️ 这一条独立、醒目地断言：INTERNET 必须不存在。
+# 「纯本地、零联网」是纯净版的命根子：语音走 on-device 离线识别，模型在手机本地，
+# 绝不经过任何服务器 —— 所以纯净版里 INTERNET 一个字都不能有。
+# ★ 5.0 双包：默认按**纯净版**验（不含 INTERNET）；带 --ai 时按**联网版**验（必须含 INTERNET）。
+AI_PKG = ('--ai' in sys.argv[1:])
 say('\n-- 权限 --')
 _rc, raw = run([os.path.join(BT, 'aapt2.exe'), 'dump', 'permissions', APK])
 perms = raw.decode('utf-8', 'replace')
@@ -122,12 +128,18 @@ for l in perms.splitlines():
         perm_names.append(l[s:e])
 say('  原始权限列表: ' + (', '.join(perm_names) if perm_names else '（空）'))
 EXPECT_PERMS = {'android.permission.RECORD_AUDIO', 'android.permission.VIBRATE'}
+if AI_PKG:
+    EXPECT_PERMS = EXPECT_PERMS | {'android.permission.INTERNET'}
 got = set(perm_names)
-check('权限恰好为 {RECORD_AUDIO, VIBRATE}', got == EXPECT_PERMS,
+check('权限恰好为 ' + repr(sorted(EXPECT_PERMS)), got == EXPECT_PERMS,
       '实际集合=' + repr(got))
-# ★ v3.18：语音改成内置 Vosk 本地模型（模型在包里）→ 回到零联网底线，不再声明 INTERNET
-check('绝不声明 INTERNET（零联网底线）', 'android.permission.INTERNET' not in got,
-      'INTERNET 未出现 ✓' if 'android.permission.INTERNET' not in got else '意外声明了 INTERNET')
+if AI_PKG:
+    check('联网版必须含 INTERNET', 'android.permission.INTERNET' in got,
+          'INTERNET 在 ✓' if 'android.permission.INTERNET' in got else '缺 INTERNET，AI 连不上')
+else:
+    # ★ v3.18：语音改成内置 Vosk 本地模型（模型在包里）→ 回到零联网底线，不声明 INTERNET
+    check('纯净版绝不声明 INTERNET（零联网底线）', 'android.permission.INTERNET' not in got,
+          'INTERNET 未出现 ✓' if 'android.permission.INTERNET' not in got else '意外声明了 INTERNET')
 # v3.4 口径变更（用户拍板加「系统语音·可能联网」开关）：不再是"绝不声明 INTERNET"，
 # 而是"**默认零联网**"—— 开关关着时这条备用路线不会被走到。
 # ★ v3.18：离线语音的资源必须在包里，否则长按会走到"不支持"——这里独立断言一次

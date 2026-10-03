@@ -8,8 +8,8 @@
      3.5.0 → 3050000（旧的 3.1–3.39 是 30100–33900，新方案稳压它们一头，升级不会倒挂）。 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.yushi.app"
-    android:versionCode="4020200"
-    android:versionName="4.2.2">
+    android:versionCode="5000000"
+    android:versionName="5.0.0">
 
     <!--
       零联网仍是底线，但本版破了"零权限"：为支持长按圆钮的设备端离线语音识别，加了两条权限。
@@ -21,13 +21,19 @@
       为什么加 VIBRATE（普通权限）：
         长按手势的左右区分、起手反馈都靠震动，普通权限安装即授予、无感。
 
-      为什么仍然不声明 INTERNET：
-        这是本项目的命根子 —— 鱼事是一个纯本地、不上传任何内容的待办 App。
+      为什么仍然不声明 INTERNET（★ 5.0 起是"源文件不声明"）：
+        这是纯净版的命根子 —— 鱼事是一个纯本地、不上传任何内容的待办 App。
         语音走的是 SpeechRecognizer.createOnDeviceSpeechRecognizer() 的**设备端**离线识别
         （Android 12+/API 31+），识别模型在手机本地，不经过任何服务器；
         连不上网也照常能识别。内容仍由 shouldInterceptRequest 从 APK 的 assets 直接返回，
-        请求在进网络栈之前就被拦掉、不建任何 socket。所以 INTERNET 依旧一个字都不加。
-        可用 `aapt2 dump permissions 鱼事.apk` 当场验证：只会有 RECORD_AUDIO 和 VIBRATE。
+        请求在进网络栈之前就被拦掉、不建任何 socket。所以**这个文件里** INTERNET 依旧一个字都不加。
+        可用 `aapt2 dump permissions 鱼事-pure-*.apk` 当场验证：只会有 RECORD_AUDIO 和 VIBRATE。
+
+        ★ 5.0 双包：可选的 AI 功能要联网，所以出第二个包 `鱼事-ai-*.apk`。
+        实现方式是给 build.py 加一个「ai」开关（命令行上就是两个连字符加 ai），
+        由它把 INTERNET 注入到**构建目录里的副本**上（见 main() 第 1 步），
+        源文件这一行永远不存在 —— 纯净版因此不可能被误加权限。
+        两个包同签名同版本，装机后靠文件名区分。
     -->
 
     <!-- 麦克风：设备端离线语音识别要用。危险权限，运行时申请，可被用户拒绝。 -->
