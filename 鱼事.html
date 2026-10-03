@@ -2691,9 +2691,16 @@ html.soft-render .mask.sheet-mode .modal{
 }
 .gh-row b{flex:0 0 auto;font-size:13px;color:var(--fg);min-width:9em}
 .gh-row span{flex:1;min-width:12em;font-size:12.5px;line-height:1.6;color:var(--muted)}
-/* ★ v5.0：手势说明那颗 `?` 复用底栏图标键的 `.bar-ico`（40px 圆形热区 + 19px 细线 SVG），
+/* ★ v5.0：手势说明那颗 `?` 复用底栏图标键的 `.bar-ico`（40px 圆形热区 + 细线 SVG），
    所以这里只补一点间距，不另写一套按钮样式 —— 用户要求跟底栏导航同一个风格。 */
 .idea-toolbar .idea-help{margin-left:4px}
+/* ★ v5.0（用户："只要里面这个 UI 就行了，外面这个圆球就不要了，然后把里面的 UI 再放大一些"）：
+   ① **去掉外面那圈聚焦环** —— 里面的图标本身已经是一个圆圈，外面再套一圈就成了"双圈"。
+      键盘可见性不丢：改成用**底色**表示聚焦（还是看得见，只是不再多一圈线）。
+   ② 图标从 19px 放大到 **26px**（+37%）；描边相应降到 1.5，
+      放大后的视觉笔触 = 1.5 × 26/24 ≈ 1.63，跟底栏图标的 1.65 一致 —— 变大不变粗。 */
+.bar-ico.idea-help .np-ico{width:26px;height:26px;stroke-width:1.5}
+.bar-ico.idea-help:focus-visible{outline:none!important;background:var(--pill);border-radius:50%}
 
 /* ---------- ★ v5.0 树状图（第 2 批第 3 块） ----------
    画布是**一层 SVG 连线 + 一堆绝对定位的 HTML 节点**，外面套一个可平移缩放的平面。
