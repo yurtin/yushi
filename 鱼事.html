@@ -2668,6 +2668,51 @@ html.soft-render .mask.sheet-mode .modal{
 /* ★ v5.0：手势说明那颗 `?` 复用底栏图标键的 `.bar-ico`（40px 圆形热区 + 19px 细线 SVG），
    所以这里只补一点间距，不另写一套按钮样式 —— 用户要求跟底栏导航同一个风格。 */
 .idea-toolbar .idea-help{margin-left:2px}
+.idea-toolbar .idea-lay{margin-left:auto}
+
+/* ---------- ★ v5.0 树状图（第 2 批第 3 块） ----------
+   画布是**一层 SVG 连线 + 一堆绝对定位的 HTML 节点**，外面套一个可平移缩放的平面。
+   为什么不用 foreignObject 把 HTML 塞进 SVG：跨浏览器的排版差异太大，
+   而节点里要截断两行标题 —— 那是 HTML 的长项。
+   touch-action:none 必须写：不然单指拖会被浏览器当成滚动，画布永远拖不动。 */
+.tree-wrap{
+  position:relative;overflow:hidden;margin:6px 0 2px;
+  border-radius:22px;background:var(--bg);
+  border:1px solid var(--line,var(--pill));
+  height:min(64vh,620px);touch-action:none;cursor:grab;
+}
+.tree-wrap.panning{cursor:grabbing}
+.tree-canvas{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+.tree-edges{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.tree-edges path{fill:none;stroke:var(--line,var(--pill));stroke-width:1.6}
+/* 虚线 = 合并血缘。和实线（父子）一眼分开，因为这是**两种**关系 */
+.tree-edges g.l path{stroke:var(--accent);stroke-width:1.4;stroke-dasharray:6 5;opacity:.62}
+.tree-node{
+  position:absolute;box-sizing:border-box;padding:9px 11px;border-radius:14px;
+  background:var(--panel-solid,var(--bg));
+  border:1px solid var(--line,var(--pill));
+  box-shadow:0 2px 10px rgba(0,0,0,.05);cursor:pointer;
+}
+.tree-node.used{opacity:.45;filter:grayscale(.85) brightness(.85)}
+.tn-title{
+  font-size:12.5px;font-weight:700;line-height:1.35;color:var(--fg);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;word-break:break-word;
+}
+.tn-meta{display:flex;align-items:center;gap:5px;margin-top:5px;min-height:19px}
+.tn-chip{font-size:10.5px;font-weight:700;color:var(--muted);white-space:nowrap}
+.tn-chip.lin{color:var(--accent)}
+.tn-fold{
+  margin-left:auto;font-size:11px;font-weight:800;line-height:1.5;
+  color:var(--accent);background:transparent;
+  border:1px solid var(--line,var(--pill));border-radius:999px;
+  padding:1px 7px;cursor:pointer;
+}
+.tn-fold.col{color:var(--muted)}
+.tree-hint{
+  position:absolute;left:12px;right:12px;bottom:9px;
+  font-size:11px;color:var(--faint);pointer-events:none;text-align:center;
+}
 @media (prefers-reduced-motion: no-preference){
   .idea-card{transition:transform 140ms ease}
 }
@@ -3359,9 +3404,10 @@ const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', t
        ideaReview     「想法回顾」总开关（设置页），默认开
        ideaReviewDone 今天已经把回顾抽屉处理完了（存日期）—— 当天不再推，次日自动失效
        captureZone    「没写时间的条目默认去哪」：'long'（默认，老习惯）| 'idea'
-       ideaGestureSeen 想法页的手势说明是否已经自动弹过一次 */
+       ideaGestureSeen 想法页的手势说明是否已经自动弹过一次
+       ideaLayout     想法页主视图：'list'（默认，卡片流）| 'tree'（树状图） */
   ideaUsedAt: null, lastOpenedSeed: null, lastScanAt: 0, ideaReview: true, ideaReviewDone: null,
-  captureZone: 'long', ideaGestureSeen: false };
+  captureZone: 'long', ideaGestureSeen: false, ideaLayout: 'list' };
 /* 清单页的四个分区（渲染顺序见 renderList）。折叠状态存的就是这几个键，
    load() 拿它当白名单过滤 —— 不让数据里的任意字符串混进 class 名。 */
 /* ★ v5.0：「考虑」已并入想法（行尾 ? 直接建种子），分区里不再有 consider。
@@ -3474,6 +3520,7 @@ function load(){
       S.ideaReviewDone = typeof o.ideaReviewDone === 'string' ? o.ideaReviewDone : null;
       S.captureZone = o.captureZone === 'idea' ? 'idea' : 'long';
       S.ideaGestureSeen = o.ideaGestureSeen === true;
+      S.ideaLayout = o.ideaLayout === 'tree' ? 'tree' : 'list';
     }
   } catch (e){}
   syncTags();
@@ -3492,7 +3539,7 @@ function save(){
       /* ★ v5.0 想法系统的全局状态 */
       ideaUsedAt: S.ideaUsedAt, lastOpenedSeed: S.lastOpenedSeed,
       lastScanAt: S.lastScanAt, ideaReview: S.ideaReview, ideaReviewDone: S.ideaReviewDone,
-      captureZone: S.captureZone, ideaGestureSeen: S.ideaGestureSeen,
+      captureZone: S.captureZone, ideaGestureSeen: S.ideaGestureSeen, ideaLayout: S.ideaLayout,
       voiceVersion: 2   /* 语音默认值只迁移一次，之后用户自己的开关说了算（见 load 的说明） */
     }));
     saveFailed = false;
@@ -3514,7 +3561,7 @@ function snapshot(){
     /* ★ v5.0：想法系统的全局状态也进备份，否则换设备后回顾的频次判定会从头开始 */
     ideaUsedAt: S.ideaUsedAt, lastOpenedSeed: S.lastOpenedSeed,
     lastScanAt: S.lastScanAt, ideaReview: S.ideaReview, ideaReviewDone: S.ideaReviewDone,
-    captureZone: S.captureZone, ideaGestureSeen: S.ideaGestureSeen
+    captureZone: S.captureZone, ideaGestureSeen: S.ideaGestureSeen, ideaLayout: S.ideaLayout
   };
 }
 /* 去空白、去空串、去重（保留先后顺序） */
@@ -4226,6 +4273,214 @@ function reviewDrawerHTML(){
     </div>` : ''}
   </div>`;
 }
+/* ---------------- ★ v5.0 树状图（第 2 批第 3 块） ----------------
+   为什么是树状图、不是自由连线画布：自由画布的"好看"高度依赖手工摆位，
+   而想法之间是**有向父子**关系 —— 有向关系天然适合分层布局，不用人摆。
+   布局是 Reingold–Tilford 的简化版：后序遍历，叶子依次占一格，父节点居中在孩子上方。
+
+   两种关系画**两种线**：
+     实线 = 父子（这条是从那条**生长**出来的）
+     虚线 = 血缘（这条是那几条**合并**出来的）
+   合并出来的想法不属于任何人（它是根节点），所以没法靠缩进表达来源 —— 虚线补上这一块。 */
+const TREE_W = 172, TREE_H = 62, TREE_GX = 18, TREE_GY = 54;
+const TREE_PERF = 80;              // 超过它就自动只画前 3 层，免得一屏几百个方块卡住
+const treeView = { tx: 0, ty: 0, k: 1 };
+
+function treeMapLayout(list){
+  const byId = new Map(list.map(i => [i.id, i]));
+  /* 折叠：收起一条，它下面整棵子树就不进布局（会话级 collapsed，和卡片流共用同一个 Set） */
+  const hidden = new Set();
+  list.forEach(i => {
+    let p = i.parent && byId.get(i.parent), guard = 0;
+    while (p && guard++ < 64){
+      if (collapsed.has(p.id)){ hidden.add(i.id); break; }
+      p = p.parent && byId.get(p.parent);
+    }
+  });
+  let vis = list.filter(i => !hidden.has(i.id));
+  /* 性能兜底：太多就先只画到第 3 层，剩下的靠逐条展开 */
+  let clipped = 0;
+  if (vis.length > TREE_PERF){
+    const ids0 = new Set(vis.map(i => i.id));
+    const depthOf = i => {
+      let d = 0, p = i.parent && ids0.has(i.parent) ? byId.get(i.parent) : null, g = 0;
+      while (p && g++ < 64){ d++; p = p.parent && ids0.has(p.parent) ? byId.get(p.parent) : null; }
+      return d;
+    };
+    const keep = vis.filter(i => depthOf(i) < 3);
+    clipped = vis.length - keep.length;
+    vis = keep;
+  }
+  const visIds = new Set(vis.map(i => i.id));
+  const kids = new Map();
+  vis.forEach(i => {
+    const p = (i.parent && visIds.has(i.parent)) ? i.parent : null;
+    if (p){ if (!kids.has(p)) kids.set(p, []); kids.get(p).push(i); }
+  });
+  /* ★ v5.0：折叠钮上的数字要按**搜索过滤后的完整集合**数，不能按"折叠之后还在布局里的"数 ——
+     那样一收起来，孩子不在布局里，钮自己也没了，就再也展不开（死胡同）。
+     所以另建一张 rawKids：它只受搜索/标签影响，不受折叠影响。 */
+  const rawKids = new Map();
+  list.forEach(i => {
+    if (i.parent){ if (!rawKids.has(i.parent)) rawKids.set(i.parent, []); rawKids.get(i.parent).push(i); }
+  });
+  const roots = vis.filter(i => !(i.parent && visIds.has(i.parent)));
+  const pos = new Map();
+  let leaf = 0;
+  const place = (it, depth) => {
+    const ks = kids.get(it.id) || [];
+    let x;
+    if (!ks.length){ x = leaf++; }
+    else {
+      const xs = ks.map(k => place(k, depth + 1));
+      x = (xs[0] + xs[xs.length - 1]) / 2;
+    }
+    pos.set(it.id, { x, depth });
+    return x;
+  };
+  roots.forEach((r, idx) => { place(r, 0); if (idx < roots.length - 1) leaf += 0.6; });   // 根与根之间留一点空
+  const nodes = vis.map(i => {
+    const p = pos.get(i.id);
+    return { it: i, x: p.x * (TREE_W + TREE_GX), y: p.depth * (TREE_H + TREE_GY),
+      depth: p.depth, kids: (rawKids.get(i.id) || []).length };
+  });
+  const at = id => nodes.find(n => n.it.id === id);
+  const edges = [];
+  nodes.forEach(n => {
+    if (n.it.parent && visIds.has(n.it.parent)){
+      const p = at(n.it.parent);
+      if (p) edges.push({ x1: p.x + TREE_W / 2, y1: p.y + TREE_H, x2: n.x + TREE_W / 2, y2: n.y });
+    }
+  });
+  const lineage = [];
+  nodes.forEach(n => {
+    (Array.isArray(n.it.bornFrom) ? n.it.bornFrom : []).forEach(src => {
+      const s = at(src);
+      if (s) lineage.push({ x1: s.x + TREE_W / 2, y1: s.y + TREE_H, x2: n.x + TREE_W / 2, y2: n.y });
+    });
+  });
+  const rows = nodes.reduce((m, n) => Math.max(m, n.depth + 1), 1);
+  return { nodes, edges, lineage, clipped,
+    w: Math.max(1, leaf) * (TREE_W + TREE_GX), h: rows * (TREE_H + TREE_GY) };
+}
+/* 正交折线：父底中 → 竖 → 横 → 子顶中。**不用斜线** —— 斜线一多就像蜘蛛网，
+   而且父子关系会被"哪条线连到哪"的歧义糊掉。 */
+function treeOrtho(e){
+  const my = Math.round(e.y1 + (e.y2 - e.y1) / 2);
+  return `M${Math.round(e.x1)} ${Math.round(e.y1)} V${my} H${Math.round(e.x2)} V${Math.round(e.y2)}`;
+}
+function treeMapHTML(list){
+  const L = treeMapLayout(list);
+  if (!L.nodes.length) return '';
+  const edges = L.edges.map(e => `<path d="${treeOrtho(e)}"/>`).join('');
+  /* 血缘虚线走曲线（贝塞尔），和实线的折线一眼能分开 */
+  const lineage = L.lineage.map(e =>
+    `<path class="lin" d="M${Math.round(e.x1)} ${Math.round(e.y1)} C${Math.round(e.x1)} ${Math.round(e.y1 + 46)} ${Math.round(e.x2)} ${Math.round(e.y2 - 46)} ${Math.round(e.x2)} ${Math.round(e.y2)}"/>`).join('');
+  const nodes = L.nodes.map(n => {
+    const stepN = Array.isArray(n.it.sparks) ? n.it.sparks.length : 0;
+    const col = collapsed.has(n.it.id);
+    return `<div class="tree-node${n.it.done ? ' used' : ''}" data-id="${esc(n.it.id)}"
+        style="left:${Math.round(n.x)}px;top:${Math.round(n.y)}px;width:${TREE_W}px">
+      <div class="tn-title">${esc(n.it.title)}</div>
+      <div class="tn-meta">
+        ${stepN ? `<span class="tn-chip">${stepN} 步</span>` : ''}
+        ${(Array.isArray(n.it.bornFrom) && n.it.bornFrom.length)
+          ? `<span class="tn-chip lin" title="由 ${n.it.bornFrom.length} 条合并而来">血缘 ${n.it.bornFrom.length}</span>` : ''}
+        ${n.kids ? `<button type="button" class="tn-fold${col ? ' col' : ''}" data-act="tnfold"
+            data-id="${esc(n.it.id)}" aria-label="${col ? '展开' : '收起'}下面的 ${n.kids} 条"
+            >${col ? '＋' : '－'}${n.kids}</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="tree-wrap" id="treeWrap">
+    <div class="tree-canvas" id="treeCanvas"
+         style="width:${Math.round(L.w)}px;height:${Math.round(L.h)}px">
+      <svg class="tree-edges" width="${Math.round(L.w)}" height="${Math.round(L.h)}" aria-hidden="true">
+        <g class="e">${edges}</g><g class="l">${lineage}</g>
+      </svg>
+      ${nodes}
+    </div>
+    <div class="tree-hint">拖动平移 · 双指或滚轮缩放${
+      L.clipped ? ` · 太挤了，先只画到第 3 层（还有 ${L.clipped} 条没画）` : ''}</div>
+  </div>`;
+}
+/* 挂载：平移 / 缩放 / 打开节点。视图态（treeView）是会话级的，不写存档 ——
+   位置这种东西记下来反而会在换设备后把内容甩到屏幕外。 */
+function mountTreeMap(){
+  const wrap = document.getElementById('treeWrap');
+  const cv = document.getElementById('treeCanvas');
+  if (!wrap || !cv) return;
+  const cw = parseFloat(cv.style.width) || 1, ch = parseFloat(cv.style.height) || 1;
+  const apply = () => { cv.style.transform = `translate(${treeView.tx}px,${treeView.ty}px) scale(${treeView.k})`; };
+  /* 首次进来把内容缩放着放进视野里，免得"打开是一片空白，得自己找" */
+  const fit = () => {
+    const r = wrap.getBoundingClientRect();
+    if (r.width < 40) return;
+    treeView.k = Math.max(0.3, Math.min(1, (r.width - 20) / cw, (r.height - 40) / ch));
+    treeView.tx = (r.width - cw * treeView.k) / 2;
+    treeView.ty = 14;
+    apply();
+  };
+  fit();
+  const pts = new Map();
+  let pan = null, pinch = null;
+  wrap.addEventListener('pointerdown', e => {
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2){
+      const a = [...pts.values()];
+      pinch = { d: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y), k: treeView.k,
+        cx: (a[0].x + a[1].x) / 2, cy: (a[0].y + a[1].y) / 2,
+        tx: treeView.tx, ty: treeView.ty };
+      pan = null; wrap.classList.add('panning'); return;
+    }
+    if (pts.size === 1 && !(e.target.closest && e.target.closest('.tree-node'))){
+      pan = { x: e.clientX - treeView.tx, y: e.clientY - treeView.ty };
+      wrap.classList.add('panning');
+    }
+  });
+  wrap.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pts.size >= 2){
+      const a = [...pts.values()];
+      const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
+      const r = wrap.getBoundingClientRect();
+      const k2 = Math.max(0.3, Math.min(1.8, pinch.k * (d / Math.max(1, pinch.d))));
+      const px = pinch.cx - r.left, py = pinch.cy - r.top;
+      treeView.tx = px - (px - pinch.tx) * (k2 / pinch.k);
+      treeView.ty = py - (py - pinch.ty) * (k2 / pinch.k);
+      treeView.k = k2; apply(); return;
+    }
+    if (pan){
+      treeView.tx = e.clientX - pan.x; treeView.ty = e.clientY - pan.y; apply();
+    }
+  });
+  const end = e => {
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (pts.size === 0){ pan = null; wrap.classList.remove('panning'); }
+  };
+  wrap.addEventListener('pointerup', end);
+  wrap.addEventListener('pointercancel', end);
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault();
+    const k2 = Math.max(0.3, Math.min(1.8, treeView.k * (e.deltaY > 0 ? 0.9 : 1.1)));
+    const r = wrap.getBoundingClientRect();
+    const px = e.clientX - r.left, py = e.clientY - r.top;
+    /* 以指针为锚点缩放 —— 不以指针锚定的话，放大时内容会从视野里跑掉 */
+    treeView.tx = px - (px - treeView.tx) * (k2 / treeView.k);
+    treeView.ty = py - (py - treeView.ty) * (k2 / treeView.k);
+    treeView.k = k2; apply();
+  }, { passive: false });
+  /* 点节点 → 打开同一条动作菜单（全 App 一套菜单，不在这里另造一套） */
+  wrap.addEventListener('click', e => {
+    if (e.target.closest && e.target.closest('[data-act]')) return;      // 折叠钮有自己的动作
+    const n = e.target.closest && e.target.closest('.tree-node');
+    if (!n) return;
+    const it = it_byId(n.dataset.id);
+    if (it) openSeedSheet(it);
+  });
+}
 function renderIdeas(){
   maybeGestureHelp();                       // 首次进想法页自动展开一次手势说明（只一次）
   /* ★ v5.0：用 ideaUI.q / ideaUI.tags，**不再读 S.q / S.filterTags**。
@@ -4254,7 +4509,23 @@ function renderIdeas(){
       <button class="btn primary idea-new" data-act="seednew">＋ 新想法</button>
       ${ideaUI.mergeMode
         ? `<span class="len">已选 <b class="mono">${nSel}</b> 条</span><button class="btn" data-act="mergecancel">取消</button>`
-        : `<button class="btn" data-act="mergestart"${all.length ? '' : ' disabled'}>☰ 多选</button>
+        : `<button type="button" class="bar-ico idea-lay" data-act="layouttoggle"
+                 aria-label="${S.ideaLayout === 'tree' ? '切回卡片流' : '切成树状图'}"
+                 title="${S.ideaLayout === 'tree' ? '切回卡片流' : '切成树状图'}">
+             ${S.ideaLayout === 'tree'
+               ? `<svg class="np-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M3.6 6.6l1.3 1.3 2.3-2.5"/><path d="M3.6 12.4l1.3 1.3 2.3-2.5"/>
+                    <path d="M3.6 18.2l1.3 1.3 2.3-2.5"/>
+                    <path d="M11 6.8h9.4"/><path d="M11 12.6h9.4"/><path d="M11 18.4h9.4"/>
+                  </svg>`
+               : `<svg class="np-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <circle cx="12" cy="4.8" r="2.2"/>
+                    <circle cx="5.6" cy="19.2" r="2.2"/><circle cx="18.4" cy="19.2" r="2.2"/>
+                    <path d="M12 7v6"/>
+                    <path d="M5.6 17v-2.4a1.6 1.6 0 0 1 1.6-1.6h9.6a1.6 1.6 0 0 1 1.6 1.6V17"/>
+                  </svg>`}
+           </button>
+           <button class="btn" data-act="mergestart"${all.length ? '' : ' disabled'}>☰ 多选</button>
            <!-- ★ v5.0：手势说明那颗问号键 —— 模板字符串里**不能出现反引号和 JS 块注释**，
                 两者都会把模板提前截断（这一版踩过一次）。
                 用底栏图标键同款：19px 细线 SVG（24 viewBox、描边、无填充）+ 40px 圆形热区。
@@ -4334,14 +4605,23 @@ function renderIdeas(){
     return roots.slice().sort((a, b) => ideaLastAt(b) - ideaLastAt(a))
       .map(r => walk(r, 1)).join('');
   }
-  if (live.length){
-    h += `<div class="idea-list">` + treeHTML(live) + `</div>`;
+  /* ★ v5.0 树状图（第 2 批第 3 块）：切到树状图时，主区换成一张画布。
+     只画**在用的** —— 树是"我脑子里有哪些想法"的全景，把用过的也塞进来会变成一团乱麻；
+     要看用过的切回卡片流（那里本来就分了两组）。 */
+  if (S.ideaLayout === 'tree'){
+    h += live.length
+      ? treeMapHTML(live)
+      : `<div class="empty-soft">没有在用的想法了，切回卡片流能看到用过的。</div>`;
   } else {
-    h += `<div class="empty-soft">没有在用的想法了，下面是用过的。</div>`;
-  }
-  if (used.length){
-    h += `<div class="idea-used-head">用过了<span class="n mono">${used.length}</span></div>
-      <div class="idea-list used">` + treeHTML(used) + `</div>`;
+    if (live.length){
+      h += `<div class="idea-list">` + treeHTML(live) + `</div>`;
+    } else {
+      h += `<div class="empty-soft">没有在用的想法了，下面是用过的。</div>`;
+    }
+    if (used.length){
+      h += `<div class="idea-used-head">用过了<span class="n mono">${used.length}</span></div>
+        <div class="idea-list used">` + treeHTML(used) + `</div>`;
+    }
   }
   /* ★ v5.0 多选批量（第 2 批第 1 块）。「合并」不再是右上角那颗孤零零的按钮 ——
      它和其他动作同级，一起放进这条操作条。用户原话：「既然合并跟其他……都是同级的选项，
@@ -4367,6 +4647,7 @@ function renderIdeas(){
     </div>`;
   }
   view.innerHTML = h;
+  mountTreeMap();
   /* 续写输入框：重新渲染后把焦点还回去，否则用户点开还得再点一次输入框。
      Enter 记下、Escape 收起、失焦也收起 —— 三条出口，免得输入框一直挂在那儿。 */
   const inp = document.getElementById('sp_in');
@@ -6160,6 +6441,23 @@ view.addEventListener('click', e => {
   if (act === 'batchspark'){ batchStart('spark'); return; }
   if (act === 'batchgrow'){ batchStart('grow'); return; }
   if (act === 'gesturehelp'){ openGestureHelp(); return; }
+  /* ★ v5.0 主视图切换：卡片流 ↔ 树状图。视图态（平移/缩放）是会话级的，
+     切过去时复位一次，免得看到上一次留下的奇怪位移。 */
+  if (act === 'layouttoggle'){
+    S.ideaLayout = S.ideaLayout === 'tree' ? 'list' : 'tree';
+    ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); ideaUI.reviewOpen = false;
+    treeView.tx = 0; treeView.ty = 0; treeView.k = 1;
+    save(); refresh();
+    toast(S.ideaLayout === 'tree' ? '树状图：拖动平移 · 点节点开菜单' : '回到卡片流');
+    return;
+  }
+  /* 树状图里折叠/展开一个节点的下面（复用会话级 collapsed，和卡片流的 ▾ 同一个状态） */
+  if (act === 'tnfold'){
+    const id = el.dataset.id;
+    if (!id) return;
+    if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
+    refresh(); return;
+  }
   if (act === 'seednew'){ openSeedNew(); return; }
   /* ---- ★ v5.0 想法页自己的标签筛选（不碰清单页的 S.filterTags）---- */
   if (act === 'ideatag'){
@@ -7736,6 +8034,7 @@ window.addEventListener('drop', e => {
           if (typeof o.ideaReviewDone === 'string') S.ideaReviewDone = o.ideaReviewDone;
           if (o.captureZone === 'idea' || o.captureZone === 'long') S.captureZone = o.captureZone;
           if (typeof o.ideaGestureSeen === 'boolean') S.ideaGestureSeen = o.ideaGestureSeen;
+          if (o.ideaLayout === 'tree' || o.ideaLayout === 'list') S.ideaLayout = o.ideaLayout;
           save(); applyHelp(); refresh();
           toast('已从备份恢复 ' + S.items.length + ' 条');
         });
