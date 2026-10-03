@@ -2372,7 +2372,10 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
 }
 .idea-toolbar .len{font-size:12px;color:var(--faint);letter-spacing:.06em}
 .idea-toolbar .btn{flex:0 0 auto}
-.idea-toolbar .idea-new{margin-right:auto}
+.idea-toolbar .idea-new{margin-right:0}
+/* ★ v5.0：多选挪到左边跟「＋ 新想法」并排后，靠视图开关自己撑开左边距来分组 ——
+   左组（新想法 / 多选）贴左，右组（视图开关 / 手势说明）贴右。 */
+.idea-toolbar .idea-seg{margin-left:auto}
 /* ★ v5.0：想法页自己的搜索条与标签筛选（不共用清单页那套全局状态） */
 .idea-searchbar{width:min(1240px,calc(100% - 36px));margin:0 auto 10px}
 .idea-searchbar .search{width:100%}
@@ -2667,8 +2670,12 @@ html.soft-render .mask.sheet-mode .modal{
 .gh-row span{flex:1;min-width:12em;font-size:12.5px;line-height:1.6;color:var(--muted)}
 /* ★ v5.0：手势说明那颗 `?` 复用底栏图标键的 `.bar-ico`（40px 圆形热区 + 19px 细线 SVG），
    所以这里只补一点间距，不另写一套按钮样式 —— 用户要求跟底栏导航同一个风格。 */
-.idea-toolbar .idea-help{margin-left:2px}
-.idea-toolbar .idea-lay{margin-left:auto}
+.idea-toolbar .idea-help{margin-left:4px}
+/* 用户："问号里面的 UI 可以，但放大一些；外边套个圆很别扭"
+   → SVG 里已经没有 <circle> 了，问号本体在模板里被放大 1.45 倍。
+   描边相应降到 1.15：放大后的视觉笔触 = 1.15 × 1.45 ≈ 1.67 用户单位，
+   和底栏图标的 1.65 一致 —— "变大"不该变成"变粗"。 */
+.bar-ico .idea-help-ico{stroke-width:1.15}
 
 /* ---------- ★ v5.0 树状图（第 2 批第 3 块） ----------
    画布是**一层 SVG 连线 + 一堆绝对定位的 HTML 节点**，外面套一个可平移缩放的平面。
@@ -4285,6 +4292,8 @@ function reviewDrawerHTML(){
 const TREE_W = 172, TREE_H = 62, TREE_GX = 18, TREE_GY = 54;
 const TREE_PERF = 80;              // 超过它就自动只画前 3 层，免得一屏几百个方块卡住
 const treeView = { tx: 0, ty: 0, k: 1 };
+/* 分段开关换挡动画播放期间上锁：这 200ms 里再点一次会打架 */
+let layoutBusy = false;
 
 function treeMapLayout(list){
   const byId = new Map(list.map(i => [i.id, i]));
@@ -4508,36 +4517,43 @@ function renderIdeas(){
     <div class="idea-toolbar${rv()}"${rvd(30)}>
       <button class="btn primary idea-new" data-act="seednew">＋ 新想法</button>
       ${ideaUI.mergeMode
-        ? `<span class="len">已选 <b class="mono">${nSel}</b> 条</span><button class="btn" data-act="mergecancel">取消</button>`
-        : `<button type="button" class="bar-ico idea-lay" data-act="layouttoggle"
-                 aria-label="${S.ideaLayout === 'tree' ? '切回卡片流' : '切成树状图'}"
-                 title="${S.ideaLayout === 'tree' ? '切回卡片流' : '切成树状图'}">
-             ${S.ideaLayout === 'tree'
-               ? `<svg class="np-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                    <path d="M3.6 6.6l1.3 1.3 2.3-2.5"/><path d="M3.6 12.4l1.3 1.3 2.3-2.5"/>
-                    <path d="M3.6 18.2l1.3 1.3 2.3-2.5"/>
-                    <path d="M11 6.8h9.4"/><path d="M11 12.6h9.4"/><path d="M11 18.4h9.4"/>
-                  </svg>`
-               : `<svg class="np-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                    <circle cx="12" cy="4.8" r="2.2"/>
-                    <circle cx="5.6" cy="19.2" r="2.2"/><circle cx="18.4" cy="19.2" r="2.2"/>
-                    <path d="M12 7v6"/>
-                    <path d="M5.6 17v-2.4a1.6 1.6 0 0 1 1.6-1.6h9.6a1.6 1.6 0 0 1 1.6 1.6V17"/>
-                  </svg>`}
-           </button>
-           <button class="btn" data-act="mergestart"${all.length ? '' : ' disabled'}>☰ 多选</button>
-           <!-- ★ v5.0：手势说明那颗问号键 —— 模板字符串里**不能出现反引号和 JS 块注释**，
-                两者都会把模板提前截断（这一版踩过一次）。
-                用底栏图标键同款：19px 细线 SVG（24 viewBox、描边、无填充）+ 40px 圆形热区。
-                不做"文字问号塞进胶囊"—— 用户明确要求跟底栏导航的 UI 风格一致。 -->
-           <button type="button" class="bar-ico idea-help" data-act="gesturehelp"
-                   aria-label="手势说明" title="手势说明">
-             <svg class="np-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-               <circle cx="12" cy="12" r="9.2"/>
-               <path d="M9.4 9.5a2.7 2.7 0 1 1 3.5 2.55c-.9.32-1.4 1.05-1.4 2v.35"/>
-               <path d="M11.5 17.3h.01"/>
-             </svg>
-           </button>`}
+        ? `<span class="len">已选 <b class="mono">${nSel}</b> 条</span>`
+        : `<button class="btn" data-act="mergestart"${all.length ? '' : ' disabled'}>☰ 多选</button>`}
+      <!-- ★ v5.0：主视图切换用**清单页 / 统计页那套 .seg 分段开关**（用户要求"跟清单页还有统计页差不多"）：
+           同一个 .seg glass-chip 外壳 + .segbtn.ico-seg 纯图标格，选中态由滑块承担。
+           多选已挪到左边跟「＋ 新想法」并排，右边只留视图开关和手势说明。 -->
+      <span class="seg glass-chip idea-seg" role="group" aria-label="想法页主视图">
+        <button class="segbtn ico-seg${S.ideaLayout === 'tree' ? '' : ' on'}" data-act="layoutset" data-idealay="list"
+                title="卡片流：能缩进、能就地续写" aria-label="卡片流" aria-pressed="${S.ideaLayout === 'tree' ? 'false' : 'true'}">
+          <svg class="seg-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M3.6 6.6l1.3 1.3 2.3-2.5"/><path d="M3.6 12.4l1.3 1.3 2.3-2.5"/>
+            <path d="M3.6 18.2l1.3 1.3 2.3-2.5"/>
+            <path d="M11 6.8h9.4"/><path d="M11 12.6h9.4"/><path d="M11 18.4h9.4"/>
+          </svg>
+        </button>
+        <button class="segbtn ico-seg${S.ideaLayout === 'tree' ? ' on' : ''}" data-act="layoutset" data-idealay="tree"
+                title="树状图：看全局的形状与合并血缘" aria-label="树状图" aria-pressed="${S.ideaLayout === 'tree' ? 'true' : 'false'}">
+          <svg class="seg-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="4.9" r="2.3"/>
+            <circle cx="5.5" cy="19" r="2.3"/><circle cx="18.5" cy="19" r="2.3"/>
+            <path d="M12 7.2v5.6"/>
+            <path d="M5.5 16.7v-2.1a1.7 1.7 0 0 1 1.7-1.7h9.6a1.7 1.7 0 0 1 1.7 1.7v2.1"/>
+          </svg>
+        </button>
+      </span>
+      <!-- ★ v5.0：手势说明。用户："问号里面的 UI 可以，但把它稍微放大一些；主要是外边套个圆感觉很别扭"
+           → 去掉外边那一圈 <circle>，把问号本体放大 1.45 倍；同时把描边降到 1.15，
+           这样放大后的视觉笔触 = 1.15 × 1.45 = 1.67 用户单位，和底栏图标 1.65 基本一致，
+           "变大"不会变成"变粗"。 -->
+      <button type="button" class="bar-ico idea-help" data-act="gesturehelp"
+              aria-label="手势说明" title="手势说明">
+        <svg class="np-ico idea-help-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <g transform="translate(12 12) scale(1.45) translate(-12 -12)">
+            <path d="M9.4 9.5a2.7 2.7 0 1 1 3.5 2.55c-.9.32-1.4 1.05-1.4 2v.35"/>
+            <path d="M11.5 17.3h.01"/>
+          </g>
+        </svg>
+      </button>
     </div>
     <div class="idea-searchbar${rv()}"${rvd(35)}>
       <input class="search" id="ideaSearch" type="text" aria-label="搜想法"
@@ -6441,14 +6457,34 @@ view.addEventListener('click', e => {
   if (act === 'batchspark'){ batchStart('spark'); return; }
   if (act === 'batchgrow'){ batchStart('grow'); return; }
   if (act === 'gesturehelp'){ openGestureHelp(); return; }
-  /* ★ v5.0 主视图切换：卡片流 ↔ 树状图。视图态（平移/缩放）是会话级的，
-     切过去时复位一次，免得看到上一次留下的奇怪位移。 */
-  if (act === 'layouttoggle'){
-    S.ideaLayout = S.ideaLayout === 'tree' ? 'list' : 'tree';
+  /* ★ v5.0 主视图切换：清单页/统计页那套 .seg 分段开关（用户要求"跟它们差不多"）。
+     两个按钮各带一个确定的目标值（data-lay），不是"点一下就翻面"——
+     分段开关的语义是**选一个**，不是**切一下**；两者在无障碍上也不一样（aria-pressed vs 无状态）。
+     视图态（平移/缩放）是会话级的，切过去时复位一次，免得看到上一次留下的奇怪位移。 */
+  if (act === 'layoutset'){
+    /* ⚠️ 用 data-idealay，**不能复用 data-lay** —— 那是统计页布局开关的属性，
+       上面 `el.dataset.lay !== undefined` 那条分支会先把它截走，这里永远轮不到。 */
+    const want = el.dataset.idealay === 'tree' ? 'tree' : 'list';
+    if (want === S.ideaLayout || layoutBusy) return;
+    /* 先把分段开关的滑块**原地**换挡（清单/统计那套慢—快—慢），等它滑完再重渲染画面。
+       立刻 refresh() 会把刚建好的滑块整块换掉 —— 动画就没了，那就只是"长得像"，不是"用着一样"。 */
+    const seg = el.closest('.seg');
+    if (seg) seg.querySelectorAll('.segbtn').forEach(b => {
+      const on = b === el;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    syncSegPills(true);
+    layoutBusy = true;
+    S.ideaLayout = want;
     ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); ideaUI.reviewOpen = false;
     treeView.tx = 0; treeView.ty = 0; treeView.k = 1;
-    save(); refresh();
-    toast(S.ideaLayout === 'tree' ? '树状图：拖动平移 · 点节点开菜单' : '回到卡片流');
+    save();
+    setTimeout(() => {
+      layoutBusy = false;
+      refresh();
+      toast(want === 'tree' ? '树状图：拖动平移 · 点节点开菜单' : '卡片流：能缩进、能就地续写');
+    }, 200);
     return;
   }
   /* 树状图里折叠/展开一个节点的下面（复用会话级 collapsed，和卡片流的 ▾ 同一个状态） */
