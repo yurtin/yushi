@@ -2418,7 +2418,10 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
    .ic-body 让 seedHTML 产出的 .item 直接铺满卡内，不再套一层玻璃。 */
 .idea-card{padding:0;overflow:hidden}
 .idea-card .ic-body > .item{border:0;background:none;box-shadow:none;margin:0;width:100%}
-.idea-card.used{opacity:.66}
+/* 「用过了」的变暗样式统一放在下面 `.idea-card.sleep` 那条之后 ——
+   两条规则同权重，靠**源序**分胜负；写在这里会被后面的 .sleep 盖掉
+   （一条既"用过了"又"沉睡"的卡片就会只按沉睡显示，暗得不够）。 */
+.idea-card.used{}
 /* 种子自己的条目皮肤：不用待办那条横排（点/勾/标题），改成竖排的"脊椎 + 步骤"。
    .lead 只放那一颗按钮，固定在左上。 */
 .item.seed{padding:16px 16px 6px;align-items:flex-start}
@@ -2463,7 +2466,14 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
 
 /* 沉睡：超过 14 天没长过一步。**只是变淡**，位置不动 —— 它随时能被续写"点回来"。
    外壳负责变淡，卡内角标说清是几天前。 */
-.idea-card.sleep{opacity:.62}
+.idea-card.sleep{opacity:.6;filter:grayscale(.5)}
+/* ★ v5.0：**「用过了」要真的暗下去**，不能只是"淡一点" —— 用户原话：
+   「也没有变得很暗呀，只是变灰了一些而已，应该把它变灰，且变得稍微暗淡一些」。
+   去色 + 压暗一起上。静态 filter 是安全的；本项目只禁**动画化的** filter
+   （那会被安卓 WebView 丢回软件光栅化，早期版本踩过）。
+   ⚠️ 必须写在 `.idea-card.sleep` **之后**：一条既"用过了"又"沉睡"的卡，两条同权重，
+   靠源序分胜负 —— 用户**主动**收起来的应当压过自动变淡。 */
+.idea-card.used{opacity:.45;filter:grayscale(.85) brightness(.85)}
 .chip.sleepchip{color:var(--faint)}
 .chip.kidchip{color:var(--accent)}
 .chip.suggestchip{color:var(--accent);cursor:pointer}
@@ -2571,7 +2581,12 @@ html.soft-render .mask.sheet-mode .modal{
 }
 .sheet-item:hover{background:var(--pill-hover,var(--pill))}
 .sheet-item:active{background:var(--pill)}
-.si-label{flex:0 0 auto;font-weight:600}
+.si-label{flex:0 0 auto;font-weight:600;min-width:3.2em}
+/* ★ v5.0：图标一格固定宽度 + 居中，标签才竖着对齐（否则 ⑂ 比 ✎ 窄，整列就歪了） */
+.sheet-item .si-ico{
+  flex:0 0 1.5em;width:1.5em;text-align:center;
+  font-size:15px;line-height:1.2;color:var(--muted);
+}
 .si-hint{margin-left:auto;font-size:12px;color:var(--faint);text-align:right}
 .sheet-foot{padding-top:10px}
 .sheet-foot .btn{width:100%}
@@ -3701,7 +3716,7 @@ function seedHTML(it, info){
            卡片只剩内容；长按是隐藏手势，所以留一行极淡的说明保证能被发现。
            注意这里必须是 HTML 注释：模板字符串里的 /* */ 会被当成文字渲染出来 —— v3.6.0 就是这么错的。 -->
       <div class="acts seed-acts">
-        <span class="seed-longhint">长按卡片：续写 / 长出 / 立项 / 编辑 / 合并 / 收起来 / 删除</span>
+        <span class="seed-longhint">长按卡片：续写 / 生长 / 立项 / 编辑 / 合并 / 收起来 / 删除</span>
       </div>
     </div>
   </div>`;
@@ -4155,7 +4170,7 @@ function renderIdeas(){
   let h = `<div class="section-intro${rv()}">
       <p class="section-kicker">Idea</p>
       <h2>想法</h2>
-      <p class="intro-note">还没定型的念头放这儿。<b>续写</b>＝这条又长出了什么；<b>长出</b>＝从它分出去一条新的（会缩进在它下面）；<b>合并</b>＝勾两条以上，生出一条新的，原来两条都留着；<b>立项</b>＝把它变成一条待办。<br>它不是待办，不需要被"做完"。用过了在卡片上长按 → <b>收起来</b>，它就暗下去、沉到底部「用过了」；点「继续想」又亮回来 —— 毕竟想法是可以继续生长的。</p>
+      <p class="intro-note">还没定型的念头放这儿。<b>续写</b>＝这条又长出了什么；<b>生长</b>＝从它分出去一条新的（会缩进在它下面）；<b>合并</b>＝勾两条以上，生出一条新的，原来两条都留着；<b>立项</b>＝把它变成一条待办。<br>它不是待办，不需要被"做完"。用过了在卡片上长按 → <b>收起来</b>，它就暗下去、沉到底部「用过了」；点「继续想」又亮回来 —— 毕竟想法是可以继续生长的。</p>
     </div>
     <div class="idea-toolbar${rv()}"${rvd(30)}>
       <button class="btn primary idea-new" data-act="seednew">＋ 新想法</button>
@@ -4299,7 +4314,7 @@ function seedAddSpark(it, text){
    时间轴是这条种子自己的生长记录，复制过去会让两条看起来一模一样，反而看不出是从哪儿长出来的。 */
 function seedGrow(it, title){
   const t = String(title || '').trim();
-  if (!t){ toast('写点什么再长出'); return null; }
+  if (!t){ toast('写点什么再生长'); return null; }
   /* ★ v5.0：长出＝**挂到这条下面的一条新想法**（parent 指向它），不再是平铺的第二条种子。
      父子的缩进本身就把"从谁出来"说清楚了，所以不再往 bornFrom 里塞来源 ——
      bornFrom 从此只表示"合并自哪几条"，一个字段一个意思，不兼职。
@@ -4464,18 +4479,23 @@ function openSeedNew(){
    复用现有 mask/modal（层序、焦点陷阱、滚动锁、退场都在那一套里）—— 本项目在浮层层序上踩过坑。 */
 function openSeedSheet(it){
   mask.classList.add('sheet-mode');
-  const item = (act, label, hint) => `<button type="button" class="sheet-item" data-act="${act}" data-id="${esc(it.id)}">
-      <span class="si-label">${label}</span><span class="si-hint">${hint}</span></button>`;
+  /* ★ v5.0：图标单独占一格固定宽度，标签才竖着对齐。
+     之前把符号和文字拼在一个字符串里，`⑂` 比 `✎` 窄、`☀`/`⏸` 还会被系统
+     当成 emoji 渲染成彩色的 —— 用户原话「这些至少在列上面……它们都不照应」。
+     顺手把两个**有 emoji 变体**的符号换掉（☀ U+2600、⏸ U+23F8 会变彩），
+     改用没有 emoji 变体的：▽ 收起来 / ↺ 继续想。 */
+  const item = (act, ico, label, hint) => `<button type="button" class="sheet-item" data-act="${act}" data-id="${esc(it.id)}">
+      <span class="si-ico" aria-hidden="true">${ico}</span><span class="si-label">${label}</span><span class="si-hint">${hint}</span></button>`;
   modal.innerHTML =
     `<div class="sheet-head"><b>${esc(it.title)}</b></div>
      <div class="sheet-list">
-       ${item('sparkadd', '＋ 续写', '现在多了什么信息')}
-       ${item('fork', '⑂ 长出', '从这里分出去一条新的')}
-       ${item('promote', '↙ 立项', '把它变成一条待办')}
-       ${item('edit', '✎ 编辑', '改标题 / 标签 / 重要程度')}
-       ${item('mergepick', '⧉ 合并', '选上它，再勾别的')}
-       ${it.done ? item('seeduse', '☀ 继续想', '亮回来，回主列表') : item('seeduse', '⏸ 收起来', '变暗、沉到底部')}
-       ${item('del', '✕ 删除', '删掉这条想法')}
+       ${item('sparkadd', '＋', '续写', '现在多了什么信息')}
+       ${item('fork', '⑂', '生长', '从这里分出去一条新的')}
+       ${item('promote', '↙', '立项', '把它变成一条待办')}
+       ${item('edit', '✎', '编辑', '改标题 / 标签 / 重要程度')}
+       ${item('mergepick', '⧉', '合并', '选上它，再勾别的')}
+       ${it.done ? item('seeduse', '↺', '继续想', '亮回来，回主列表') : item('seeduse', '▽', '收起来', '变暗、沉到底部')}
+       ${item('del', '✕', '删除', '删掉这条想法')}
      </div>
      <div class="sheet-foot"><button type="button" class="btn" data-act="sheetclose">取消</button></div>`;
   openMask();
@@ -5993,7 +6013,7 @@ view.addEventListener('click', e => {
     refresh(); return;
   }
   if (act === 'sparkcancel'){ ideaUI.sparkOpen = null; refresh(); return; }
-  if (act === 'fork' && it){ openSeedPrompt('从「' + it.title + '」长出', '新的想法第一句', '从这里分出去的那条', v => { if (seedGrow(it, v)) refresh(); }); return; }
+  if (act === 'fork' && it){ openSeedPrompt('从「' + it.title + '」生长', '新的想法第一句', '从这里分出去的那条', v => { if (seedGrow(it, v)) refresh(); }); return; }
   if (act === 'promote' && it){ openSeedPromote(it); return; }
   if (act === 'gototask' && it){
     const t = it.promoted && S.items.find(x => x.id === it.promoted);
@@ -6496,7 +6516,7 @@ modal.addEventListener('click', e => {
   if (!it) return;
   if (act === 'sparkadd'){ ideaUI.sparkOpen = it.id; refresh(); return; }
   if (act === 'fork'){
-    openSeedPrompt('从「' + it.title + '」长出', '新的想法第一句', '从这里分出去的那条',
+    openSeedPrompt('从「' + it.title + '」生长', '新的想法第一句', '从这里分出去的那条',
       v => { if (seedGrow(it, v)) refresh(); });
     return;
   }
@@ -7600,7 +7620,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '4.0.0';
+const APP_VERSION = '4.0.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
