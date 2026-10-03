@@ -2550,6 +2550,18 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
 .merge-bar .mb-n{font-size:12px;color:var(--muted);white-space:nowrap}
 .merge-bar .btn{padding:8px 12px;font-size:13px}
 .merge-bar .btn[disabled]{opacity:.45;pointer-events:none}
+/* ★ v5.0 多选批量操作条：分两行，动作排一排**可横滑**（7 个按钮手机上排不下，
+   硬挤会把字压成两行；横滑是这里唯一不牺牲可读性的做法）。 */
+.batch-bar{flex-direction:column;align-items:stretch;gap:8px;width:min(1240px,calc(100% - 24px))}
+.batch-bar .bb-top{display:flex;align-items:center;gap:10px}
+.batch-bar .bb-top .mb-n{flex:1}
+.batch-bar .bb-acts{
+  display:flex;gap:6px;overflow-x:auto;overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px;
+}
+.batch-bar .bb-acts::-webkit-scrollbar{display:none}
+.batch-bar .bb-acts .btn{flex:0 0 auto;white-space:nowrap;padding:8px 12px;font-size:13px}
+.batch-bar .bb-acts .btn[disabled]{opacity:.45;pointer-events:none}
 
 /* ---------- ★ v5.0 想法卡的长按动作菜单（底部抽屉）----------
    卡片上原来排着 5 枚小按钮，把标题能用的宽度吃掉了 —— 而手机上标题往往是最长的那一行。
@@ -4175,8 +4187,8 @@ function renderIdeas(){
     <div class="idea-toolbar${rv()}"${rvd(30)}>
       <button class="btn primary idea-new" data-act="seednew">＋ 新想法</button>
       ${ideaUI.mergeMode
-        ? `<span class="len">勾两条以上合并</span><button class="btn" data-act="mergecancel">取消</button>`
-        : `<button class="btn" data-act="mergestart"${all.length >= 2 ? '' : ' disabled'}>⧉ 合并</button>`}
+        ? `<span class="len">已选 <b class="mono">${nSel}</b> 条</span><button class="btn" data-act="mergecancel">取消</button>`
+        : `<button class="btn" data-act="mergestart"${all.length ? '' : ' disabled'}>☰ 多选</button>`}
     </div>
     <div class="idea-searchbar${rv()}"${rvd(35)}>
       <input class="search" id="ideaSearch" type="text" aria-label="搜想法"
@@ -4253,12 +4265,27 @@ function renderIdeas(){
     h += `<div class="idea-used-head">用过了<span class="n mono">${used.length}</span></div>
       <div class="idea-list used">` + treeHTML(used) + `</div>`;
   }
-  /* 多选态：底部确认条。选不满两条就禁用 —— 一条自己跟自己合并没有意义。 */
+  /* ★ v5.0 多选批量（第 2 批第 1 块）。「合并」不再是右上角那颗孤零零的按钮 ——
+     它和其他动作同级，一起放进这条操作条。用户原话：「既然合并跟其他……都是同级的选项，
+     那为什么合并要单独放在右上角呢？这样逻辑上是不是不太合理？」
+     条分两行：上行说选了几条 + 取消；下行一排动作（手机上排不下，做成可横滑）。
+     底色实底 —— 它是浮在卡片之上的层，本项目对浮层底色的硬规则是"不透明"。 */
   if (ideaUI.mergeMode){
-    h += `<div class="merge-bar" role="region" aria-label="合并确认">
-      <span class="mb-n">已选 <b class="mono">${nSel}</b> 条</span>
-      <button class="btn" data-act="mergecancel">取消</button>
-      <button class="btn primary" data-act="mergeok"${nSel >= 2 ? '' : ' disabled'}>合并成新想法</button>
+    const off = nSel >= 1 ? '' : ' disabled';
+    h += `<div class="merge-bar batch-bar" role="region" aria-label="多选操作">
+      <div class="bb-top">
+        <span class="mb-n">已选 <b class="mono">${nSel}</b> 条</span>
+        <button class="btn" data-act="mergecancel">取消</button>
+      </div>
+      <div class="bb-acts">
+        <button class="btn primary" data-act="batchmerge"${nSel >= 2 ? '' : ' disabled'}>⧉ 合并</button>
+        <button class="btn" data-act="batchpromote"${off}>↙ 立项</button>
+        <button class="btn" data-act="batchedit"${off}>✎ 编辑</button>
+        <button class="btn" data-act="batchspark"${off}>＋ 续写</button>
+        <button class="btn" data-act="batchgrow"${off}>⑂ 生长</button>
+        <button class="btn" data-act="batchuse"${off}>▽ 收起来</button>
+        <button class="btn danger" data-act="batchdel"${off}>✕ 删除</button>
+      </div>
     </div>`;
   }
   view.innerHTML = h;
@@ -4419,6 +4446,56 @@ function seedPromote(it, task){
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
   return task;
+}
+/* ---------------- ★ v5.0 多选批量：逐条队列（第 2 批第 1 块） ----------------
+   背景：多选之后点「立项」这类动作，**不能把 N 个弹层同时塞进一屏**（用户原话：
+   「肯定不能让它们同时呈现在一个页面上……编辑完这个，点击确定并跳转后，下一个卡片就呈现出来了」）。
+   做法是一个队列：一次只开一个，**确定和取消都算"过了一条"**，自动开下一条，
+   全部走完给一句总结。
+   「合并 / 收起来 / 删除」是**一次性**动作，不进队列（没什么可逐条的）。 */
+const batchQ = { ids: [], i: 0, kind: '', done: 0 };
+function batchStart(kind){
+  const ids = [...ideaUI.mergeSel].filter(id => S.items.some(x => x.id === id && isSeed(x)));
+  if (!ids.length){ toast('先勾几条想法'); return; }
+  ideaUI.mergeMode = false; ideaUI.mergeSel.clear();
+  batchQ.ids = ids; batchQ.i = 0; batchQ.kind = kind; batchQ.done = 0;
+  batchStep();
+}
+function batchStep(){
+  /* 队列里的条目可能在处理过程中没了（比如上一条立项时被顺手删了）→ 跳过 */
+  while (batchQ.i < batchQ.ids.length && !S.items.some(x => x.id === batchQ.ids[batchQ.i])) batchQ.i++;
+  if (batchQ.i >= batchQ.ids.length){ batchFinish(); return; }
+  const it = S.items.find(x => x.id === batchQ.ids[batchQ.i]);
+  const n = batchQ.i + 1, total = batchQ.ids.length;
+  const tag = '（' + n + '/' + total + '）';
+  refresh();                                   // 先把卡片重渲染一遍，当前这条才滚得进来
+  if (batchQ.kind === 'promote' || batchQ.kind === 'edit'){
+    /* 立项已经立过的不再重复弹（弹了也是"已经立过项"就没了），直接算过 */
+    if (batchQ.kind === 'promote' && it.promoted){ batchAdvance(); return; }
+    setModalAfterClose(batchAdvance);
+    if (batchQ.kind === 'promote') openSeedPromote(it); else openEdit(it);
+    return;
+  }
+  if (batchQ.kind === 'spark'){
+    setModalAfterClose(batchAdvance);
+    openSeedPrompt('续写 ' + tag, it.title, '现在多了什么信息？',
+      v => { if (v && v.trim()) seedAddSpark(it, v); });
+    return;
+  }
+  if (batchQ.kind === 'grow'){
+    setModalAfterClose(batchAdvance);
+    openSeedPrompt('生长 ' + tag, it.title, '从这里分出去的那条',
+      v => { if (v && v.trim()) seedGrow(it, v); });
+    return;
+  }
+  batchFinish();
+}
+function batchAdvance(){ batchQ.done++; batchQ.i++; batchStep(); }
+function batchFinish(){
+  const n = batchQ.done;
+  batchQ.ids = []; batchQ.i = 0; batchQ.kind = ''; batchQ.done = 0;
+  refresh();
+  toast(n ? ('过完 ' + n + ' 条了') : '这几条都跳过了');
 }
 /* 合并：勾两条以上 → 生出一条新种子。**原种子不被吃掉**（用户定稿），只挂一行"来自 A ＋ B"。
    新种子的标题默认是各条标题用 ＋ 连起来，用户可以在编辑器里改。 */
@@ -5932,7 +6009,43 @@ view.addEventListener('click', e => {
   }
   if (act === 'mergestart'){ ideaUI.mergeMode = true; ideaUI.mergeSel.clear(); refresh(); return; }
   if (act === 'mergecancel'){ ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); refresh(); return; }
-  if (act === 'mergeok'){ const nx = seedMerge([...ideaUI.mergeSel]); ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); refresh(); if (nx) openEdit(nx); return; }
+  /* ---------------- ★ v5.0 多选批量的动作（第 2 批第 1 块） ----------------
+     四种「逐条」动作走队列（batchStart）；三种「一次性」动作在这里直接做完。
+     为什么收起来 / 删除不进队列：它们没有"每条要填什么"的中间步骤，
+     逐条反而慢；一次性做完 + 一个撤销就够。 */
+  if (act === 'batchmerge'){
+    const nx = seedMerge([...ideaUI.mergeSel]);
+    ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); refresh();
+    if (nx) openEdit(nx);
+    return;
+  }
+  if (act === 'batchuse'){
+    const list = S.items.filter(x => ideaUI.mergeSel.has(x.id) && isSeed(x) && !x.done);
+    if (!list.length){ toast('选中的都已经收起来了'); return; }
+    const old = list.map(x => [x, x.done, x.doneAt]);
+    list.forEach(x => { x.done = true; x.doneAt = Date.now(); });
+    ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); save(); refresh();
+    toast('收起来 ' + list.length + ' 条', '撤销', () => {
+      old.forEach(a => { a[0].done = a[1]; a[0].doneAt = a[2]; });
+      save(); refresh();
+    });
+    return;
+  }
+  if (act === 'batchdel'){
+    const list = S.items.filter(x => ideaUI.mergeSel.has(x.id) && isSeed(x));
+    if (!list.length) return;
+    const keep = S.items.slice();
+    S.items = S.items.filter(x => list.indexOf(x) < 0);
+    /* 被删掉的可能是别人的父节点 → 下面那层上浮为根，**不级联删** */
+    S.items.forEach(x => { if (x.parent && !S.items.some(y => y.id === x.parent)) x.parent = null; });
+    ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); save(); refresh();
+    toast('删掉 ' + list.length + ' 条', '撤销', () => { S.items = keep; save(); refresh(); });
+    return;
+  }
+  if (act === 'batchpromote'){ batchStart('promote'); return; }
+  if (act === 'batchedit'){ batchStart('edit'); return; }
+  if (act === 'batchspark'){ batchStart('spark'); return; }
+  if (act === 'batchgrow'){ batchStart('grow'); return; }
   if (act === 'seednew'){ openSeedNew(); return; }
   /* ---- ★ v5.0 想法页自己的标签筛选（不碰清单页的 S.filterTags）---- */
   if (act === 'ideatag'){
@@ -6375,6 +6488,9 @@ const mask = document.getElementById('mask'), modal = document.getElementById('m
    ② prefers-reduced-motion：用户已声明不要动效，别让他白等这 170ms，直接关。 */
 const MASK_OUT_MS = 170;
 let maskOutTimer = 0;
+/* ★ v5.0：弹层关闭后触发一次的回调。批量逐条处理用它推进队列（见 batchStep）。 */
+let modalAfterClose = null;
+function setModalAfterClose(fn){ modalAfterClose = fn; }
 function reduceMotion(){
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e){ return false; }
 }
@@ -6440,6 +6556,10 @@ function closeModalNow(){
   setBackgroundInert(false);
   const back = maskPrevFocus; maskPrevFocus = null;
   if (back && back.isConnected && typeof back.focus === 'function') back.focus({ preventScroll: true });
+  /* ★ v5.0：弹层"关闭后"的回调（只触发一次）。批量逐条处理需要它 ——
+     一次只开一个弹层，**保存和取消都算"过了一条"**，所以不能只在保存那条路上挂。 */
+  const after = modalAfterClose; modalAfterClose = null;
+  if (typeof after === 'function') after();
 }
 /* 焦点陷阱：背景已经 inert，正常 Tab 出不去，但会跳到浏览器地址栏再绕回来 ——
    键盘用户等于"当前位置丢了"。这里在两个端点之间显式回绕。 */
@@ -7620,7 +7740,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '4.0.1';
+const APP_VERSION = '4.1.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：

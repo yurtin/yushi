@@ -1,5 +1,5 @@
 /* 鱼事的 Service Worker —— 自动生成，别手改（改 _ios/build_pwa.py） */
-const CACHE = 'yushi-4.0.1';
+const CACHE = 'yushi-4.1.0';
 const SHELL = [
   "index.html",
   "manifest.webmanifest",
