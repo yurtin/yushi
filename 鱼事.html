@@ -1174,18 +1174,11 @@ html.soft-render .mask .modal{
 /* 相对词快捷：一条横向滚动带（9 个词在 400px 视口下放不下两排会显得很笨重）。
    ★ v3.41 对齐既有语言：圆角与字号跟 .pill 同一套（9999px / 12.5px），
      不再自造 11px 圆角 —— 全站按钮不是全圆就是 14px 输入框，没有第三个档。 */
-.te-quick{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;
-  scrollbar-width:none;padding:8px 18px 2px 0;
-  /* 右边淡出：让"后面还有词"这件事看得出来，而不是硬切掉半颗胶囊 */
-  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);
-  mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent)}
-.te-quick::-webkit-scrollbar{display:none}
-.te-quick button{
-  flex:0 0 auto;border:1px solid var(--line2);border-radius:9999px;background:transparent;color:var(--muted);
-  font:inherit;font-size:12.5px;font-weight:700;padding:6px 14px;cursor:pointer;
-  transition:color var(--mo-base) var(--mo-soft),border-color var(--mo-base) var(--mo-soft);
-}
-.te-quick button:hover{color:var(--fg);border-color:var(--fg)}
+/* ★ v5.0 删除（用户："今天、明天、后天、周一…周六太鸡肋了，取消掉，不然还占位置"）：
+   原来这里有一排 10 颗胶囊 .te-quick。删掉之后**功能没有丢** ——
+   ①日期输入框本来就认「今天 / 明天 / 周四 / 921 / 9月21日」这些写法（占位符里写着）；
+   ②下面的日历点哪天上哪天。
+   代价是"设成今天"从"点一下"变成"打字或点日历上的今天那格"。 */
 .te-clear{
   flex:0 0 auto;width:44px;height:44px;border:1px solid var(--line2);border-radius:9999px;
   background:transparent;color:var(--faint);font:inherit;font-size:14px;font-weight:700;cursor:pointer;
@@ -1197,7 +1190,7 @@ html.soft-render .mask .modal{
    ★ v3.41：去掉自造的浅色面板与边框 —— 全站日历本体从来就是"无面板"的；
      横向也收窄一格（grid 最宽 14×28px），让格子回到 .cal-d 原本的小尺寸，
      不再比"粘贴导入"里那个日历大一倍。 */
-.te-cal{margin-top:10px}
+.te-cal{margin-top:14px}
 .te-cal .cal-grid{max-width:196px;margin:0 auto}
 /* letter-spacing 会在最后一个汉字后面也留一份间距（CJK 没字形侧边距可抵消），
    表现为"2026年10月"整体偏左。往左补回同样一份，视觉上就居中了。
@@ -2745,6 +2738,28 @@ html.soft-render .mask.sheet-mode .modal{
 /* 长按菜单的发现性问题：长按是hidden手势，卡片底部留一行极淡的说明 */
 .seed-longhint{font-size:11px;color:var(--faint);letter-spacing:.02em}
 
+/* ---------- ★ v5.0 第 3 批：AI（联网）----------
+   全部复用现有 token，不新增配色 / 字体。三处用到：
+     ① 设置页 AI 区块的输入框与说明
+     ② 卡片上「✦ N」点开后的挂载建议列表
+     ③ 时间轴里 AI 生成的那一步（行首一个 ✦ + 角色名）
+   浮层一律实底（--panel-solid），这是本项目的硬规矩（见 ui-render-defects）。 */
+.ai-input{width:100%;box-sizing:border-box;font:inherit;font-size:13px;color:inherit;
+  background:var(--panel-solid);border:1px solid var(--pill);border-radius:9px;
+  padding:7px 9px;outline:none}
+.ai-input:focus{border-color:var(--accent)}
+.ai-row{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.ai-row>label{font-size:12px;color:var(--faint)}
+.ai-note{font-size:11.5px;line-height:1.65;color:var(--faint);margin:10px 0 0}
+.ai-quote{font-size:11.5px;line-height:1.65;color:var(--faint);margin:10px 0 0;
+  padding-left:10px;border-left:2px solid var(--accent);opacity:.9}
+.ai-sug{display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--pill)}
+.ai-sug:first-of-type{border-top:0}
+.ai-sug-b{flex:1 1 auto;min-width:0}
+.ai-sug-b b{display:block;font-size:13px;font-weight:600;word-break:break-word}
+.ai-sug-b span{display:block;font-size:11.5px;color:var(--faint);margin-top:2px;line-height:1.5}
+.sp-ai{font-size:11px;color:var(--accent);margin-right:4px}
+
 /* ---------- ★ v3.50 编辑器里的「想法」分区：时间/作业两栏要收起来 ----------
    种子没有死线，也没有作业状态。选到「想法」时这两栏整块隐藏（见 openItemEditor 里的 syncZone）。 */
 .te-row.hide,.field.hide{display:none !important}
@@ -3433,7 +3448,17 @@ const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', t
        ideaGestureSeen 想法页的手势说明是否已经自动弹过一次
        ideaLayout     想法页主视图：'list'（默认，卡片流）| 'tree'（树状图） */
   ideaUsedAt: null, lastOpenedSeed: null, lastScanAt: 0, ideaReview: true, ideaReviewDone: null,
-  captureZone: 'long', ideaGestureSeen: false, ideaLayout: 'list' };
+  captureZone: 'long', ideaGestureSeen: false, ideaLayout: 'list',
+  /* ★ v5.0 第 3 批（AI，联网）：
+       aiMode  隐私三档 'off' | 'title' | 'full'。**默认 off** —— 装好就是一个字都不发出去，
+               要联网必须用户自己在这个开关上做一次明确的选择（第一次点 AI 按钮时引导）。
+       aiBase / aiModel  预填 DeepSeek 的 OpenAI 兼容端点与官方模型名 deepseek-flash
+               （= DeepSeek-V4.1-Flash，官方文档 2026-09-10 起启用的模型名）。
+       aiUse   配额计数 {d:'YYYY-MM-DD', n}，每天 3 次（1 次关联扫描 + 2 次质疑）。
+     ⚠️ API key **不在 S 里、也不进 save()/snapshot()** —— 它单独存在另一把 localStorage 键
+        （见 AI_KEY_LS），这样导出的备份 JSON 永远不可能带上 key。 */
+  aiMode: 'off', aiBase: 'https://api.deepseek.com', aiModel: 'deepseek-flash',
+  aiUse: { d: null, n: 0 } };
 /* 清单页的四个分区（渲染顺序见 renderList）。折叠状态存的就是这几个键，
    load() 拿它当白名单过滤 —— 不让数据里的任意字符串混进 class 名。 */
 /* ★ v5.0：「考虑」已并入想法（行尾 ? 直接建种子），分区里不再有 consider。
@@ -3547,6 +3572,16 @@ function load(){
       S.captureZone = o.captureZone === 'idea' ? 'idea' : 'long';
       S.ideaGestureSeen = o.ideaGestureSeen === true;
       S.ideaLayout = o.ideaLayout === 'tree' ? 'tree' : 'list';
+      /* ★ v5.0 第 3 批（AI）：老存档没有这几个字段 → 保持默认（**off**）。
+         读坏了（存成不认识的值）也一律退回 'off' —— 隐私开关的失败方向必须是"不联网"，
+         宁可不发，也不能因为一个脏数据把内容送出去。 */
+      S.aiMode = (o.aiMode === 'title' || o.aiMode === 'full') ? o.aiMode : 'off';
+      S.aiBase = (typeof o.aiBase === 'string' && o.aiBase.trim())
+        ? o.aiBase.trim() : 'https://api.deepseek.com';
+      S.aiModel = (typeof o.aiModel === 'string' && o.aiModel.trim())
+        ? o.aiModel.trim() : 'deepseek-flash';
+      S.aiUse = (o.aiUse && typeof o.aiUse === 'object' && typeof o.aiUse.d === 'string')
+        ? { d: o.aiUse.d, n: Number.isFinite(o.aiUse.n) ? o.aiUse.n : 0 } : { d: null, n: 0 };
     }
   } catch (e){}
   syncTags();
@@ -3566,6 +3601,8 @@ function save(){
       ideaUsedAt: S.ideaUsedAt, lastOpenedSeed: S.lastOpenedSeed,
       lastScanAt: S.lastScanAt, ideaReview: S.ideaReview, ideaReviewDone: S.ideaReviewDone,
       captureZone: S.captureZone, ideaGestureSeen: S.ideaGestureSeen, ideaLayout: S.ideaLayout,
+      /* ★ v5.0 第 3 批（AI）：只有"设置"，**没有 key**（key 在 AI_KEY_LS 上单独存） */
+      aiMode: S.aiMode, aiBase: S.aiBase, aiModel: S.aiModel, aiUse: S.aiUse,
       voiceVersion: 2   /* 语音默认值只迁移一次，之后用户自己的开关说了算（见 load 的说明） */
     }));
     saveFailed = false;
@@ -3587,7 +3624,10 @@ function snapshot(){
     /* ★ v5.0：想法系统的全局状态也进备份，否则换设备后回顾的频次判定会从头开始 */
     ideaUsedAt: S.ideaUsedAt, lastOpenedSeed: S.lastOpenedSeed,
     lastScanAt: S.lastScanAt, ideaReview: S.ideaReview, ideaReviewDone: S.ideaReviewDone,
-    captureZone: S.captureZone, ideaGestureSeen: S.ideaGestureSeen, ideaLayout: S.ideaLayout
+    captureZone: S.captureZone, ideaGestureSeen: S.ideaGestureSeen, ideaLayout: S.ideaLayout,
+    /* ★ v5.0 第 3 批（AI）：**刻意不写 key** —— 设计稿 §14 I-50 的验收：
+       备份导出的 JSON 里不含 API key 字段。key 存在 AI_KEY_LS，永不进快照。 */
+    aiMode: S.aiMode, aiBase: S.aiBase, aiModel: S.aiModel, aiUse: S.aiUse
   };
 }
 /* 去空白、去空串、去重（保留先后顺序） */
@@ -3808,6 +3848,7 @@ function seedHTML(it, info){
       sparks.map((s, i) =>
         `<div class="sp-step"><span class="sp-dot"></span>` +
         `<span class="sp-at">${esc(s.at || '')}</span>` +
+        (s.by === 'ai' ? `<span class="sp-ai" title="AI 以「${esc(s.role || '')}」的身份问的">✦${esc(s.role || 'AI')}</span>` : '') +
         `<span class="sp-tx">${esc(s.text)}</span>` +
         (s.promotedTo ? `<span class="sp-done" title="这一步已经立项">↗</span>` : '') +
         `<button type="button" class="sp-go" data-act="sparkpromote" data-id="${esc(it.id)}" data-i="${i}" title="把这一句变成待办" aria-label="把这一句变成待办">→</button>` +
@@ -4234,10 +4275,15 @@ function reviewPicked(){
 
   /* 槽位 1：沉睡最久 */
   take(pool.filter(i => !fresh(i)).slice().sort((a, b) => ideaLastAt(a) - ideaLastAt(b))[0]);
-  /* 槽位 2（本地降级）：最近 7 天新增步数最多。
-     注意这一槽和槽位 1 的取向是**相反**的，这是设计如此：
-     槽位 1 = 你完全没动的，槽位 2 = 你还在动的 —— 前者是"捡回来"，后者是"接着长"。
-     「创建满 7 天」那条已经把"刚写下的"挡在池子外面了，所以这里不会捞到新东西。 */
+  /* 槽位 2：**先看今天的 AI 关联结果**（设计稿 §8.1：回顾槽位 2 复用当天关联结果，
+     0 额外调用），没有再接本地降级规则「最近 7 天新增步数最多」。
+     两槽取向相反是设计如此：槽位 1 = 你完全没动的（捡回来），槽位 2 = 你还在动的（接着长）。 */
+  const aiToday = !!(S.lastScanAt && ymd(new Date(S.lastScanAt)) === ymd(new Date()));
+  if (aiToday){
+    const withSug = pool.filter(i => !seen.has(i.id)
+      && Array.isArray(i.suggest) && i.suggest.some(s => S.items.some(x => x.id === s.to)));
+    take(withSug.sort((a, b) => ideaLastAt(b) - ideaLastAt(a))[0]);
+  }
   const recentSteps = i => (Array.isArray(i.sparks) ? i.sparks : [])
     .filter(s => (Date.now() - Date.parse((s.at || '') + 'T00:00:00')) <= 7 * 86400000).length;
   take(pool.filter(i => !seen.has(i.id) && recentSteps(i) > 0)
@@ -5220,7 +5266,11 @@ function openSeedSheet(it){
        ${item('promote', '↙', '立项', '把它变成一条待办')}
        ${item('edit', '✎', '编辑', '改标题 / 标签 / 重要程度')}
        ${item('mergepick', '⧉', '合并', '选上它，再勾别的')}
-       ${it.done ? item('seeduse', '↺', '继续想', '亮回来，回主列表') : item('seeduse', '▽', '收起来', '变暗、沉到底部')}
+       <!-- ★ v5.0 第 3 批：AI 的**手动**入口（设计稿 §8.1：质疑是手动、2 次/天）。
+            AI 关着时这一项也在 —— 点了会引导去设置里打开，而不是静默消失
+            （一块功能突然不见，比"点了告诉你为什么不能"更难理解）。 -->
+       ${item('aiask', '✦', '问我一问', aiOn() ? '换个身份问你一句' : '要先在设置里打开 AI')}
+       ${item('seeduse', it.done ? '↺' : '▽', it.done ? '继续想' : '收起来', it.done ? '亮回来，回主列表' : '变暗、沉到底部')}
        ${item('del', '✕', '删除', '删掉这条想法')}
      </div>
      <div class="sheet-foot"><button type="button" class="btn" data-act="sheetclose">取消</button></div>`;
@@ -5359,6 +5409,286 @@ function renderStat(){
   countUpNumbers();
 }
 
+/* ==================== ★ v5.0 第 3 批：AI（联网，独立可选） ====================
+   设计稿 §8 的规格，逐条落在这里：
+     ① 模式是**混合**的 —— 关联自动（每天最多 1 次静默扫描）、质疑手动（你点才问）
+     ② 产物是**挂载建议**（要不要把这条挂到那条下面），不是"相关列表"
+     ③ 一次只问一个问题，且必须引用你原文里的词；不给结论、不替你下判断
+     ④ 每天 3 次（1 扫描 + 2 质疑），本地计数，不需要服务端
+     ⑤ 隐私三档默认**关闭**；关着时页面零外部请求
+     ⑥ 失败就是「AI 没接上」—— **绝不生成本地假结果**，失败不扣配额
+
+   三条实现红线：
+     · API key 单独存（AI_KEY_LS），**不进 S、不进 save()/snapshot()** → 备份 JSON 永不含 key
+     · 所有入口在发请求之前先过 aiOn()（开关 + key 两个条件）
+     · 只有拿到结果才计配额 */
+
+const AI_KEY_LS = 'daibanji.ai.key';   // API key 的独立存储键（不进备份）
+const AI_TIMEOUT_MS = 8000;            // 设计稿 §8.6：超时 8 秒
+const AI_DAILY = 3;                    // 1 次关联扫描 + 2 次质疑
+const AI_MAX_SCAN = 12;                // 一次扫描最多发这么多条（成本控制）
+const AI_ROLES = ['投资人', '未来的用户', '唱反调的人', '三年后的你', '已经放弃这条想法的你'];
+
+function aiKey(){ try { return localStorage.getItem(AI_KEY_LS) || ''; } catch (e){ return ''; } }
+function aiSetKey(v){
+  const t = String(v == null ? '' : v).trim();
+  try { t ? localStorage.setItem(AI_KEY_LS, t) : localStorage.removeItem(AI_KEY_LS); }
+  catch (e){ toast('key 存不进去（浏览器存储不可写）'); }
+  return t;
+}
+/* 掩码：设置页只回显后四位，不把整把 key 重新画进 DOM */
+function aiKeyMask(){
+  const k = aiKey();
+  if (!k) return '';
+  return k.length <= 8 ? '••••' : '••••••••' + k.slice(-4);
+}
+/* AI 能不能用：开关不是 off **且** 有 key。缺一，入口一律不发请求。 */
+function aiOn(){ return S.aiMode !== 'off' && !!aiKey(); }
+function aiQuotaToday(){
+  const t = ymd(new Date());
+  return (S.aiUse && S.aiUse.d === t && Number.isFinite(S.aiUse.n)) ? S.aiUse.n : 0;
+}
+function aiQuotaLeft(){ return Math.max(0, AI_DAILY - aiQuotaToday()); }
+function aiQuotaSpend(){
+  const t = ymd(new Date());
+  if (!S.aiUse || S.aiUse.d !== t) S.aiUse = { d: t, n: 0 };
+  S.aiUse.n++;
+  save();
+}
+/* 按隐私档组装要发出去的文本。**只发当前这一条**，不发全库。 */
+function aiSeedText(it, withBody){
+  const title = String(it.title || '').trim();
+  if (!withBody) return title;
+  const sparks = (Array.isArray(it.sparks) ? it.sparks : [])
+    .map(s => '- ' + String(s.text || '')).join('\n');
+  const raw = String(it.raw || '').trim();
+  return '标题：' + title
+    + (raw && raw !== title ? '\n原文：' + raw : '')
+    + (sparks ? '\n过程：\n' + sparks : '');
+}
+function aiPayload(it){ return aiSeedText(it, S.aiMode === 'full'); }
+
+/* 唯一的出网口。返回文本；任何失败都抛异常 —— 调用方一律显示「AI 没接上」。 */
+async function aiCall(messages, opts){
+  const base = String(S.aiBase || '').trim().replace(/\/+$/, '');
+  if (!base) throw new Error('no base');
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), AI_TIMEOUT_MS);
+  try {
+    const res = await fetch(base + '/v1/chat/completions', {
+      method: 'POST',
+      signal: ctl.signal,
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + aiKey() },
+      body: JSON.stringify({
+        model: S.aiModel || 'deepseek-flash',
+        messages,
+        stream: false,
+        /* 关掉思考链：这里要的是"一个短问题 / 一组建议"，8 秒超时里跑思考链必然超时，
+           而且思考 token 一样计费（官方文档：thinking 默认 enabled）。 */
+        thinking: { type: 'disabled' },
+        ...(opts && opts.json ? { response_format: { type: 'json_object' } } : {})
+      })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const msg = data && data.choices && data.choices[0] && data.choices[0].message;
+    const txt = String((msg && msg.content) || '').trim();
+    if (!txt) throw new Error('empty');
+    return txt;
+  } finally { clearTimeout(timer); }
+}
+/* 从可能带 markdown 围栏 / 前后废话的输出里抠出第一个 JSON 对象 */
+function aiParseJSON(txt){
+  const s = String(txt || '').replace(/```[a-zA-Z]*/g, '').replace(/```/g, '').trim();
+  const i = s.indexOf('{'), j = s.lastIndexOf('}');
+  if (i < 0 || j <= i) throw new Error('no json');
+  return JSON.parse(s.slice(i, j + 1));
+}
+/* 未开启 / 没 key 时的引导页。**不替用户打开开关** —— 隐私开关必须由他本人点。 */
+function openAiNeedOn(){
+  modal.innerHTML =
+    `<h3 id="modalTitle">AI 还没开</h3>
+     <p class="ai-note">AI 功能要联网，还得有一把模型服务商的 key。</p>
+     <p class="ai-quote">打开之后，鱼事会把<b>当前这一条想法的文字</b>发到模型服务商那里。
+       关着的时候，鱼事和以前一样，一个字都不出你的手机。</p>
+     <div class="foot"><div class="spacer"></div>
+       <button class="btn" id="ai_no">先不</button>
+       <button class="btn primary" id="ai_go">去设置里打开</button></div>`;
+  openMask();
+  document.getElementById('ai_no').onclick = closeModal;
+  document.getElementById('ai_go').onclick = () => {
+    closeModal();
+    S.view = 'settings'; ANIM = true; refresh();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+}
+
+/* ---------- 3.6 质疑（角色扮演式）：一次一个问题 ---------- */
+async function aiAsk(it){
+  if (!isSeed(it)) return;
+  if (!aiOn()){ openAiNeedOn(); return; }
+  if (aiQuotaLeft() <= 0){ toast('今天先消化一下，明天再来'); return; }
+  const r = AI_ROLES[Math.floor(Math.random() * AI_ROLES.length)];
+  toast('以「' + r + '」的身份问着…');
+  let txt;
+  try {
+    txt = await aiCall([
+      { role: 'system', content:
+        '你只做一件事：就用户写的一条想法，问出恰好一个问题。'
+        + '不要给建议、不要总结、不要下判断、不要多问。'
+        + '问题必须用中文，并且必须出现用户原文里出现过的具体词。直接输出这个问题本身。' },
+      { role: 'user', content:
+        '你现在扮演：' + r + '。\n下面是我的这条想法：\n' + aiPayload(it)
+        + '\n\n请只问一个问题。' }
+    ]);
+  } catch (e){ toast('AI 没接上'); return; }          // 失败不扣配额
+  const q = txt.replace(/^[\s"'「『（(]+/, '').replace(/[\s"'」』）)]+$/, '')
+    .split('\n').map(x => x.trim()).filter(Boolean)[0] || '';
+  if (!q){ toast('AI 没接上'); return; }
+  if (!Array.isArray(it.sparks)) it.sparks = [];
+  it.sparks.push({ at: ymd(new Date()), text: q, by: 'ai', role: r });
+  S.ideaUsedAt = ymd(new Date());
+  aiQuotaSpend();
+  save(); refresh();
+  toast('它作为「' + r + '」问了你一句', '怎么回', () => { seedOpenInline(it); });
+}
+/* 树状图里没有行内输入框，所以"怎么回"要分两条路 */
+function seedOpenInline(it){
+  if (S.ideaLayout === 'tree'){
+    openSeedPrompt('续写', it.title, '现在多了什么信息？', v => { if (seedAddSpark(it, v)) refresh(); });
+    return;
+  }
+  ideaUI.sparkOpen = it.id; refresh();
+}
+
+/* ---------- 3.4 找关联：产物是**挂载建议**，不是相关列表 ---------- */
+async function aiScanLinks(manual){
+  if (!aiOn()){ if (manual) openAiNeedOn(); return; }
+  if (aiQuotaLeft() <= 0){ if (manual) toast('今天先消化一下，明天再来'); return; }
+  const pool = S.items.filter(i => isSeed(i) && !i.done)
+    .sort((a, b) => ideaLastAt(b) - ideaLastAt(a)).slice(0, AI_MAX_SCAN);
+  if (pool.length < 2){ if (manual) toast('想法还太少，再多记几条'); return; }
+  const lines = pool.map((it, i) => (i + 1) + '. ' + aiPayload(it).replace(/\n/g, ' / ')).join('\n');
+  if (manual) toast('找着…');
+  let out;
+  try {
+    out = await aiCall([
+      { role: 'system', content: '你把一个人的想法整理成树。只输出 JSON，不要任何解释文字。' },
+      { role: 'user', content:
+        '下面是想法列表，编号从 1 开始：\n' + lines
+        + '\n\n请找出最多 3 组「A 应该挂在 B 下面」的关系（A 是从 B 发展出来的，或本来就是 B 的一部分）。'
+        + '要求：from / to 都是上面的编号（整数）；why 是一句中文，必须引用这两条里出现过的词。'
+        + '只输出这个形状：{"links":[{"from":1,"to":2,"why":"…"}]}。没有就输出 {"links":[]}。' }
+    ], { json: true });
+  } catch (e){ if (manual) toast('AI 没接上'); return; }   // 失败不扣配额
+
+  let links = [];
+  try { links = (aiParseJSON(out).links || []); } catch (e){ links = []; }
+  const byIdx = i => (i >= 1 && i <= pool.length) ? pool[i - 1] : null;
+  let n = 0;
+  links.slice(0, 3).forEach(L => {
+    const a = byIdx(Number(L && L.from)), b = byIdx(Number(L && L.to));
+    if (!a || !b || a.id === b.id) return;
+    if (aiIsDescendant(b, a)) return;                     // 防环：不能挂到自己的后代下面
+    if (!Array.isArray(a.suggest)) a.suggest = [];
+    if (a.suggest.some(s => s.to === b.id)) return;
+    a.suggest.push({ to: b.id, why: String((L && L.why) || '').slice(0, 120) });
+    n++;
+  });
+  S.lastScanAt = Date.now();
+  aiQuotaSpend();
+  save(); refresh();
+  if (manual) toast(n ? ('找到 ' + n + ' 条可以挂的，卡片上有 ✦') : '这次没找到可挂的');
+}
+/* to 是不是 it 的后代（防环：挂过去会形成 A→B→A 的圈） */
+function aiIsDescendant(cand, it){
+  const byId = new Map(S.items.map(i => [i.id, i]));
+  let p = cand && cand.parent, g = 0;
+  while (p && g++ < 64){
+    if (p === it.id) return true;
+    const q = byId.get(p); p = q && q.parent;
+  }
+  return false;
+}
+/* ---------- 3.5 挂载建议的接受 / 拒绝 ---------- */
+function openSuggestSheet(it){
+  const list = Array.isArray(it.suggest) ? it.suggest : [];
+  const row = (s, i) => {
+    const to = S.items.find(x => x.id === s.to);
+    return `<div class="ai-sug">
+      <div class="ai-sug-b"><b>${to ? esc(to.title) : '（那条已经不在了）'}</b>
+        <span>${esc(s.why || '')}</span></div>
+      <button type="button" class="btn primary" data-act="sugapply" data-id="${esc(it.id)}" data-i="${i}">挂到它下面</button>
+      <button type="button" class="btn" data-act="sugdrop" data-id="${esc(it.id)}" data-i="${i}">不是</button>
+    </div>`;
+  };
+  modal.innerHTML =
+    `<div class="sheet-head"><b>挂到哪条下面？</b></div>
+     <p class="ai-note">AI 觉得这几条和你这条有关系。挂上去只是多一层缩进，内容一个字都不改。</p>
+     <div>${list.length ? list.map(row).join('') : '<p class="ai-note">没有待处理的建议了。</p>'}</div>
+     <div class="sheet-foot"><button type="button" class="btn" data-act="sheetclose">关闭</button></div>`;
+  mask.classList.add('sheet-mode');
+  openMask();
+}
+function aiSuggestApply(it, idx){
+  const s = (Array.isArray(it.suggest) ? it.suggest : [])[idx];
+  if (!s) return;
+  const to = S.items.find(x => x.id === s.to);
+  if (!to || to.id === it.id || aiIsDescendant(to, it)){ it.suggest.splice(idx, 1); save(); refresh(); return; }
+  const oldParent = it.parent || null;
+  it.parent = to.id;
+  it.suggest.splice(idx, 1);
+  collapsed.delete(to.id);
+  save(); refresh();
+  toast('已挂到「' + to.title + '」下面', '撤销', () => {
+    it.parent = oldParent;
+    it.suggest.splice(idx, 0, s);
+    save(); refresh();
+  });
+}
+function aiSuggestDrop(it, idx){
+  if (!Array.isArray(it.suggest) || !it.suggest[idx]) return;
+  it.suggest.splice(idx, 1);
+  save(); refresh();
+}
+/* ---------- 设置页里的几个动作 ---------- */
+/* 自检**不花配额**：这不是质疑也不是扫描，只是一次连通性确认。 */
+function aiTestSelf(){
+  if (!S.aiMode){ toast('先选一下"发多少内容"'); return; }
+  if (!aiKey()){ toast('先填一把 key'); return; }
+  toast('试连接…');
+  aiCall([{ role: 'user', content: '只回复两个字：通了' }])
+    .then(t => toast('连上了：' + String(t).slice(0, 20)))
+    .catch(err => toast('没连上：' + String((err && err.message) || err)));
+}
+/* §14 I-49：设置页能一键筛出所有 by:'ai' 的 spark 并删掉 */
+function aiPrune(){
+  const hits = [];
+  S.items.forEach(it => {
+    if (!Array.isArray(it.sparks)) return;
+    it.sparks.forEach((s, i) => { if (s && s.by === 'ai') hits.push([it, s, i]); });
+  });
+  if (!hits.length){ toast('没有 AI 写的句子'); return; }
+  /* 从后往前删，免得下标串位 */
+  hits.slice().sort((a, b) => b[2] - a[2]).forEach(([it, , i]) => { it.sparks.splice(i, 1); });
+  save(); refresh();
+  toast('删掉 ' + hits.length + ' 句 AI 写的', '撤销', () => {
+    hits.slice().sort((a, b) => a[2] - b[2]).forEach(([it, s, i]) => { it.sparks.splice(i, 0, s); });
+    save(); refresh();
+  });
+}
+/* 打开 App 时的静默扫描：**只在开关打开且距上次 > 24h** 时才联网。
+   关闭状态下一行请求都不会发（§14 I-43：关掉时页面零外部请求）。 */
+function aiMaybeAutoScan(){
+  if (!aiOn()) return;
+  if (!(Date.now() - (S.lastScanAt || 0) > 24 * 3600 * 1000)) return;
+  setTimeout(() => {
+    if (!aiOn()) return;
+    if (!(Date.now() - (S.lastScanAt || 0) > 24 * 3600 * 1000)) return;
+    aiScanLinks(false);
+  }, 4000);   // 让首屏先画完，别和入场动画抢
+}
+
 /* ---------- 设置页 ---------- */
 
 /* 「外观 → 页面说明文字」的总开关。
@@ -5421,7 +5751,10 @@ function renderSettings(){
                   aria-checked="${S.voice ? 'true' : 'false'}"></button>
         </div>
         <!-- v3.18：原来的「系统语音（可能联网）」开关已删除 —— 语音改成**内置本地模型**
-             （Vosk 中文小模型跟包走），不联网、不弹输入法，所以包也不再声明 INTERNET。 -->
+             （Vosk 中文小模型跟包走），不联网、不弹输入法。
+             ⚠️ v5.0 第 3 批的口径修正：**语音**仍然不联网，但从这一版起「AI」那一栏是可选联网的
+             （默认关闭）。所以"包不声明 INTERNET"这句不再适用于全部构建 ——
+             现在出两个包：纯净版不含 INTERNET，联网版含（见 _android/build.py 的 --ai 开关）。 -->
       </section>
 
       <section class="glass set-card${rv()}"${rvd(150)}>
@@ -5495,6 +5828,64 @@ function renderSettings(){
         </div>
       </section>
 
+      <!-- ★ v5.0 第 3 批：AI（联网）。**默认关闭** —— 这是本页唯一会让数据离开这台手机的开关，
+           所以它单独占一张卡，文案直白说明"发什么、发到哪"，不写成免责声明。
+           三档的差别就是"发多少内容出去"：关闭一个字都不发 / 只发标题 / 标题+原文+时间轴。 -->
+      <section class="glass set-card${rv()}"${rvd(200)}>
+        <h3>AI</h3>
+        <p class="set-sub">给想法找关系、以及以某个身份问你一句。要用它就得联网，还得有一把模型服务商的 key。</p>
+        <p class="ai-quote">打开之后，鱼事会把<b>当前这一条想法的文字</b>发到模型服务商那里去。
+          关着的时候，鱼事和以前一样，一个字都不出你的手机。</p>
+        <div class="set-row">
+          <div class="set-txt">
+            <b>发多少内容出去</b>
+            <span>「只发标题」最省也最保守；「发全文」多带原文和续写的时间轴，问出来的问题更贴。默认关闭。</span>
+          </div>
+          <span class="seg" role="group" aria-label="AI 发多少内容">
+            <button class="segbtn${S.aiMode === 'off' ? ' on' : ''}" data-aipriv="off"
+                    aria-pressed="${S.aiMode === 'off'}">关闭</button>
+            <button class="segbtn${S.aiMode === 'title' ? ' on' : ''}" data-aipriv="title"
+                    aria-pressed="${S.aiMode === 'title'}">只发标题</button>
+            <button class="segbtn${S.aiMode === 'full' ? ' on' : ''}" data-aipriv="full"
+                    aria-pressed="${S.aiMode === 'full'}">发全文</button>
+          </span>
+        </div>
+        <div class="ai-row">
+          <label for="aiKeyInput">API key（只存在这台手机上，不进备份文件）${aiKey() ? '  · 现在是 ' + esc(aiKeyMask()) : ''}</label>
+          <input class="ai-input" id="aiKeyInput" type="password" autocomplete="off" spellcheck="false"
+                 placeholder="粘贴 DeepSeek 的 key（sk-…）" value="">
+        </div>
+        <div class="ai-row">
+          <label for="aiBaseInput">接口地址（任意 OpenAI 兼容端点）</label>
+          <input class="ai-input" id="aiBaseInput" type="text" autocomplete="off" spellcheck="false"
+                 value="${esc(S.aiBase)}">
+        </div>
+        <div class="ai-row">
+          <label for="aiModelInput">模型名</label>
+          <input class="ai-input" id="aiModelInput" type="text" autocomplete="off" spellcheck="false"
+                 value="${esc(S.aiModel)}">
+        </div>
+        <div class="set-row" style="margin-top:14px">
+          <div class="set-txt">
+            <b>今天还剩 <span class="mono">${aiQuotaLeft()}</span> 次</b>
+            <span>每天 1 次自动找关联 + 2 次提问，本地计数，不需要服务端。用完会显示「今天先消化一下，明天再来」。</span>
+          </div>
+          <div class="seg-cap">
+            <button type="button" class="pill" data-act="aitest">试连接</button>
+            <button type="button" class="pill" data-act="aiscan">现在找一次</button>
+          </div>
+        </div>
+        <div class="set-row">
+          <div class="set-txt">
+            <b>AI 写过的话</b>
+            <span>时间轴上带 ✦ 的那几步是它写的。想清掉就一键筛出来删（会先弹撤销）。</span>
+          </div>
+          <div class="seg-cap">
+            <button type="button" class="pill" data-act="aiprune">筛出来删掉</button>
+          </div>
+        </div>
+      </section>
+
       <section class="glass set-card${rv()}"${rvd(240)}>
         <h3>数据</h3>
         <p class="set-sub">数据只存在这台手机上、不上云。这里只做"导出留底"。</p>
@@ -5527,8 +5918,9 @@ function renderSettings(){
         <div class="set-row">
           <div class="set-txt">
             <b>版本 v${APP_VERSION}</b>
-            <span>装在这台手机上的独立 App，不用联网、没有账号：数据只存在这台手机里，
-              不会上传到任何地方。换手机时用「备份」导出一份文件，在新手机上导入即可。</span>
+            <span>装在这台手机上的独立 App，没有账号：数据只存在这台手机里，不会上传到任何地方。
+              「AI」那一栏默认是关的 —— 关着的时候它一个字都不出这台手机；打开后也只发当前这一条想法的文字。
+              换手机时用「备份」导出一份文件，在新手机上导入即可。</span>
           </div>
         </div>
       </section>
@@ -6517,6 +6909,32 @@ view.addEventListener('input', e => {
   clearTimeout(ideaSearchTimer);
   ideaSearchTimer = setTimeout(() => { ideaSearchTimer = 0; refresh(); refocusIdeaSearch(caret); }, SEARCH_DEBOUNCE_MS);
 });
+/* ★ v5.0 第 3 批：设置页 AI 三格输入（key / 接口地址 / 模型名）。
+   用 change 而不是 input —— 这三个都是"填完就走"的值，边打字边存会把半截 key 写进
+   localStorage；change 在失焦或回车时触发，正好。key 单独存（不进 S、不进备份），
+   另外两个进 S 跟着存档走。 */
+view.addEventListener('change', e => {
+  const id = e.target.id;
+  if (id === 'aiKeyInput'){
+    const had = !!aiKey();
+    aiSetKey(e.target.value);
+    e.target.value = '';                         // 不回显明文；掩码由重渲染后的 label 显示
+    toast(aiKey() ? 'key 存好了（只在设置页显示后四位）' : (had ? 'key 已清空' : '还没填 key'));
+    refresh();
+    return;
+  }
+  if (id === 'aiBaseInput'){
+    const v = String(e.target.value || '').trim();
+    S.aiBase = v || 'https://api.deepseek.com';
+    save(); refresh(); toast('接口地址已更新');
+    return;
+  }
+  if (id === 'aiModelInput'){
+    const v = String(e.target.value || '').trim();
+    S.aiModel = v || 'deepseek-flash';
+    save(); refresh(); toast('模型名已更新');
+  }
+});
 view.addEventListener('keydown', e => {
   /* 清空要立刻生效（还带一个清空搜索的挂起定时器，否则它稍后会把刚清掉的词又填回去） */
   if (e.target.id === 'searchBox' && e.key === 'Escape'){
@@ -6540,7 +6958,7 @@ view.addEventListener('keydown', e => {
 });
 
 view.addEventListener('click', e => {
-  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone]');
+  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone],[data-aipriv]');
   if (!el) return;
 
   /* 分区折叠（长期 / 短期 / 循环 / 考虑）：复用 .zone 高度过渡（foldZoneWithMotion），
@@ -6559,6 +6977,18 @@ view.addEventListener('click', e => {
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
     syncSegPills(true);              // 主题这一档也走同一套换挡动画
+    return;
+  }
+
+  /* ★ v5.0 第 3 批：AI 隐私三档（关闭 / 只发标题 / 发全文）。
+     和主题同款的分段控件 —— 就地换挡后再 refresh 把说明文字（还剩几次、key 掩码）更新掉。
+     关闭是**真关闭**：下一帧开始，任何入口都不会再发请求（见 aiOn 的调用点）。 */
+  if (el.dataset.aipriv !== undefined){
+    const v = el.dataset.aipriv;
+    S.aiMode = (v === 'title' || v === 'full') ? v : 'off';
+    save(); refresh();
+    toast(S.aiMode === 'off' ? 'AI 已关闭：以后一个字都不出这台手机'
+      : (S.aiMode === 'title' ? 'AI 已打开：只把标题发出去' : 'AI 已打开：标题、原文和时间轴都会发出去'));
     return;
   }
 
@@ -6758,6 +7188,13 @@ view.addEventListener('click', e => {
     refresh(); return;
   }
   if (act === 'seednew'){ openSeedNew(); return; }
+  /* ---- ★ v5.0 第 3 批：AI 的入口 ----
+     三个都是**手动**入口；自动关联扫描走 aiMaybeAutoScan（打开 App 时那条路）。
+     出口一律先过 aiOn()：关着的时候连一次请求都不会发。 */
+  if (act === 'suggestopen' && it){ openSuggestSheet(it); return; }
+  if (act === 'aitest'){ aiTestSelf(); return; }
+  if (act === 'aiscan'){ aiScanLinks(true); return; }
+  if (act === 'aiprune'){ aiPrune(); return; }
   /* ---- ★ v5.0 想法页自己的标签筛选（不碰清单页的 S.filterTags）---- */
   if (act === 'ideatag'){
     const tg = el.dataset.tag;
@@ -7465,6 +7902,18 @@ view.addEventListener('scroll', seedPressCancel, true);   // 捕获阶段：内�
 modal.addEventListener('click', e => {
   if (!mask.classList.contains('sheet-mode')) return;
   if (e.target.closest('[data-act="sheetclose"]')){ closeModal(); return; }
+  /* ★ v5.0 第 3 批：挂载建议的接受 / 拒绝。也在抽屉态里，所以接在这一处。
+     **先关弹层再改数据** —— 改完要 refresh，弹层开着会让它跨在旧 DOM 上。 */
+  const sg = e.target.closest('[data-act="sugapply"],[data-act="sugdrop"]');
+  if (sg){
+    const sIt = S.items.find(x => x.id === sg.dataset.id);
+    const sIdx = Number(sg.dataset.i);
+    const isApply = sg.dataset.act === 'sugapply';
+    closeModal();
+    if (!sIt) return;
+    if (isApply) aiSuggestApply(sIt, sIdx); else aiSuggestDrop(sIt, sIdx);
+    return;
+  }
   const b = e.target.closest('.sheet-item');
   if (!b) return;
   const act = b.dataset.act;
@@ -7988,18 +8437,6 @@ function openItemEditor(it, isNew, onSaved, exitOnSave){
           <input type="text" id="te_dtxt" inputmode="text" autocomplete="off" placeholder="921 / 9月21日 / 明天 / 周四" aria-label="日期">
           <button type="button" class="te-clear" id="te_dclear" title="清空日期" aria-label="清空日期">✕</button>
         </div>
-        <div class="te-quick" id="te_quick">
-          <button type="button" data-q="今天">今天</button>
-          <button type="button" data-q="明天">明天</button>
-          <button type="button" data-q="后天">后天</button>
-          <button type="button" data-q="周一">周一</button>
-          <button type="button" data-q="周二">周二</button>
-          <button type="button" data-q="周三">周三</button>
-          <button type="button" data-q="周四">周四</button>
-          <button type="button" data-q="周五">周五</button>
-          <button type="button" data-q="周六">周六</button>
-          <button type="button" data-q="周日">周日</button>
-        </div>
         <div class="te-cal" id="te_cal"></div>
         <div class="te-tline">
           <input type="text" id="te_ttxt" inputmode="numeric" autocomplete="off" placeholder="14:00 / 930 / 下午5点" aria-label="时刻">
@@ -8121,13 +8558,6 @@ function openItemEditor(it, isNew, onSaved, exitOnSave){
     if (swEl){ swEl.checked = false; }
     teSyncUI();
   };
-  document.getElementById('te_quick').querySelectorAll('button').forEach(b => {
-    b.onclick = e => {
-      e.stopPropagation();
-      const ds = teParseDate(b.dataset.q);
-      if (ds){ TE.start = ds; TE.end = ds; TE.picks = 1; teSyncUI(); }
-    };
-  });
   /* 时刻自由输入：输入即生效；失焦时的值不回退（允许只写时刻、不写日期） */
   const tTxt = document.getElementById('te_ttxt');
   tTxt.oninput = () => {
@@ -9415,6 +9845,10 @@ backupNudge();
   box.addEventListener('toggle', () => { S.hintOpen = box.open; save(); });
 })();
 refresh();
+/* ★ v5.0 第 3 批：AI 的静默关联扫描。**排在 refresh 之后**，而且只在
+   开关打开 + 有 key + 距上次 > 24h 三条同时成立时才排那一次请求
+   （函数内部自己判断，关着的时候这里什么都不做 —— 页面零外部请求）。 */
+aiMaybeAutoScan();
 </script>
 </body>
 </html>
