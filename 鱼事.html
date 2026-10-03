@@ -1991,6 +1991,22 @@ html.soft-render .bar-glass{
   transition:opacity var(--mo-quick) ease,left var(--mo-base) var(--mo-soft);
 }
 .tab[aria-current="page"]::after{opacity:1}
+/* ★ v5.0 修 bug（用户："你看这两个外边框，这种判定范围都不一样"）：
+   全站那圈键盘聚焦环是 `*:focus-visible{outline:2px solid var(--ring)}`，而 outline 会
+   **跟着元素盒子**走 —— 同一排四个键，框出来的形状却不一样：
+     想法 / 设置是 40×40 的圆形图标键 → 一圈小圆；
+     清单 / 统计是 flex:1 的整格（还各带 26px 单边内边距）→ 一大条胶囊。
+   一排里两种"高亮范围"，看着就像没对齐。
+   改成四个键共用**同一枚 44×44 圆环**，圆心跟着图标（--dot-x，见 syncTabDots）。
+   键盘无障碍没有丢：环还在，只是不再是"元素的形状"，而是"图标的形状"。 */
+.tab:focus-visible{outline:none!important}
+.tab:focus-visible::before{
+  content:'';position:absolute;left:var(--dot-x,50%);top:50%;
+  width:44px;height:44px;border-radius:50%;
+  transform:translate(-50%,-50%);
+  box-shadow:0 0 0 2px var(--ring);
+  pointer-events:none;
+}
 /* 按下态：跟全站 .btn:active 同一语言（沉一下 + 灰罩），但 .tab 不在那条选择器里，这里单独写 */
 .tab:active{transform:translateY(1px) scale(.96);transition-duration:60ms;
   background-image:linear-gradient(var(--tap),var(--tap))}
