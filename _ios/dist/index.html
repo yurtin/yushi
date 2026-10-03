@@ -4156,21 +4156,41 @@ function reviewDaysSinceUse(){
 }
 function reviewPicked(){
   const byIdAll = new Map(S.items.map(i => [i.id, i]));
-  const pool = S.items.filter(i => isSeed(i) && !i.done && !seedAncestorUsed(i, byIdAll));
+  /* 两种日期在数据里是**两种类型**，别混用一个解析函数：
+       reviewedAt 是 'YYYY-MM-DD' 字符串；createdAt 是毫秒时间戳数字。
+     拿字符串解析去套数字会得到 NaN，比较全为 false —— 池子直接空掉，抽屉再也不出现。 */
   const days = d => d ? (Date.now() - Date.parse(d + 'T00:00:00')) / 86400000 : 9999;
-  const fresh = i => days(i.reviewedAt) < 7;
+  const ageDays = i => i.createdAt ? (Date.now() - i.createdAt) / 86400000 : 9999;
+  /* ★ v5.0 修 bug（用户："我刚写入的怎么就进回顾了"）：
+     `reviewedAt` 为空**不能当成"很久没被浮出"**。空的意思是"从没被浮出过"，
+     而"刚写下的"也从没被浮出过 —— 两个完全不同的处境被折成同一个 9999，
+     新想法于是被当成陈年旧账抽了出来。
+     正确下限是**创建时间**：一条想法不管多久没被浮出，都不可能超过它自己的年龄。 */
+  const lastTouch = i => {
+    const r = days(i.reviewedAt);
+    return r === 9999 ? Math.min(ageDays(i), 9999) : r;
+  };
+  const fresh = i => lastTouch(i) < 7;
+  /* 池子：**只收创建满 7 天的**。回顾的语义是"把你忘掉的还给你"，
+     今天刚写下的还没到会被忘的程度。少了这条，抽屉会变成"再看一遍你刚做的事"，
+     既没用又烦人 —— 而它全部的价值就在"我没想起来的东西被送回来了"。 */
+  const pool = S.items.filter(i => isSeed(i) && !i.done
+    && !seedAncestorUsed(i, byIdAll) && ageDays(i) >= 7);
   const picked = [], seen = new Set();
   const take = i => { if (i && !seen.has(i.id)){ seen.add(i.id); picked.push(i); } };
 
   /* 槽位 1：沉睡最久 */
   take(pool.filter(i => !fresh(i)).slice().sort((a, b) => ideaLastAt(a) - ideaLastAt(b))[0]);
-  /* 槽位 2（本地降级）：最近 7 天新增步数最多 */
+  /* 槽位 2（本地降级）：最近 7 天新增步数最多。
+     注意这一槽和槽位 1 的取向是**相反**的，这是设计如此：
+     槽位 1 = 你完全没动的，槽位 2 = 你还在动的 —— 前者是"捡回来"，后者是"接着长"。
+     「创建满 7 天」那条已经把"刚写下的"挡在池子外面了，所以这里不会捞到新东西。 */
   const recentSteps = i => (Array.isArray(i.sparks) ? i.sparks : [])
     .filter(s => (Date.now() - Date.parse((s.at || '') + 'T00:00:00')) <= 7 * 86400000).length;
   take(pool.filter(i => !seen.has(i.id) && recentSteps(i) > 0)
     .slice().sort((a, b) => recentSteps(b) - recentSteps(a))[0]);
   /* 槽位 3：随机一条 30 天以上没被浮出过的，跨标签优先 */
-  const old = pool.filter(i => !seen.has(i.id) && days(i.reviewedAt) > 30);
+  const old = pool.filter(i => !seen.has(i.id) && lastTouch(i) > 30);
   const tagKey = i => ((i && i.tags) || [])[0] || '';
   const cross = old.filter(i => tagKey(i) !== tagKey(picked[0]));
   const rnd = a => a.length ? a[Math.floor(Math.random() * a.length)] : null;
@@ -7986,7 +8006,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '4.2.1';
+const APP_VERSION = '4.2.2';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
