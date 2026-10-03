@@ -401,8 +401,9 @@ body:not([data-view="entry"]) .capture-wrap,
 body:not([data-view="entry"]) .entry-extra{display:none}
 /* 录入界面的 #view 留空，不需要它占位置 */
 body[data-view="entry"] .pdaim-section{display:none}
-/* 统计 / 设置没有 hero，顶部只需一点呼吸位（顶栏已撤，不用再让 96px） */
+/* 统计 / 设置 / 想法 没有 hero，顶部只需一点呼吸位（顶栏已撤，不用再让 96px） */
 body[data-view="stat"] .pdaim-section,
+body[data-view="idea"] .pdaim-section,
 body[data-view="settings"] .pdaim-section{padding-top:clamp(18px,3vh,36px)}
 
 /* 「外观 → 页面说明文字」关掉时，各页标题下面那段解释文案整段收起。
@@ -506,6 +507,7 @@ body[data-view="list"]:not(.tools-open) .toolbar{
 body[data-view="list"] .section-intro{margin-top:72px}
 /* v3.22（用户："设置、统计界面的上面也太挤了"）：这两个页面顶部同样留出呼吸位 */
 body[data-view="stat"] .section-intro,
+body[data-view="idea"] .section-intro,
 body[data-view="settings"] .section-intro{margin-top:64px}
 /* 抽屉展开时跟上面那一行拉开一点，别糊在一起（上面那条收起态用 margin-top:0 收掉它）。
    ★ 3.5.4：选择器从 `.filter-bar + .toolbar` 改成 `.list-top + .toolbar` ——
@@ -705,7 +707,7 @@ body:not([data-view="settings"]) .pdaim-footer{display:none}
 .zone header .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
 .zone[data-z="short"] header .dot{background:var(--accent);box-shadow:0 0 10px color-mix(in srgb,var(--accent) 55%,transparent)}
 .zone[data-z="long"]  header .dot{background:var(--accent);box-shadow:0 0 10px color-mix(in srgb,var(--accent) 55%,transparent)}
-.zone[data-z="consider"] header .dot{background:var(--ok);box-shadow:0 0 10px color-mix(in srgb,var(--ok) 55%,transparent)}
+/* ★ v5.0：`.zone[data-z="consider"]` 那条绿点规则已删 —— 「考虑」分区并入想法，没有元素再命中它。 */
 /* 「考虑」不是待办，只是「还没决定要不要做」的暂存区 —— 排在最后，并铺满整行收尾 */
 .zone-wide{grid-column:1/-1}
 .zone header h3{margin:0;font-size:13px;font-weight:900;letter-spacing:.2em;text-transform:uppercase;color:var(--fg)}
@@ -1118,6 +1120,176 @@ html.soft-render .mask .modal{
 }
 .cal-d:hover{background:var(--pill)}
 .cal-d.on{background:var(--accent);color:#fff;font-weight:800}
+
+/* ---------- 编辑弹层的「时间」栏（v3.40 起，第 1 批：时间编辑器）----------
+   设计约束（全部来自需求文档与既有踩坑）：
+   ① 折叠态只占一行，点开**原地内联展开**，不新起浮层 —— 本项目有层叠上下文坑，
+      弹层里再套弹层最容易出"透字/被盖住"。
+   ② 展开只动时间行自己：下面的原文 / 重要程度 / 标签 / 这是作业原样待着（v3.42 改定）。
+   ③ 所有内部浮层（日历、滑轮）一律实底，不靠 backdrop-filter 提供可读性。
+   ④ 圆角/字号只用站内两档：输入类 14px、按钮类 9999px；实底按钮一律
+      --fg 深色（同 .btn.primary / .pill.on），不自造蓝底按钮。 */
+.te-row{margin-bottom:16px}
+.te-head{
+  display:flex;align-items:center;gap:10px;width:100%;
+  border:1px solid var(--line2);border-radius:14px;background:transparent;color:var(--fg);
+  font:inherit;font-size:14px;font-weight:600;padding:11px 14px;outline:0;cursor:pointer;text-align:left;
+}
+.te-head:hover{border-color:var(--fg)}
+.te-head .te-cap{flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.te-head .te-val{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.te-head .te-val.mute{color:var(--faint)}
+.te-head .te-chev{
+  flex:0 0 auto;width:15px;height:15px;fill:none;stroke:var(--muted);stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round;transition:transform .22s cubic-bezier(.2,.8,.2,1);
+}
+.te-row.open .te-chev{transform:rotate(180deg)}
+.te-body{display:none;margin-top:10px}
+.te-row.open .te-body{display:block}
+/* ★ v3.42（用户改定 B 方案）：时间行的展开 / 收起**只管自己这一行**。
+   下面的原文 / 重要程度 / 标签 / 这是作业 一律原样待着，只是被展开区往下顶。
+   曾经那种"展开时把这几栏一起收掉"的做法已被用户否掉（原话：为什么这个时间的收放，
+   会把底下的原文、重要程度、标签和作业这些栏目也一同收放）。
+   所以现在各字段就是普通 .field，没有任何联动收放的类或机制 ——
+   回归脚本会断言源码里不再出现那套类名，改这块时别把它加回来。 */
+/* 日期输入 + 相对词快捷 */
+.te-dline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.te-dline input[type=text]{
+  flex:1 1 130px;min-width:0;border:1px solid var(--line2);border-radius:14px;background:transparent;
+  color:var(--fg);font:inherit;font-size:14px;font-weight:600;padding:11px 14px;outline:0;
+}
+.te-dline input[type=text]:focus{border-color:var(--fg)}
+/* 相对词快捷：一条横向滚动带（9 个词在 400px 视口下放不下两排会显得很笨重）。
+   ★ v3.41 对齐既有语言：圆角与字号跟 .pill 同一套（9999px / 12.5px），
+     不再自造 11px 圆角 —— 全站按钮不是全圆就是 14px 输入框，没有第三个档。 */
+.te-quick{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;
+  scrollbar-width:none;padding:8px 18px 2px 0;
+  /* 右边淡出：让"后面还有词"这件事看得出来，而不是硬切掉半颗胶囊 */
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);
+  mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent)}
+.te-quick::-webkit-scrollbar{display:none}
+.te-quick button{
+  flex:0 0 auto;border:1px solid var(--line2);border-radius:9999px;background:transparent;color:var(--muted);
+  font:inherit;font-size:12.5px;font-weight:700;padding:6px 14px;cursor:pointer;
+  transition:color var(--mo-base) var(--mo-soft),border-color var(--mo-base) var(--mo-soft);
+}
+.te-quick button:hover{color:var(--fg);border-color:var(--fg)}
+.te-clear{
+  flex:0 0 auto;width:44px;height:44px;border:1px solid var(--line2);border-radius:9999px;
+  background:transparent;color:var(--faint);font:inherit;font-size:14px;font-weight:700;cursor:pointer;
+  transition:color var(--mo-base) var(--mo-soft),border-color var(--mo-base) var(--mo-soft);
+}
+.te-clear:hover{color:var(--danger);border-color:var(--danger)}
+/* 内联日历：直接复用既有的 .cal-* 视觉（同一个 .cal-d / .cal-nav / .cal-title），
+   只把外层从 .sel-pop 浮层换成展开区里的一个普通块。
+   ★ v3.41：去掉自造的浅色面板与边框 —— 全站日历本体从来就是"无面板"的；
+     横向也收窄一格（grid 最宽 14×28px），让格子回到 .cal-d 原本的小尺寸，
+     不再比"粘贴导入"里那个日历大一倍。 */
+.te-cal{margin-top:10px}
+.te-cal .cal-grid{max-width:196px;margin:0 auto}
+/* letter-spacing 会在最后一个汉字后面也留一份间距（CJK 没字形侧边距可抵消），
+   表现为"2026年10月"整体偏左。往左补回同样一份，视觉上就居中了。
+   注意只在展开的日历里加，不改 makeCal 那个既有浮层（那是回归红线）。 */
+.te-cal .cal-title{letter-spacing:.06em;padding-left:.06em}
+.te-cal .cal-d{
+  display:flex;align-items:center;justify-content:center;width:100%;
+  aspect-ratio:1;border:0;background:transparent;color:var(--fg);font:inherit;font-size:12.5px;
+  border-radius:9px;cursor:pointer;transition:background var(--mo-fast) ease;
+}
+.te-cal .cal-d:hover{background:var(--pill)}
+/* 区间带：起点/终点实心（与 .cal-d.on 同一套蓝），中间连成一条带（不是三个孤立的点） */
+.te-cal .cal-d.inrange{background:color-mix(in srgb,var(--accent) 20%,transparent);border-radius:0}
+.te-cal .cal-d.rstart{border-radius:9px 0 0 9px}
+.te-cal .cal-d.rend{border-radius:0 9px 9px 0}
+.te-cal .cal-d.rboth{border-radius:9px}
+.te-cal .cal-d.edge{background:var(--accent);color:#fff;font-weight:800}
+.te-cal .cal-d.edge:hover{background:var(--accent)}
+.te-cal .cal-d.today-d{box-shadow:inset 0 0 0 1.6px var(--line2)}
+/* 时刻行 */
+.te-tline{display:flex;gap:8px;align-items:center;margin-top:12px}
+.te-tline input[type=text]{
+  flex:1;min-width:0;border:1px solid var(--line2);border-radius:14px;background:transparent;
+  color:var(--fg);font:inherit;font-size:14px;font-weight:600;padding:11px 14px;outline:0;
+}
+.te-tline input[type=text]:focus{border-color:var(--fg)}
+/* 循环栏 */
+.te-rep{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.te-rep-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.te-rep-top .te-sw{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;cursor:pointer}
+.te-rep-top .te-gap{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted)}
+.te-rep.dis .te-gap,.te-rep.dis .te-mode{opacity:.45;pointer-events:none}
+.te-num{
+  width:64px;border:1px solid var(--line2);border-radius:14px;background:transparent;color:var(--fg);
+  font:inherit;font-size:14px;font-weight:700;padding:11px 10px;outline:0;text-align:center;
+}
+.te-num:focus{border-color:var(--fg)}
+.te-derive{margin-left:auto;font-size:12px;font-weight:700;color:var(--accent);white-space:nowrap}
+/* 区间内语义：跟视图页签同一套 .segbtn 语言（选中＝深色实底 + 轻微投影），
+   不用蓝色按钮 —— 全站按钮只有 .btn.primary / .pill.on 两种实底，没有蓝底按钮。 */
+.te-mode{display:flex;gap:6px;margin-top:10px}
+.te-mode button{
+  flex:1;appearance:none;-webkit-appearance:none;border:0;background:transparent;color:var(--muted);
+  font:inherit;font-size:12.5px;font-weight:800;padding:8px 10px;border-radius:9999px;cursor:pointer;
+  transition:background 220ms ease,color 220ms ease,box-shadow 220ms ease;
+}
+.te-mode button:hover{color:var(--fg)}
+.te-mode button.on{
+  background:var(--fg);color:var(--bg);
+  box-shadow:0 2px 10px color-mix(in srgb,var(--glass-edge) 45%,transparent);
+}
+/* 原文只读备注 */
+.modal-note.raw-ro{
+  margin:0;white-space:pre-wrap;word-break:break-word;border:1px solid var(--line);
+  border-radius:14px;padding:11px 14px;font-size:13px;font-weight:600;color:var(--muted);background:var(--bg);
+}
+
+/* ---------- 时刻滑轮 ----------
+   ⚠️ 关键约束（需求 A3）：内部必须 stopPropagation —— 根元素上那个 wheel 监听
+   虽然只处理 .pillstrip，但桌面上滚滑轮绝不能被别处接走；这里再兜一层。
+   触摸要 touch-action:pan-y，否则安卓上滑不动。
+   ★ v3.41 对齐：去掉 26px 自造圆角与蓝色「好」按钮，改用全站既有语言 ——
+     弹层圆角 38px（同 .modal）、确认按钮 .btn.primary（深色实底）、
+     标题用 .field label 那套（11px / .16em，且**只对拉丁字母**用 text-transform）。 */
+.wheel-mask{
+  position:fixed;inset:0;z-index:120;display:flex;align-items:flex-end;justify-content:center;
+  background:rgba(0,0,0,.42);animation:fadein .16s ease both;
+}
+.wheel-sheet{
+  width:100%;max-width:600px;background:var(--bg);border-radius:38px 38px 0 0;
+  border-top:1px solid var(--line2);padding:22px 22px calc(22px + env(safe-area-inset-bottom,0px));
+  box-shadow:0 -18px 50px color-mix(in srgb,var(--glass-edge) 38%,transparent);
+}
+.wheel-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.wheel-head .wheel-cap{flex:1;font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--faint)}
+.wheel-head .wheel-ok{
+  border:1px solid var(--fg);background:var(--fg);color:var(--bg);
+  font:inherit;font-size:13px;font-weight:700;padding:8px 18px;border-radius:9999px;cursor:pointer;
+}
+.wheel-cols{position:relative;display:flex;gap:10px;height:198px}
+.wheel-cols::before{
+  content:'';position:absolute;left:0;right:0;top:50%;height:44px;margin-top:-22px;
+  border-radius:14px;background:var(--pill);pointer-events:none;
+}
+.wheel-col{
+  flex:1;position:relative;overflow-y:scroll;scroll-snap-type:y mandatory;
+  touch-action:pan-y;overscroll-behavior:contain;scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+}
+.wheel-col::-webkit-scrollbar{display:none}
+.wheel-col .wheel-pad{height:77px}
+.wheel-it{
+  display:block;width:100%;height:44px;line-height:44px;text-align:center;
+  border:0;background:transparent;
+  scroll-snap-align:center;font:inherit;font-size:15px;font-weight:700;color:var(--faint);
+  font-variant-numeric:tabular-nums;cursor:pointer;user-select:none;
+}
+.wheel-it.on{color:var(--fg)}
+/* 单位标（时 / 分）：不能放进 .wheel-col —— 那一列是 overflow-y:scroll 的滚动容器，
+   绝对定位的子元素会被它裁掉（实测"分"看得见、"时"直接消失）。所以挂在列上面的一行，
+   用与 .wheel-cols 同一套两列网格对齐。 */
+.wheel-units{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:2px}
+.wheel-units span{text-align:right;padding-right:12px;font-size:11px;font-weight:800;
+  letter-spacing:.16em;color:var(--faint)}
 
 /* 应用内确认框（uiConfirm）：msg 里的 \n 靠 pre-line 换行 */
 .confirm-msg{margin:0 0 6px;font-size:14px;line-height:1.8;color:var(--muted);white-space:pre-line}
@@ -2106,6 +2278,19 @@ html[data-mode="light"] #themeFab .ti-auto,
 html[data-mode="dark"]  #themeFab .ti-auto{display:none}
 html[data-mode="light"] #themeFab .ti-sun{display:block}
 html[data-mode="dark"]  #themeFab .ti-moon{display:block}
+/* ★ v3.50（用户："把外观直接替换掉，不需要了，反正放在设置里就行"）：
+   底栏左端那枚「外观」键撤掉，位置让给「想法」页。外观三档改在设置页里选。
+   留下的这两条规则**刻意保留**（.bar-ico 仍是底栏图标键的通用样式，#themeFab 已无元素），
+   删掉反而要连 .bar-ico 一起动，风险不值当 —— 它们是空转规则，不会命中任何元素。 */
+/* 想法键（v3.50）：它是**一页**，所以按 .tab 那套走（aria-current 靠 refresh 同步），
+   但外形用 .bar-ico 那套圆形图标键 —— 和右端齿轮同款同尺寸，两端对称。
+   当前页那条短线仍要画（它是页，不是功能键），所以不套 #themeFab::after 的隐藏规则。 */
+.tab.bar-ico.seed-tab .np-ico{width:19px;height:19px}
+.tab.bar-ico.seed-tab{position:relative}
+/* ★ v5.0 修：想法键原来单独写了一条 `color:var(--accent)`，于是它选中时是**蓝色**，
+   而清单/统计选中时是 `--fg`（近黑）—— 同一个底栏里两套"选中"语言，看着像不一致。
+   现在这条删掉，让它统一继承上面 `.tab[aria-current="page"]{color:var(--fg)}`。
+   将来也别再给单个页签单独上色：选中态是全栏唯一的语言。 */
 /* v3.2（用户："顶部的布局感觉不好看，'今天要做什么'这些内容能不能直接放在背景上，
    或者做虚化处理？"）：文字**仍然直接放在页面上**（不加卡片、不加框、不加底），
    但把**背后的彩色光斑虚化**掉 —— 一层带径向遮罩的 backdrop-filter，四周完全羽化，
@@ -2135,6 +2320,241 @@ html.soft-render .hero::before,html.soft-render .section-intro::before{
   clip:rect(0,0,0,0);white-space:nowrap;border:0}
 /* 录入界面吸顶录入条要让出顶部安全区（顶栏已撤，不再需要那 44px） */
 body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
+
+/* ---------- ★ v3.50 想法页（随手记 / 种子） ----------
+   种子的形状和待办不同，所以这里是一套自己的皮肤。全部用页面既有 token
+   （--bg / --panel-solid / --accent / --mo-soft），不引入新颜色、新字体。
+   ⚠️ 浮层铁律（本项目踩过）：凡是浮在内容之上的层必须实底，不许靠 backdrop-filter 兜底。
+   这里的 .merge-bar 是浮层，所以底色写实值 --panel-solid，不写半透明。 */
+.idea-toolbar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  margin:0 auto 18px;width:min(1240px,calc(100% - 36px));
+}
+.idea-toolbar .len{font-size:12px;color:var(--faint);letter-spacing:.06em}
+.idea-toolbar .btn{flex:0 0 auto}
+.idea-toolbar .idea-new{margin-right:auto}
+/* ★ v5.0：想法页自己的搜索条与标签筛选（不共用清单页那套全局状态） */
+.idea-searchbar{width:min(1240px,calc(100% - 36px));margin:0 auto 10px}
+.idea-searchbar .search{width:100%}
+.idea-filters{
+  display:flex;flex-wrap:wrap;gap:6px;
+  width:min(1240px,calc(100% - 36px));margin:0 auto 14px;
+}
+.idea-filters .pill{padding:5px 12px;font-size:12px}
+/* ★ v5.0：老数据的「考虑区」搬家提示（一次性，搬完就不出现）。
+   底色必须实底 —— 本项目浮层/提示条禁止靠 backdrop-filter 提供可读性（见坑记录）。 */
+.consider-migrate{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  width:min(1240px,calc(100% - 36px));margin:0 auto 14px;
+  padding:12px 14px;border-radius:16px;
+  background:var(--panel-solid,var(--bg));border:1px solid var(--line,var(--pill));
+  font-size:13px;line-height:1.5;color:var(--fg);
+}
+.consider-migrate .btn{margin-left:auto;flex:0 0 auto}
+
+/* ---------- ★ v5.0 想法回顾抽屉 ----------
+   位置必须**在列表上方**：放底部就没人滚得到，等于没有。
+   默认开合由使用频率决定（见 reviewDrawerHTML / reviewDaysSinceUse），不写死。 */
+.review-drawer{
+  width:min(1240px,calc(100% - 36px));margin:0 auto 14px;
+  border-radius:16px;overflow:hidden;
+  background:var(--panel-solid,var(--bg));border:1px solid var(--line,var(--pill));
+}
+.review-head{
+  display:flex;align-items:center;gap:8px;width:100%;
+  border:0;background:none;padding:12px 14px;cursor:pointer;
+  color:var(--fg);font-family:inherit;font-size:14px;font-weight:700;text-align:left;
+}
+.review-head .rh-chev{color:var(--faint);font-size:12px;display:inline-block;
+  transition:transform var(--mo-base) ease}
+.review-drawer.open .review-head .rh-chev{transform:rotate(90deg)}
+.review-head .rh-t{flex:1}
+.review-head .rh-n{
+  min-width:20px;height:20px;padding:0 6px;border-radius:999px;
+  background:var(--accent);color:#fff;font-size:11px;line-height:20px;text-align:center;
+}
+.review-body{padding:0 14px 14px;display:grid;gap:10px}
+.review-note{margin:0;font-size:12px;line-height:1.6;color:var(--faint)}
+.review-item{
+  padding:10px 12px;border-radius:14px;
+  background:var(--bg);border:1px solid var(--line,var(--pill));
+}
+.ri-why{font-size:11px;color:var(--accent);letter-spacing:.02em}
+.ri-title{font-size:14px;font-weight:600;color:var(--fg);margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ri-sub{font-size:11px;color:var(--faint);margin-top:2px}
+.ri-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.review-foot{display:flex;gap:8px;flex-wrap:wrap}
+.review-foot .btn{flex:0 0 auto}
+.idea-list{display:grid;gap:14px;width:min(1240px,calc(100% - 36px));margin:0 auto}
+.idea-used-head{
+  display:flex;align-items:center;gap:9px;width:min(1240px,calc(100% - 36px));
+  margin:26px auto 10px;font-size:12px;font-weight:900;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--muted);
+}
+.idea-used-head::after{content:'';flex:1;height:1px;background:var(--line,var(--pill))}
+.idea-used-head .n{margin-left:0;color:var(--faint)}
+.empty-soft{
+  width:min(1240px,calc(100% - 36px));margin:0 auto 6px;
+  font-size:12px;color:var(--faint);text-align:center;
+}
+/* 想法卡：**不带勾选框那套 lead 布局**时也要好看，所以 seedHTML 里 .lead 只有一颗按钮。
+   .ic-body 让 seedHTML 产出的 .item 直接铺满卡内，不再套一层玻璃。 */
+.idea-card{padding:0;overflow:hidden}
+.idea-card .ic-body > .item{border:0;background:none;box-shadow:none;margin:0;width:100%}
+.idea-card.used{opacity:.66}
+/* 种子自己的条目皮肤：不用待办那条横排（点/勾/标题），改成竖排的"脊椎 + 步骤"。
+   .lead 只放那一颗按钮，固定在左上。 */
+.item.seed{padding:16px 16px 6px;align-items:flex-start}
+.item.seed .lead{flex-direction:column;gap:8px;padding-top:1px}
+.seed-tick{color:var(--faint)}
+/* ★ v5.0：勾选框删了 —— 原来就是上面这条 .seed-tick（按钮式勾）。
+   想法不打勾，"用完了"从长按菜单走「收起来」（卡片变暗、沉底，可"继续想"恢复）。
+   这里换成：折叠三角 + 等宽占位 + 缩进树 + 沉睡变淡。 */
+.fold{
+  width:22px;height:22px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  border:0;background:none;padding:0;cursor:pointer;
+  color:var(--faint);font-size:12px;line-height:1;
+  border-radius:8px;transition:background var(--mo-base) ease,color var(--mo-base) ease;
+}
+.fold:hover{background:var(--pill-hover,var(--pill));color:var(--fg)}
+.fold[aria-expanded="true"]{color:var(--accent)}
+/* 没有子想法时的等宽占位 —— 保证同级卡片标题左边缘对齐 */
+.lead-blank{display:block;width:22px;height:22px;flex:0 0 auto}
+
+/* 缩进树：.seed-node 是 .idea-list 网格的直接子项；子想法在 .seed-kids 里再排一层网格。
+   16px 一步；第 5 层起加 .flat（不再位移），层级改由卡上的「第 N 层」小标表达。 */
+.seed-node{display:block;min-width:0}
+.seed-kids{display:grid;gap:14px;padding-left:16px;margin-top:14px;min-width:0}
+.seed-kids.flat{padding-left:0}
+.seed-kids[hidden]{display:none}
+
+/* 沉睡：超过 14 天没长过一步。**只是变淡**，位置不动 —— 它随时能被续写"点回来"。
+   外壳负责变淡，卡内角标说清是几天前。 */
+.idea-card.sleep{opacity:.62}
+.chip.sleepchip{color:var(--faint)}
+.chip.kidchip{color:var(--accent)}
+.chip.suggestchip{color:var(--accent);cursor:pointer}
+.chip.depthchip{color:var(--faint)}
+.item.seed .body{min-width:0;flex:1;gap:8px}
+/* 时间轴：一条 1px 竖脊 + 每步一颗点。第一步（种子本身）的点用强调色实心，
+   后面长出来的用空心 —— 一眼能分出"种子"和"长出来的"。 */
+.spine{position:relative;padding-left:18px}
+.spine::before{content:'';position:absolute;left:5px;top:6px;bottom:6px;width:1px;
+  background:var(--line,var(--pill))}
+.sp-step{position:relative;display:flex;align-items:baseline;gap:8px;padding:3px 0;min-width:0}
+.sp-dot{position:absolute;left:-17px;top:8px;width:7px;height:7px;border-radius:50%;
+  background:var(--faint);flex:0 0 auto}
+.sp-step.seed-first .sp-dot{background:var(--accent);
+  box-shadow:0 0 8px color-mix(in srgb,var(--accent) 55%,transparent)}
+.sp-step.seed-first .sp-tx{font-weight:800;font-size:15px}
+.sp-at{flex:0 0 auto;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums;
+  min-width:44px}
+.sp-tx{min-width:0;word-break:break-word;line-height:1.5}
+.sp-x{
+  flex:0 0 auto;margin-left:auto;border:0;background:none;color:var(--faint);
+  font-size:11px;padding:2px 6px;border-radius:8px;cursor:pointer;line-height:1;
+}
+.sp-x:hover{background:var(--tap,var(--pill));color:var(--fg)}
+.sp-add{display:flex;align-items:center;gap:6px;padding:6px 0 8px}
+.sp-in{
+  flex:1;min-width:0;background:var(--panel-solid,var(--bg));color:var(--fg);
+  border:1px solid var(--line,var(--pill));border-radius:10px;
+  padding:8px 10px;font-size:14px;font-family:inherit;
+}
+.sp-ok,.sp-cancel{
+  flex:0 0 auto;border:0;border-radius:10px;padding:8px 12px;font-size:13px;
+  font-weight:700;cursor:pointer;font-family:inherit;
+}
+.sp-ok{background:var(--accent);color:#fff}
+.sp-cancel{background:var(--pill);color:var(--muted)}
+/* 多选态：勾选圆钮。与待办的 .tick 同尺寸同位置，只是语义是"选中"不是"完成"。 */
+.pick{
+  width:22px;height:22px;border-radius:50%;flex:0 0 auto;
+  border:1.5px solid var(--line,var(--pill));background:transparent;
+  color:transparent;font-size:12px;line-height:1;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-family:inherit;
+}
+.pick.on{background:var(--accent);border-color:var(--accent);color:#fff}
+/* 种子卡上的动作排：比待办多几个键，允许换行，不挤成一坨 */
+.seed-acts{flex-wrap:wrap;gap:6px;margin:2px 0 10px}
+/* ★ v5.0：时间轴上每步的两个小动作。
+   `→` = 把这一句变成待办（部分转化）；`↑` = 把这一句补到已立项的那条待办里。
+   **都不做成勾选框形状** —— 种子一旦长出"可勾的进度"，就退化成第二个清单了。 */
+.sp-go,.sp-push{
+  width:20px;height:20px;flex:0 0 auto;margin-left:2px;
+  display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--line,var(--pill));border-radius:7px;background:var(--bg);
+  color:var(--muted);font-size:11px;line-height:1;cursor:pointer;padding:0;
+}
+.sp-go:hover,.sp-push:hover{color:var(--accent);border-color:var(--accent)}
+.sp-done{color:var(--accent);font-size:11px;margin-left:2px}
+.seed-acts .mini{width:auto;min-width:34px;padding:0 10px;font-size:12px;font-weight:700;
+  border-radius:10px;height:30px}
+.chip.seedchip{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--fg)}
+.chip.promoted{cursor:pointer;border:1px solid var(--accent);color:var(--accent)}
+.chip.srcchip{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 多选确认条：**浮层，必须实底**（见文件里"浮层铁律"那条）。粘在底部、居中、不遮底栏。 */
+.merge-bar{
+  position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(84px + env(safe-area-inset-bottom));
+  z-index:60;display:flex;align-items:center;gap:10px;
+  padding:10px 12px;border-radius:16px;
+  background:var(--panel-solid,var(--bg));color:var(--fg);
+  border:1px solid var(--line,var(--pill));
+  box-shadow:0 10px 30px rgba(0,0,0,.18);
+  max-width:calc(100% - 24px);
+}
+.merge-bar .mb-n{font-size:12px;color:var(--muted);white-space:nowrap}
+.merge-bar .btn{padding:8px 12px;font-size:13px}
+.merge-bar .btn[disabled]{opacity:.45;pointer-events:none}
+
+/* ---------- ★ v5.0 想法卡的长按动作菜单（底部抽屉）----------
+   卡片上原来排着 5 枚小按钮，把标题能用的宽度吃掉了 —— 而手机上标题往往是最长的那一行。
+   收进长按菜单后卡片只剩内容。**复用现有 .mask / .modal 那一套**（层序、焦点陷阱、
+   滚动锁、退场动画都在里面），只加一个"贴底"变体 —— 本项目在浮层层序上踩过坑，
+   不新造一层浮层机制。 */
+.mask.sheet-mode{align-items:flex-end;padding:0}
+.mask.sheet-mode .modal,
+html.gpu-render .mask.sheet-mode .modal,
+html.soft-render .mask.sheet-mode .modal{
+  max-width:none;width:100%;max-height:82vh;
+  border-radius:26px 26px 0 0;
+  padding:14px 14px calc(18px + env(safe-area-inset-bottom));
+  /* 实底。继承来的那条 .mask .modal 是 97% 不透明（老配方），在贴底抽屉上
+     下沿会透出后面的列表 —— 本项目对浮层底色的硬规则是「不透明」。 */
+  background:var(--bg);
+  animation:sheetUp .3s var(--mo-soft) both;
+}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.sheet-head{padding:2px 6px 12px;border-bottom:1px solid var(--line,var(--pill));margin-bottom:8px}
+.sheet-head b{font-size:15px;font-weight:700;color:var(--fg);
+  display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet-list{display:grid;gap:2px}
+.sheet-item{
+  display:flex;align-items:baseline;gap:10px;width:100%;text-align:left;
+  border:0;background:none;padding:13px 12px;border-radius:14px;cursor:pointer;
+  color:var(--fg);font-size:15px;font-family:inherit;
+  transition:background var(--mo-base) ease;
+}
+.sheet-item:hover{background:var(--pill-hover,var(--pill))}
+.sheet-item:active{background:var(--pill)}
+.si-label{flex:0 0 auto;font-weight:600}
+.si-hint{margin-left:auto;font-size:12px;color:var(--faint);text-align:right}
+.sheet-foot{padding-top:10px}
+.sheet-foot .btn{width:100%}
+/* 长按起手：给一点"按住了"的反馈。**只缩不放**，不做位移 —— 卡片在滚动区里，
+   任何位移都会和"按住想上下滑一点"打架。 */
+.idea-card.pressing{transform:scale(.985)}
+@media (prefers-reduced-motion: no-preference){
+  .idea-card{transition:transform 140ms ease}
+}
+/* 长按菜单的发现性问题：长按是hidden手势，卡片底部留一行极淡的说明 */
+.seed-longhint{font-size:11px;color:var(--faint);letter-spacing:.02em}
+
+/* ---------- ★ v3.50 编辑器里的「想法」分区：时间/作业两栏要收起来 ----------
+   种子没有死线，也没有作业状态。选到「想法」时这两栏整块隐藏（见 openItemEditor 里的 syncZone）。 */
+.te-row.hide,.field.hide{display:none !important}
 
 /* ---------- 分区折叠高度过渡（v3 新增，复用 foldWithMotion / FOLD_MS） ----------
    原来 `.zone.folded>:not(header){display:none}` 是纯 display 切换，必然一帧到位。
@@ -2280,38 +2700,26 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
     <!-- v2.5：底栏左右两端各一个**同款细线图标**（左＝外观、右＝设置），中间两个文字页签。
          两端等宽 + .tab-strip 的左右内边距，保证「图标—页签—圆钮」整体镜像对称，
          且图标离栏体端头留出正常间距（用户："跟侧边要保持正常的距离，不要弄得这么贴、这么近"）。 -->
-    <button class="tab bar-ico" id="themeFab" type="button"
-            aria-label="切换外观（浅色 / 深色 / 跟随系统）" title="外观">
-      <!-- 三档图标只显一枚，由 html[data-mode]（= S.theme 档位）决定：浅色＝太阳、
-           深色＝月亮、跟随系统＝半明半暗的圆（原来那枚半圆日月路径，语义正好对上）。 -->
-      <svg class="ti ti-sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <circle cx="12" cy="12" r="4.2"/>
-        <path d="M12 2.4v2.2"/><path d="M12 19.4v2.2"/>
-        <path d="M2.4 12h2.2"/><path d="M19.4 12h2.2"/>
-        <path d="M5.2 5.2l1.6 1.6"/><path d="M17.2 17.2l1.6 1.6"/>
-        <path d="M18.8 5.2l-1.6 1.6"/><path d="M6.8 17.2l-1.6 1.6"/>
-      </svg>
-      <svg class="ti ti-moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/>
-      </svg>
-      <svg class="ti ti-auto" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <circle cx="12" cy="12" r="8.6"/>
-        <path d="M12 3.4a8.6 8.6 0 0 1 0 17.2z" fill="currentColor" stroke="none"/>
+    <button class="tab bar-ico seed-tab" data-view="idea"
+            aria-label="想法（随手记）" title="想法">
+      <!-- 一枚灯泡：没定型的念头。与右端齿轮同款 19px 细线。 -->
+      <svg class="np-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M9.2 18.6h5.6"/><path d="M10 21.2h4"/>
+        <path d="M12 2.8a6.2 6.2 0 0 0-3.6 11.25c.5.36.8.93.8 1.55v.8h5.6v-.8c0-.62.3-1.19.8-1.55A6.2 6.2 0 0 0 12 2.8z"/>
       </svg>
     </button>
-    <!-- 页签图标沿用旧顶栏那套 20px 线性轮廓；文字 + 图标并排，读屏读 aria-label -->
+    <!-- 页签图标沿用旧顶栏那套 20px 线性轮廓；文字去掉（用户 2026-10-03：「底部清单里的
+         『统计』字样就不要了，只要 UI 图标」）—— 两页签一律只留图标，语义交给 aria-label + title。 -->
     <button class="tab" data-view="list" aria-current="page" aria-label="清单" title="清单">
       <svg class="np-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path d="M3.6 6.6l1.3 1.3 2.3-2.5"/><path d="M3.6 12.4l1.3 1.3 2.3-2.5"/><path d="M3.6 18.2l1.3 1.3 2.3-2.5"/>
         <path d="M11 6.8h9.4"/><path d="M11 12.6h9.4"/><path d="M11 18.4h9.4"/>
       </svg>
-      <span>清单</span>
     </button>
     <button class="tab" data-view="stat" aria-label="统计" title="统计">
       <svg class="np-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path d="M4.4 20.2V12"/><path d="M12 20.2V4.2"/><path d="M19.6 20.2v-5.4"/>
       </svg>
-      <span>统计</span>
     </button>
     <!-- 设置入口（v2.5）：从顶部搬回底栏右端，做成一个**无文字的细线齿轮**（36px 固定宽）。
          它仍挂着 .tab（data-view 走同一套点击 / aria-current 逻辑），但不参与两页签的等分；
@@ -2405,7 +2813,7 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
         <span><b>914~919</b> 区间</span>
         <span><b>周四</b> 相对日</span>
         <span><b>下午5点</b> 时间点</span>
-        <span><b>?</b> 结尾→考虑</span>
+        <span><b>?</b> 结尾→想法</span>
         <span><b>#任意词</b> 自定义标签</span>
         <span><b>每2天</b> 循环</span>
         <span><b>!</b> 重要</span>
@@ -2551,8 +2959,11 @@ function parseSmart(input){
     if (pm){ pri = pm[1].length >= 2 ? 2 : 1; text = text.slice(pm[0].length).trim(); }
   }
 
-  // 显式进「考虑」
-  if (/[?？]$/.test(text)){ explicit = 'consider'; text = text.replace(/[?？]+$/, '').trim(); }
+  /* ★ v5.0：「考虑」并入想法 —— 行尾 ? 不再是"暂存区"，而是**直接长成一条种子**。
+     语义上也更对：带 ? 的那句话本来就是还没定型的（"要不要做 X"真正的形态往往是
+     "我到底想用它干什么"），它需要时间轴，而考虑区只有一行、记不下逐步想清楚的过程。
+     zone='idea' 由 addItem / openEditNew 接手，按 kind='seed' 落库。 */
+  if (/[?？]$/.test(text)){ explicit = 'idea'; text = text.replace(/[?？]+$/, '').trim(); }
 
   // 显式标签：#任意词 都收下（内置 3 个之外的自动成为自定义标签，见 addItem）
   const forced = [];
@@ -2803,6 +3214,23 @@ function dateLabel(it){
   if (it.time) s += ' ' + it.time;
   return s;
 }
+/* 编辑弹层「时间」行的折叠态文案（需求 A1）：同月区间收紧成 `9月20–22日`。
+   刻意**不复用** dateLabel()：列表 chip 的写法是回归红线（_parse-regress 断言
+   `9月1日–9月15日`），不能为了弹层更好看去动它。 */
+function teRangeLabel(it){
+  if (!it || !it.date) return '';
+  const d = dateFrom(it.date);
+  let s = (d.getMonth() + 1) + '月' + d.getDate() + '日';
+  if (it.dateEnd){
+    const e = dateFrom(it.dateEnd);
+    s += (e.getMonth() === d.getMonth() && e.getFullYear() === d.getFullYear())
+      ? '–' + e.getDate() + '日'
+      : '–' + (e.getMonth() + 1) + '月' + e.getDate() + '日';
+  }
+  if (it.repeat) s += ' 每' + it.repeat + '天';
+  if (it.time) s += ' ' + it.time;
+  return s;
+}
 /* 转义进 HTML 的文本。**必须带上单引号** —— 当前所有插值点都用双引号包属性，
    所以单引号暂时炸不开；但只要有人日后写了 class='${esc(x)}' 就会漏。
    一次补齐，比等到出问题再全库排查便宜。 */
@@ -2821,12 +3249,60 @@ const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', t
   statLayout: 'card', hintOpen: false, showHelp: true, foldedZones: [], theme: 'auto', listMode: 'zone',
   voice: true,
   /* v3.4：设备端离线识别不可用时的备用方案（用户拍板加的开关，默认关） */
-  voiceSystem: false };
+  voiceSystem: false,
+  /* ★ v5.0 想法系统（第 1 批）：全局状态，挂在 S 上而不是条目上。
+       ideaUsedAt     最近一次在想法页产生写入（新建/续写/状态变更）的时间 —— 回顾抽屉的频次判定
+       lastOpenedSeed 最近点开过的种子 id —— 回顾槽位 2（"跟最近这条有关"）用它
+       lastScanAt     上次 AI 关联扫描的时间戳（距今 > 24h 才再扫）
+       ideaReview     「想法回顾」总开关（设置页），默认开
+       ideaReviewDone 今天已经把回顾抽屉处理完了（存日期）—— 当天不再推，次日自动失效 */
+  ideaUsedAt: null, lastOpenedSeed: null, lastScanAt: 0, ideaReview: true, ideaReviewDone: null };
 /* 清单页的四个分区（渲染顺序见 renderList）。折叠状态存的就是这几个键，
    load() 拿它当白名单过滤 —— 不让数据里的任意字符串混进 class 名。 */
-const ZONES = ['long', 'short', 'repeat', 'consider'];
+/* ★ v5.0：「考虑」已并入想法（行尾 ? 直接建种子），分区里不再有 consider。
+   老存档里 foldedZones 含 'consider' 的会被这里过滤掉 —— 那个分区已经不存在了。 */
+const ZONES = ['long', 'short', 'repeat', 'idea'];
+/* ★ v3.50 随手记 / 种子（第 2 批）：一条条目有两种**形状**，不是两种数据。
+     kind:'task'（缺省）＝已定型要消耗的待办；kind:'seed' ＝还没定型的想法，会长、会分叉、会合并。
+     形状与「分区」是两条轴：分区回答"要不要做"，kind 回答"定没定型"。
+     所以种子复用同一份存储、同一个编辑器、同一个 itemHTML —— 不新开一套数据管道。
+        sparks:   [{at:'2026-09-29', text:'...'}]  种子自己长出来的时间轴（正序）
+        bornFrom: ['id1','id2']                    合并自哪几条，只在底部留痕，原种子不被吃掉
+        promoted: 'taskId'                          已立项：指向那条待办的 id
+     老数据没有 kind → 一律当 task（load 里不补字段，读取处统一用 isSeed() 判）。 */
+function isSeed(it){ return !!it && it.kind === 'seed'; }
+/* ★ v5.0：沉睡的判定抽成一对函数 —— 卡片**外壳**（变淡）和卡内**角标**（N 天前）都要用，
+   写两份迟早不一致（一处按 createdAt、一处按 sparks 末次，就会一条卡两种说法）。
+   超过 14 天算沉睡；8~14 天不留空档，仍按 live 显示。 */
+function seedSleepDays(it){
+  const t = ideaLastAt(it);
+  return t ? Math.floor((Date.now() - t) / 86400000) : 0;
+}
+function isSleeping(it){ return seedSleepDays(it) > 14; }
+/* ★ v5.0：祖先里只要有一条被「收起来」了，整棵子树跟着沉底。
+   不这么做的话孩子会因为父节点不在可见集合里而上浮成根 —— 看着就像"收起来反而更显眼"。
+   带 guard 防环路（parent 相互指向时不会死循环）。 */
+function seedAncestorUsed(it, byId){
+  let p = it.parent && byId.get(it.parent), guard = 0;
+  while (p && guard++ < 64){
+    if (p.done) return true;
+    p = p.parent && byId.get(p.parent);
+  }
+  return false;
+}
 /* 折叠中的目标卡（会话级，不持久化） */
 const collapsed = new Set();
+/* 想法页（随手记）会话级状态 —— 不持久化，重开就回到常态。
+     mergeMode：多选态开着时，每条想法前面出现勾选框，底部出现确认条。
+     mergeSel：  选中的 id 集合（进多选态那一刻清空）。
+     sparkOpen： 哪条种子正在「续写」——同一时刻只开一个输入框，避免一堆行内输入框同时活着。 */
+/* reviewOpen：回顾抽屉的手动开合。**null = 按使用频率自动决定**（见 reviewDaysSinceUse）；
+   用户一旦手动点过就记成 true/false，本次会话内尊重他的选择。
+   q / tags：想法页**自己的**搜索词与标签筛选 —— 不共用清单页的 S.q / S.filterTags。
+   为什么必须独立：现在两页共用同一个全局词，你在清单里搜"皮带"，切到想法页还是"皮带"；
+   而且共用状态下，给想法页接 AI 关联之后，一次误筛选会让你找不到刚写下的那条
+   （Mem 的教训：自动关联会让确定性检索失灵）。 */
+const ideaUI = { mergeMode: false, mergeSel: new Set(), sparkOpen: null, reviewOpen: null, q: '', tags: [] };
 
 /* 数据迁移：老版本存在 daibanji.v1，别丢 */
 function load(){
@@ -2883,6 +3359,14 @@ function load(){
          注：这里只在"离线识别可用"前不弹任何权限框 —— 权限仍然是**长按那一刻**才申请。 */
       S.voice = (o.voiceVersion === 2) ? !!o.voice : true;
       S.voiceSystem = !!o.voiceSystem;   // v3.4：备用路线（默认关，只在用户勾选后生效）
+      /* ★ v5.0 想法系统的全局状态。老存档没有这几个字段 → 保持上面的默认值
+         （ideaReview 默认开；ideaUsedAt 为 null 会让回顾抽屉走"超过 7 天"那一档，
+          也就是首次打开默认展开一次 —— 这是想要的：新功能得先让你看见）。 */
+      S.ideaUsedAt = typeof o.ideaUsedAt === 'string' ? o.ideaUsedAt : null;
+      S.lastOpenedSeed = typeof o.lastOpenedSeed === 'string' ? o.lastOpenedSeed : null;
+      S.lastScanAt = Number.isFinite(o.lastScanAt) ? o.lastScanAt : 0;
+      S.ideaReview = o.ideaReview !== false;
+      S.ideaReviewDone = typeof o.ideaReviewDone === 'string' ? o.ideaReviewDone : null;
     }
   } catch (e){}
   syncTags();
@@ -2898,6 +3382,9 @@ function save(){
       statLayout: S.statLayout, hintOpen: S.hintOpen, showHelp: S.showHelp,
       foldedZones: S.foldedZones, theme: S.theme, listMode: S.listMode, voice: S.voice,
       voiceSystem: S.voiceSystem,
+      /* ★ v5.0 想法系统的全局状态 */
+      ideaUsedAt: S.ideaUsedAt, lastOpenedSeed: S.lastOpenedSeed,
+      lastScanAt: S.lastScanAt, ideaReview: S.ideaReview, ideaReviewDone: S.ideaReviewDone,
       voiceVersion: 2   /* 语音默认值只迁移一次，之后用户自己的开关说了算（见 load 的说明） */
     }));
     saveFailed = false;
@@ -2915,7 +3402,10 @@ function snapshot(){
   return {
     items: S.items, tags: S.tags, statLayout: S.statLayout,
     hintOpen: S.hintOpen, showHelp: S.showHelp, lastBackup: S.lastBackup,
-    foldedZones: S.foldedZones, theme: S.theme, listMode: S.listMode, voice: S.voice
+    foldedZones: S.foldedZones, theme: S.theme, listMode: S.listMode, voice: S.voice,
+    /* ★ v5.0：想法系统的全局状态也进备份，否则换设备后回顾的频次判定会从头开始 */
+    ideaUsedAt: S.ideaUsedAt, lastOpenedSeed: S.lastOpenedSeed,
+    lastScanAt: S.lastScanAt, ideaReview: S.ideaReview, ideaReviewDone: S.ideaReviewDone
   };
 }
 /* 去空白、去空串、去重（保留先后顺序） */
@@ -2957,10 +3447,21 @@ function addItem(text){
     date: p.date, dateEnd: p.dateEnd, monthOnly: p.monthOnly, time: p.time,
     zone: p.zone, tags: p.tags, done: false, doneAt: null,
     createdAt: Date.now(), hw: null, repeat: p.repeat || null,
-    parent: null, goal: !!p.goal, pri: p.pri || 0
+    parent: null, goal: !!p.goal, pri: p.pri || 0, timeMode: 'once'
   };
+  /* ★ v5.0：行尾带 ? 的条目**直接是一条种子**。跟编辑器里「分区选想法」是同一条规则，
+     所以字段形状必须跟 newSeed() 一致 —— 否则两条路造出来的种子迟早漂开
+     （一条有时间轴、一条没有；一条有 suggest、一条 undefined）。 */
+  if (p.zone === 'idea'){
+    it.kind = 'seed';
+    it.zone = 'idea';
+    it.sparks = [{ at: ymd(new Date()), text: p.title }];
+    it.bornFrom = null; it.promoted = null; it.hw = null; it.repeat = null;
+    it.suggest = []; it.reviewedAt = null; it.aiUse = null;
+  }
   // 祖先链逐级挂靠：'写论文> 第一周> 查文献' → 论文 ← 第一周 ← 查文献
-  if (p.path && p.path.length){
+  // ★ v5.0：种子不参与「复合目标」那套父子关系（它的 parent 是想法之间的层级，另一个人设）
+  if (!isSeed(it) && p.path && p.path.length){
     let prev = null;
     for (const seg of p.path){
       const node = findOrCreateGoal(seg, prev ? prev.zone : 'long');
@@ -2971,7 +3472,7 @@ function addItem(text){
     }
     if (prev && prev.id !== it.id) it.parent = prev.id;
   }
-  if (/作业/.test(p.title)){
+  if (!isSeed(it) && /作业/.test(p.title)){
     it.hw = { course: guessCourse(p.title), detail:'', channel: guessChannel(text), naming: guessNaming(text), status:'todo', submittedAt:null };
     splitHw(it, p);
   }
@@ -3012,13 +3513,20 @@ let justAdded = { id: '', t: 0 };
    同时搜索框再做一次标题/原文的过滤。 */
 function ordered(){
   const q = (S.q || '').trim().toLowerCase();
+  /* ★ v3.50：**种子不进待办的任何视图**（清单 / 时间轴 / 统计）。
+     kind:'seed' 的条目形状就不是待办 —— 它没有死线、不参与逾期与紧急度统计。
+     想法页自己按 S.items 过滤，不走这里。 */
   return S.items
+    .filter(i => !isSeed(i))
     .filter(i => !S.filterTags.length || S.filterTags.some(t => (i.tags || []).includes(t)))
     .filter(i => !q || (i.title || '').toLowerCase().includes(q) || (i.raw || '').toLowerCase().includes(q));
 }
 function chipDate(it){
   const dl = dateLabel(it);
-  if (!dl) return '';
+  if (!dl){
+    /* 边界（需求「边界与异常」）：只输入时刻、没选日期 → 时刻照存，列表显示 `14:00` */
+    return it.time ? `<span class="chip date" data-fk="d:${esc(it.id)}">${esc(it.time)}</span>` : '';
+  }
   let cls = 'chip date';
   const df = daysFromToday(it.date);
   if (df < 0) cls += ' late'; else if (df === 0) cls += ' today';
@@ -3026,6 +3534,12 @@ function chipDate(it){
   /* data-fk：FLIP 身份键。分区和时间轴对同一天的表达不一样（时间轴"未定截止"那条不渲染日期），
      所以这个键只在两边都真的渲染出日期 chip 时才配得上 —— 配不上的自然不参与动画。 */
   return `<span class="${cls}" data-fk="d:${esc(it.id)}">${txt}</span>`;
+}
+/* 循环 chip 文案（需求 A7）：`每3天`，区间任务再补一句区间内语义 */
+function repLabel(it){
+  if (!it.repeat) return '';
+  return '每' + (it.repeat === 1 ? '' : it.repeat) + '天' +
+    (it.dateEnd ? ' · ' + (it.timeMode === 'daily' ? '每天' : '做一次') : '');
 }
 /* 区内排序：重要度优先（紧急 > 重要 > 普通），再按日期先近后远，最后新加入的在前 */
 function cmpItem(a, b){
@@ -3061,7 +3575,99 @@ function urgencyLevel(it){
   return 0;
 }
 
+/* ★ v3.50 种子（想法）的渲染器。
+  为什么单独一份、不复用 itemHTML 的皮肤：形状不同。待办是「一行标题 + 勾选框 + 死线」，
+  种子是「一句原始摘抄 + 一条会往下长的时间轴」。硬套只会两边都别扭。
+  但**共用同一条数据、同一个编辑器、同一套 FLIP 身份键**（data-fk 前缀仍是 i:<id>），
+  所以两屏之间切换时它们照样跟着搬。
+  勾选框**保留**（用户定稿：勾了当"用完了"），但它不参与待办那套 CRT 退场动画 ——
+  种子的"用完了"只是沉底，不是完成一件任务。 */
+function seedHTML(it, info){
+  const sparks = Array.isArray(it.sparks) ? it.sparks : [];
+  const tags = (it.tags || []).map(t =>
+    `<span class="chip" data-tag="${esc(t)}" data-id="${esc(it.id)}">${esc(t)}</span>`).join('');
+  const src = (it.bornFrom || [])
+    .map(id => S.items.find(x => x.id === id))
+    .filter(Boolean)
+    .map(x => x.title)
+    .join(' ＋ ');
+  const promoted = it.promoted ? S.items.find(x => x.id === it.promoted) : null;
+  const pri = it.pri || 0;
+  /* ★ v5.0 卡片状态（第 1 批 1.2）：
+       sleeping —— 超过 14 天没长过一步就变淡；8~14 天仍按 live 显示（不留空档）
+       kidCount —— 它长出了几条子想法（驱动 ▾/▸ 三角）
+       folded   —— 子想法是否收起（复用会话级 collapsed Set，与清单页复合目标同一套）
+       depth    —— 缩进层数（1 = 根；≥5 起不再缩进，改在卡上显示层数小标）
+       sugN     —— AI 建议了几条挂载关系（第 3 批才有数据，这里先渲染好）
+     沉睡用 ideaLastAt 而不是 createdAt 算：续写过就算"活过"—— 想法是会生长的。 */
+  const sleepDays = seedSleepDays(it);
+  const sleeping = sleepDays > 14;
+  const kidCount = (info && info.kidCount) || 0;
+  const folded = !!(info && info.folded);
+  const depth = (info && info.depth) || 1;
+  const sugN = Array.isArray(it.suggest) ? it.suggest.length : 0;
+  const cls = 'item seed' + (it.done ? ' done' : '') + (sleeping ? ' sleep' : '')
+    + (pri ? ' pri' + pri : '')
+    + (it.id === justAdded.id && Date.now() - justAdded.t < 1200 ? ' just-added' : '');
+  /* 时间轴：一条竖脊 + 每步一个点。第一步是"种子本身"（记进来的那天），
+     后面的都是它长出来的。日期用 createdAt 兜底 —— 老数据没有 at 也不会露出空标签。 */
+  const first = it.createdAt ? ymd(new Date(it.createdAt)) : '';
+  const spine =
+    `<div class="spine">` +
+      `<div class="sp-step seed-first"><span class="sp-dot"></span>` +
+        `<span class="sp-at">${esc(first)}</span><span class="sp-tx">${esc(it.title)}</span></div>` +
+      /* ★ v5.0：每一步都带一个 `→`（**不是 ✓**）—— 点它就把这一句变成一条待办。
+         设计稿的红线：**只有 →，没有勾选框，卡片上不显示「3/5 已完成」这类进度**，
+         否则种子会退化成第二个清单（调研 01 §6 做法 9 明确这么说）。
+         已立项的种子，每步再多一个 `↑`：把这一步补到那条待办里去（双向活链的写这一半）。 */
+      sparks.map((s, i) =>
+        `<div class="sp-step"><span class="sp-dot"></span>` +
+        `<span class="sp-at">${esc(s.at || '')}</span>` +
+        `<span class="sp-tx">${esc(s.text)}</span>` +
+        (s.promotedTo ? `<span class="sp-done" title="这一步已经立项">↗</span>` : '') +
+        `<button type="button" class="sp-go" data-act="sparkpromote" data-id="${esc(it.id)}" data-i="${i}" title="把这一句变成待办" aria-label="把这一句变成待办">→</button>` +
+        (promoted ? `<button type="button" class="sp-push" data-act="sparkpush" data-id="${esc(it.id)}" data-i="${i}" title="把这一句补到待办里" aria-label="把这一句补到待办里">↑</button>` : '') +
+        `<button type="button" class="sp-x" data-act="sparkdel" data-id="${esc(it.id)}" data-i="${i}" title="删掉这一步" aria-label="删掉这一步">✕</button>` +
+        `</div>`).join('') +
+      (ideaUI.sparkOpen === it.id
+        ? `<div class="sp-add"><input type="text" class="sp-in" id="sp_in" data-id="${esc(it.id)}" placeholder="现在多了什么信息？" aria-label="续写"><button type="button" class="sp-ok" data-act="sparkok" data-id="${esc(it.id)}">记下</button><button type="button" class="sp-cancel" data-act="sparkcancel" data-id="${esc(it.id)}" aria-label="收起">✕</button></div>`
+        : '') +
+    `</div>`;
+  return `<div class="${cls}" data-id="${esc(it.id)}" data-fk="i:${esc(it.id)}" data-u="0">
+    <div class="lead">
+      ${ideaUI.mergeMode
+        ? `<button type="button" class="pick${ideaUI.mergeSel.has(it.id) ? ' on' : ''}" data-act="pick" data-id="${esc(it.id)}" role="checkbox" aria-checked="${ideaUI.mergeSel.has(it.id) ? 'true' : 'false'}" title="选中以合并">✓</button>`
+        : (kidCount
+            ? `<button type="button" class="fold${folded ? ' on' : ''}" data-act="fold" data-id="${esc(it.id)}" aria-expanded="${folded ? 'false' : 'true'}" title="${folded ? '展开这 ' + kidCount + ' 条' : '收起'}">${folded ? '▸' : '▾'}</button>`
+            /* ★ v5.0：不再有勾选框。用完了从长按菜单走「收起来」，卡片只是变暗。
+               没有子想法时这里留一个等宽空位，免得同级卡片的标题左右不对齐。 */
+            : `<span class="lead-blank" aria-hidden="true"></span>`)}
+    </div>
+    <div class="body">
+      ${spine}
+      <div class="meta">
+        <span class="chip seedchip">种子</span>
+        ${pri ? `<span class="chip prichip p${pri}">${pri === 2 ? '紧急' : '重要'}</span>` : ''}
+        ${sparks.length ? `<span class="chip">${sparks.length} 步</span>` : ''}
+        ${kidCount ? `<span class="chip kidchip" title="它长出了几条">子 ${kidCount}</span>` : ''}
+        ${sugN ? `<span class="chip suggestchip" data-act="suggestopen" data-id="${esc(it.id)}" role="button" tabindex="0" title="AI 觉得它可能该挂在别的想法下面">✦ ${sugN}</span>` : ''}
+        ${sleeping ? `<span class="chip sleepchip" title="最后动过是 ${sleepDays} 天前">${sleepDays} 天前</span>` : ''}
+        ${depth >= 5 ? `<span class="chip depthchip" title="缩进最多 4 层，这已经是第 ${depth} 层">第 ${depth} 层</span>` : ''}
+        ${promoted ? `<span class="chip promoted" data-act="gototask" data-id="${esc(it.id)}" title="跳到对应待办" role="button" tabindex="0">已立项</span>` : ''}
+        ${src ? `<span class="chip srcchip" title="合并自这些想法">来自 ${esc(src)}</span>` : ''}
+        ${tags}
+      </div>
+      /* ★ v5.0：卡片上那 5 枚小按钮搬进**长按菜单**了（见 openSeedSheet）。
+         卡片只剩内容；长按是隐藏手势，所以留一行极淡的说明保证能被发现。 */
+      <div class="acts seed-acts">
+        <span class="seed-longhint">长按卡片：续写 / 分叉 / 立项 / 编辑 / 合并 / 收起来 / 删除</span>
+      </div>
+    </div>
+  </div>`;
+}
+
 function itemHTML(it, kidsHTML, goalInfo, extraHTML){
+  if (isSeed(it)) return seedHTML(it);
   /* 标签名和 id 都必须转义：标签名来自用户输入（重命名时 normTagList 只去 # 和空白），
      id 来自备份 json（外部数据）。不转义的话，名字里带一个英文引号就会把属性截断 ——
      实测标签名设为 a"b 时 data-tag 读回来是 "a"，列表 DOM 直接坏掉，而且很难看出原因。
@@ -3094,7 +3700,7 @@ function itemHTML(it, kidsHTML, goalInfo, extraHTML){
         ${goalInfo ? `<span class="chip goalchip" data-act="fold" data-id="${esc(it.id)}" aria-expanded="${goalInfo.folded ? 'false' : 'true'}" title="展开/收起子任务">${goalInfo.folded ? '▸' : '▾'} ${goalInfo.done}/${goalInfo.total}</span>` : ''}
         ${pri ? `<span class="chip prichip p${pri}">${pri === 2 ? '紧急' : '重要'}</span>` : ''}
         ${chipDate(it)}
-        ${it.repeat ? `<span class="chip rep">每${it.repeat === 1 ? '' : it.repeat}天</span>` : ''}
+        ${it.repeat ? `<span class="chip rep">${repLabel(it)}</span>` : ''}
         ${it.goal && !goalInfo ? '<span class="chip goalchip">目标</span>' : ''}
         ${it.hw ? '<span class="chip hwchip">作业</span>' : ''}
         ${stale ? `<span class="chip old">放了${staleDays}天</span>` : ''}
@@ -3119,7 +3725,7 @@ function renderList(){
   const introNote = isTL
     ? `这一屏是<b>时间轴</b>：所有写了日期的未完成任务，按截止日从近到远上下排。<br>
        点越红越急：灰＝还早，黄＝这周内，橙＝三天内，红＝逾期，深红＝标了 <b class="mono">!!</b>。`
-    : `这一屏是<b>分区</b>：没日期的沉长期，有死线的进短期，带节奏的走循环，行尾带 <b class="mono">?</b> 的去考虑 —— 你不用先想它属于哪。<br>
+    : `这一屏是<b>分区</b>：没日期的沉长期，有死线的进短期，带节奏的走循环，行尾带 <b class="mono">?</b> 的会直接长成一条<b>想法</b>（进想法页）—— 你不用先想它属于哪。<br>
        每条最左边那颗点按紧急度上色：灰 → 黄 → 橙 → 红 → 深红，点一下那颗点会说是哪一档。`;
 
   let h = `<div class="section-intro${rv()}">
@@ -3145,7 +3751,7 @@ function renderList(){
         aria-label="展开或收起搜索与筛选">筛选<svg class="fb-chev" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9.5l6 6 6-6"/></svg></button>
     <span class="seg glass-chip" role="group" aria-label="清单展示方式">
       <button class="segbtn ico-seg${isTL ? '' : ' on'}" data-listmode="zone"
-              title="分区：长期 / 短期 / 循环 / 考虑" aria-label="分区视图" aria-pressed="${!isTL}">
+              title="分区：长期 / 短期 / 循环" aria-label="分区视图" aria-pressed="${!isTL}">
         <svg class="seg-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <rect x="3.2" y="4.6" width="5.2" height="14.8" rx="1.8"/>
           <rect x="9.4" y="4.6" width="5.2" height="9.4" rx="1.8"/>
@@ -3268,10 +3874,9 @@ function renderZoneBody(){
     .filter(i => !i.done && i.repeat && vis.has(i.id) && !(i.parent && byId.get(i.parent) && !byId.get(i.parent).done))
     .sort(cmpItem);
 
-  const conList = rootList('consider');
-
   /* 三栏顺序＝「要管的程度」从松到紧：长期（最没期限）→ 短期（有死线）→ 循环（节奏固定）。
-     「考虑」不算待办，只在这儿暂存想法，铺满整行收在最后，不挤进这三栏。 */
+     ★ v5.0：「考虑」这一栏已整块删除（并入想法页）。老数据里 zone==='consider' 的条目
+     会被下面那段兜底扫描收进「长期」，不会在任何视图里凭空消失。 */
   const cols = [
     { k:'long',   label:'长期', list: rootList('long'),  empty:'空' },
     { k:'short',  label:'短期', list: rootList('short'), empty:'空' },
@@ -3292,7 +3897,7 @@ function renderZoneBody(){
       const ch = kids.get(it.id);
       if (ch && ch.length) deep(ch, acc);
     });
-    deep(cols[0].list, listed); deep(cols[1].list, listed); deep(cols[2].list, listed); deep(conList, listed);
+    deep(cols[0].list, listed); deep(cols[1].list, listed); deep(cols[2].list, listed);
     const orphan = ordered().filter(i => !i.done && vis.has(i.id) && !listed.has(i.id));
     if (orphan.length) cols[0].list = cols[0].list.concat(orphan).sort(cmpItem);
   }
@@ -3315,17 +3920,11 @@ function renderZoneBody(){
      必须写在 .board 里面：它是这个网格的一个 item，行间距（gap）才管得到它。
      以前这段渲染在 .board 外面（`</div>` 提前把看板关掉了），后果是
      grid-column 空转、而且它紧贴着看板一个像素都不隔 —— 看着像跟「循环」粘成一张卡。 */
-  const conFold = S.foldedZones.includes('consider');
-  bh += `<section class="glass zone zone-wide${conFold ? ' folded' : ''}${rv()}" data-z="consider"${rvd(360)}>
-    <header data-zfold="consider" role="button" tabindex="0" aria-expanded="${conFold ? 'false' : 'true'}">
-      <span class="dot"></span><h3>考虑</h3><span class="n mono">${conList.length}</span>
-      <i class="z-chev" aria-hidden="true"></i>
-    </header>
-    ${conList.length ? conList.map(renderTree).join('')
-      : '<div class="empty">这儿暂存「还没想好要不要做」的事。写的时候在结尾加个 <b class="mono">?</b>，它就会落到这儿，不占上面三栏。</div>'}
-  </section>`;
+  /* ★ v5.0：「考虑」区整块删除。行尾 ? 现在直接长成一条种子、进想法页。
+     老数据（zone==='consider'）由上面那段兜底扫描收进「长期」，不会消失；
+     想法页顶部另有一次性的「搬进想法」提示，迁不迁由用户决定。 */
 
-  bh += '</div>';   // 关掉 .board（放在考虑区之后）
+  bh += '</div>';   // 关掉 .board
   return bh;
 }
 
@@ -3390,6 +3989,468 @@ function streak(){
   while (days.has(ymd(d))){ n++; d.setDate(d.getDate() - 1); }
   return n;
 }
+/* ★ v3.50 想法页（随手记）。它是**一屏**，不是清单页里的一个分区 ——
+   用户定稿："在底部的导航栏新开一个，放在现在外观的位置，把外观直接替换掉"。
+   分区下拉里的「想法」是它的第二入口（新建时能直接选），两处共用同一份数据和渲染。
+   排序：未用完的在前，按最后长出来的时间倒序（刚动过的在最上面），再按创建时间。
+   不用 cmpItem —— 那套是给"有死线的待办"排的，种子没有死线。 */
+function ideaLastAt(it){
+  const sp = Array.isArray(it.sparks) && it.sparks.length
+    ? it.sparks[it.sparks.length - 1].at : null;
+  const t = sp ? Date.parse(sp + 'T00:00:00') : 0;
+  return Math.max(t || 0, it.createdAt || 0);
+}
+/* ---------------- ★ v5.0 想法回顾抽屉（第 1 批 1.7）----------------
+   为什么要有它：调研 03 §1.1① 那位实践 GTD 五年的用户原话 ——「我可以做到很好的收集，
+   脑海里任何想法都会被及时捕捉到 Inbox 里，但在整理和组织阶段做得不好，最终导致
+   Inbox 里越来越多」。**收集越顺，积压越重。** 所以想法页需要一件不要求用户主动
+   想起来的事：打开就撞见几条，处理完就结束。
+
+   节奏（按用量而不是定时，见设计稿 §6.5）：
+     S.ideaUsedAt 距今 ≤ 2 天 → 默认折叠、标题不带数字
+                     2~7 天 → 折叠、标题带条数
+                     > 7 天 → 默认展开
+   选片三个槽位，**第 1 批全用本地规则**（没网也能跑；槽位 2 到第 3 批再接 AI）：
+     1 沉睡最久（排除近 7 天已被浮出过的）
+     2 最近 7 天新增步数最多
+     3 随机一条 30 天以上没被浮出过的，跨标签优先
+   上限固定 3 条、当天不重复推 —— 抄 flomo 的「限量 + 固定条数」；中文圈能长期坚持的
+   人的共同点是「固定 20 分钟 + 每周一次 + 极简」，数量可调就等于一定会被调没。 */
+function reviewDaysSinceUse(){
+  const t = S.ideaUsedAt ? Date.parse(S.ideaUsedAt + 'T00:00:00') : 0;
+  if (!t) return 999;                       // 从没用过 → 走「> 7 天」，首次打开默认展开一次
+  return Math.floor((Date.now() - t) / 86400000);
+}
+function reviewPicked(){
+  const byIdAll = new Map(S.items.map(i => [i.id, i]));
+  const pool = S.items.filter(i => isSeed(i) && !i.done && !seedAncestorUsed(i, byIdAll));
+  const days = d => d ? (Date.now() - Date.parse(d + 'T00:00:00')) / 86400000 : 9999;
+  const fresh = i => days(i.reviewedAt) < 7;
+  const picked = [], seen = new Set();
+  const take = i => { if (i && !seen.has(i.id)){ seen.add(i.id); picked.push(i); } };
+
+  /* 槽位 1：沉睡最久 */
+  take(pool.filter(i => !fresh(i)).slice().sort((a, b) => ideaLastAt(a) - ideaLastAt(b))[0]);
+  /* 槽位 2（本地降级）：最近 7 天新增步数最多 */
+  const recentSteps = i => (Array.isArray(i.sparks) ? i.sparks : [])
+    .filter(s => (Date.now() - Date.parse((s.at || '') + 'T00:00:00')) <= 7 * 86400000).length;
+  take(pool.filter(i => !seen.has(i.id) && recentSteps(i) > 0)
+    .slice().sort((a, b) => recentSteps(b) - recentSteps(a))[0]);
+  /* 槽位 3：随机一条 30 天以上没被浮出过的，跨标签优先 */
+  const old = pool.filter(i => !seen.has(i.id) && days(i.reviewedAt) > 30);
+  const tagKey = i => ((i && i.tags) || [])[0] || '';
+  const cross = old.filter(i => tagKey(i) !== tagKey(picked[0]));
+  const rnd = a => a.length ? a[Math.floor(Math.random() * a.length)] : null;
+  take(rnd(cross.length ? cross : old));
+  /* 兜底：池子里就剩这么几条时别让抽屉空着（下沉顺序仍按沉睡最久） */
+  pool.filter(i => !seen.has(i.id)).slice().sort((a, b) => ideaLastAt(a) - ideaLastAt(b))
+    .forEach(i => { if (picked.length < 3) take(i); });
+  return picked.slice(0, 3);
+}
+function reviewWhy(it){
+  const d = seedSleepDays(it);
+  if (d > 30) return '沉了很久：' + d + ' 天没动';
+  if (d > 14) return '睡了 ' + d + ' 天';
+  if (d === 0) return '今天刚长过';
+  return d + ' 天前动过';
+}
+function reviewDrawerHTML(){
+  if (!S.ideaReview) return '';                       // 设置页总开关
+  if (S.ideaReviewDone === ymd(new Date())) return ''; // 今天已经处理过，当天不再推
+  const picked = reviewPicked();
+  if (!picked.length) return '';
+  const d = reviewDaysSinceUse();
+  const open = ideaUI.reviewOpen === null ? (d > 7) : !!ideaUI.reviewOpen;
+  /* 数量角标只在"隔了 2~7 天没看"时出现。≤2 天说明你这两天一直在用想法页，
+     不需要被提醒 —— 带个数字反而变成催促，而设计稿的红线之一就是"不出现催促类字样"。 */
+  const showN = !open && d > 2;
+  const items = picked.map(it => {
+    const kids = S.items.filter(x => x.parent === it.id && isSeed(x)).length;
+    return `<div class="review-item" data-id="${esc(it.id)}">
+      <div class="ri-why">${esc(reviewWhy(it))}</div>
+      <div class="ri-title">${esc(it.title)}</div>
+      <div class="ri-sub">${(Array.isArray(it.sparks) ? it.sparks.length : 0)} 步${kids ? ' · 子 ' + kids : ''}</div>
+      <div class="ri-acts">
+        <button type="button" class="mini" data-act="sparkadd" data-rev="1" data-id="${esc(it.id)}">＋ 续写</button>
+        <button type="button" class="mini" data-act="promote" data-rev="1" data-id="${esc(it.id)}">↙ 立项</button>
+        <button type="button" class="mini" data-act="seeduse" data-rev="1" data-id="${esc(it.id)}">⏸ 收起来</button>
+      </div>
+    </div>`;
+  }).join('');
+  const usedN = S.items.filter(i => isSeed(i) && i.done).length;
+  return `<div class="review-drawer${open ? ' open' : ''}${rv()}"${rvd(20)}>
+    <button type="button" class="review-head" data-act="reviewtoggle" aria-expanded="${open ? 'true' : 'false'}">
+      <span class="rh-chev" aria-hidden="true">▸</span><span class="rh-t">回顾</span>
+      ${showN && picked.length ? `<span class="rh-n mono">${picked.length}</span>` : ''}
+    </button>
+    ${open ? `<div class="review-body">
+      <p class="review-note">这几条是你最近没碰过的。一条给十秒就够 —— 补一句、立项、或者收起来。</p>
+      ${items}
+      <div class="review-foot">
+        <button type="button" class="btn" data-act="reviewdone">今天就到这儿</button>
+        ${usedN >= 5 ? `<button type="button" class="btn ghost" data-act="reviewpurge">清掉已收起的 ${usedN} 条</button>` : ''}
+      </div>
+    </div>` : ''}
+  </div>`;
+}
+function renderIdeas(){
+  /* ★ v5.0：用 ideaUI.q / ideaUI.tags，**不再读 S.q / S.filterTags**。
+     匹配范围也从「标题 + 原文」扩到「标题 + 原文 + 全部时间轴文本」——
+     原先搜不到那条你明明写进续写里的关键词。字面匹配，不做语义。 */
+  const q = (ideaUI.q || '').trim().toLowerCase();
+  const qHit = i => !q
+    || (i.title || '').toLowerCase().includes(q)
+    || (i.raw || '').toLowerCase().includes(q)
+    || (Array.isArray(i.sparks) && i.sparks.some(s => (s.text || '').toLowerCase().includes(q)));
+  const all = S.items.filter(i => isSeed(i) && qHit(i) &&
+    (!ideaUI.tags.length || ideaUI.tags.some(t => (i.tags || []).includes(t))));
+  const allById = new Map(S.items.map(i => [i.id, i]));
+  const live = all.filter(i => !i.done && !seedAncestorUsed(i, allById))
+    .sort((a, b) => ideaLastAt(b) - ideaLastAt(a));
+  const used = all.filter(i => i.done || seedAncestorUsed(i, allById))
+    .sort((a, b) => (b.doneAt || b.createdAt || 0) - (a.doneAt || a.createdAt || 0));
+  const sel = ideaUI.mergeSel;
+  const nSel = sel.size;
+  let h = `<div class="section-intro${rv()}">
+      <p class="section-kicker">Idea</p>
+      <h2>想法</h2>
+      <p class="intro-note">还没定型的念头放这儿。<b>续写</b>＝这条又长出了什么；<b>分叉</b>＝从它岔出一条<b>子想法</b>（会缩进在它下面）；<b>合并</b>＝勾两条以上，生出一条新的，原来两条都留着；<b>立项</b>＝把它变成一条待办。<br>它不是待办，不需要被"做完"。用过了在卡片上长按 → <b>收起来</b>，它就暗下去、沉到底部「用过了」；点「继续想」又亮回来 —— 毕竟想法是可以继续生长的。</p>
+    </div>
+    <div class="idea-toolbar${rv()}"${rvd(30)}>
+      <button class="btn primary idea-new" data-act="seednew">＋ 新想法</button>
+      ${ideaUI.mergeMode
+        ? `<span class="len">勾两条以上合并</span><button class="btn" data-act="mergecancel">取消</button>`
+        : `<button class="btn" data-act="mergestart"${all.length >= 2 ? '' : ' disabled'}>⧉ 合并</button>`}
+    </div>
+    <div class="idea-searchbar${rv()}"${rvd(35)}>
+      <input class="search" id="ideaSearch" type="text" aria-label="搜想法"
+             placeholder="搜想法：标题 / 原文 / 时间轴…" value="${esc(ideaUI.q || '')}">
+    </div>
+    ${(() => {
+      const ts = [...new Set(S.items.filter(isSeed).flatMap(i => i.tags || []))].slice(0, 12);
+      if (!ts.length && !ideaUI.tags.length) return '';
+      return `<div class="idea-filters${rv()}"${rvd(40)}>` +
+        ts.map(t => `<button type="button" class="pill${ideaUI.tags.includes(t) ? ' on' : ''}" data-act="ideatag" data-tag="${esc(t)}">${esc(t)}</button>`).join('') +
+        (ideaUI.tags.length ? `<button type="button" class="pill ghost" data-act="ideatagclear">清除筛选</button>` : '') +
+        `</div>`;
+    })()}`;
+  /* ★ v5.0：老数据里的「考虑区」还在 → 给一次性的搬家入口。
+     考虑区已并入想法，但老条目**不该被静默改写**：搬不搬由用户点。
+     不搬也不会丢 —— 它们被 renderList 的兜底扫描收进「长期」正常渲染。 */
+  const oldCons = S.items.filter(i => i.zone === 'consider');
+  if (oldCons.length){
+    h += `<div class="consider-migrate${rv()}"${rvd(50)}>
+      <span>考虑区还有 <b class="mono">${oldCons.length}</b> 条 —— 它已经并进想法了，要搬过来吗？</span>
+      <button class="btn primary" data-act="consider2seed">搬进想法</button>
+    </div>`;
+  }
+  /* ★ v5.0：回顾抽屉排在搬家提示之后、卡片列表之前 —— 它是"今天先看这几条"，
+     位置必须在列表上方才有"撞见"的效果（放底部就没人滚到了）。 */
+  h += reviewDrawerHTML();
+  if (!all.length){
+    h += `<section class="glass zone zone-wide${rv()}" data-z="idea"${rvd(60)}>
+      <div class="empty">还没有想法。点上面的 <b>＋ 新想法</b> 记一条 —— 看到一句好词、一个不懂的术语、半截念头，都可以先扔进来。<br>它跟待办不是一回事：待办是试管，装一件定了型的事；想法是种子，会长、会岔、会跟别的念头合并。</div>
+    </section>`;
+    view.innerHTML = h;
+    return;
+  }
+  /* ★ v5.0：想法页从"平铺列表"变成"缩进树"。
+     parent 指向的条目**不在本批可见集合里**（被筛掉 / 已归档 / 被删）→ 上浮为根，
+     这样任何时候都不会有一条想法因为父节点不可见而消失。
+     根按「最后生长」倒序；子节点按创建时间正序（孩子保持写下顺序，不跳来跳去）。
+     缩进最多 4 层、16px 一步；第 5 层起不再缩进 —— 400px 手机上再缩就把卡片压成一条，
+     改在卡上显示「第 N 层」小标，层级信息不丢。 */
+  const card = (it, depth, kidCount, folded) =>
+    `<div class="glass zone zone-wide idea-card${it.done ? ' used' : ''}${isSleeping(it) ? ' sleep' : ''}${rv()}" data-z="idea">
+      <div class="ic-body">${seedHTML(it, { depth, kidCount, folded })}</div>
+    </div>`;
+  function treeHTML(list){
+    const byId = new Map(list.map(i => [i.id, i]));
+    const kidsOf = new Map();
+    const roots = [];
+    list.forEach(i => {
+      const p = i.parent && byId.get(i.parent);
+      if (p && p.id !== i.id){
+        if (!kidsOf.has(p.id)) kidsOf.set(p.id, []);
+        kidsOf.get(p.id).push(i);
+      } else roots.push(i);
+    });
+    const walk = (it, depth) => {
+      const ks = (kidsOf.get(it.id) || []).slice()
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      const folded = collapsed.has(it.id);
+      const kids = ks.length
+        ? `<div class="seed-kids${depth < 4 ? '' : ' flat'}"${folded ? ' hidden' : ''}>` +
+          ks.map(k => walk(k, depth + 1)).join('') + `</div>`
+        : '';
+      return `<div class="seed-node">` + card(it, depth, ks.length, folded) + kids + `</div>`;
+    };
+    return roots.slice().sort((a, b) => ideaLastAt(b) - ideaLastAt(a))
+      .map(r => walk(r, 1)).join('');
+  }
+  if (live.length){
+    h += `<div class="idea-list">` + treeHTML(live) + `</div>`;
+  } else {
+    h += `<div class="empty-soft">没有在用的想法了，下面是用过的。</div>`;
+  }
+  if (used.length){
+    h += `<div class="idea-used-head">用过了<span class="n mono">${used.length}</span></div>
+      <div class="idea-list used">` + treeHTML(used) + `</div>`;
+  }
+  /* 多选态：底部确认条。选不满两条就禁用 —— 一条自己跟自己合并没有意义。 */
+  if (ideaUI.mergeMode){
+    h += `<div class="merge-bar" role="region" aria-label="合并确认">
+      <span class="mb-n">已选 <b class="mono">${nSel}</b> 条</span>
+      <button class="btn" data-act="mergecancel">取消</button>
+      <button class="btn primary" data-act="mergeok"${nSel >= 2 ? '' : ' disabled'}>合并成新想法</button>
+    </div>`;
+  }
+  view.innerHTML = h;
+  /* 续写输入框：重新渲染后把焦点还回去，否则用户点开还得再点一次输入框。
+     Enter 记下、Escape 收起、失焦也收起 —— 三条出口，免得输入框一直挂在那儿。 */
+  const inp = document.getElementById('sp_in');
+  if (inp){
+    inp.focus();
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter'){ e.preventDefault(); if (seedAddSpark(it_byId(inp.dataset.id), inp.value)) refresh(); }
+      else if (e.key === 'Escape'){ e.preventDefault(); ideaUI.sparkOpen = null; refresh(); }
+    });
+  }
+}
+/* 按 id 找条目 —— 想法页里多处要用，抽出来免得每次现写 find */
+function it_byId(id){ return id ? S.items.find(x => x.id === id) : null; }
+
+/* ---------------- 随手记 / 种子：动作层（与渲染层分开，渲染只出 HTML） ---------------- */
+/* 新建一条种子。默认进想法分区、kind=seed、空时间轴。
+   raw 也存下来 —— 种子常在漫长一段话里长出来，原文要留着回溯（需求 B5 的"留痕"延伸到新建）。 */
+function newSeed(title, extra){
+  const t = String(title || '').trim();
+  if (!t){ toast('写点什么再记'); return null; }
+  const it = Object.assign({
+    id: uid(), raw: t, title: t, kind: 'seed',
+    date: null, dateEnd: null, monthOnly: false, time: null, repeat: null,
+    zone: 'idea', tags: [], done: false, doneAt: null,
+    createdAt: Date.now(), hw: null, pri: 0,
+    sparks: [], bornFrom: null, promoted: null,
+    /* ★ v5.0：
+         parent      —— 父子层级**复用已有字段**（清单页的复合目标也用它），不新开 parentId。
+                        想法页靠它做缩进；指向的条目不存在时当根节点。
+         done/doneAt —— 「用过了」也**复用已有字段**，只是视觉从"打勾"改成"变暗"。
+         suggest     —— AI 建议的挂载关系 [{to, why, at}]，未处理；接受 → 写 parent，拒绝 → 删掉
+         reviewedAt  —— 上次被回顾抽屉浮出的日期（当天不重复推 + 近 7 天不重复浮出）
+         aiUse       —— 当天 AI 用量 {d:'2026-10-03', n:2}，跨日归零 */
+    parent: null, suggest: [], reviewedAt: null, aiUse: null
+  }, extra || {});
+  S.items.unshift(it);
+  justAdded = { id: it.id, t: Date.now() };
+  save();
+  return it;
+}
+/* 续写：默认给今天。种子不需要用户每次手填日期 —— 长出来的那天就是今天。 */
+function seedAddSpark(it, text){
+  const tx = String(text || '').trim();
+  if (!tx) return false;
+  if (!Array.isArray(it.sparks)) it.sparks = [];
+  it.sparks.push({ at: ymd(new Date()), text: tx });
+  save(); return true;
+}
+/* 分叉：从这条岔出一条新的。新种子保留原文作为"来自"的线索，但**不复制**时间轴 ——
+   时间轴是这条种子自己的生长记录，复制过去会让两条看起来一模一样，反而看不出分叉。
+   挂在标题上留痕（来源标题），这样一眼能看出它是从哪儿岔出来的。 */
+function seedFork(it, title){
+  const t = String(title || '').trim();
+  if (!t){ toast('写点什么再分叉'); return null; }
+  /* ★ v5.0：分叉现在是**长出一条子想法**（parent 指向它），不再是平铺的第二条种子。
+     缩进本身就把"来自谁"说清楚了，所以不再往 bornFrom 里塞来源 ——
+     bornFrom 从此只表示"合并自哪几条"，一个字段一个意思，不兼职。
+     新种子默认展开父节点，否则刚长出来的那条会被折叠在下面、看不见。 */
+  const nx = newSeed(t, { tags: [...(it.tags || [])], pri: it.pri || 0, parent: it.id });
+  if (!nx) return null;
+  collapsed.delete(it.id);
+  save();
+  return nx;
+}
+/* 立项：把种子变成一条真正的待办。种子**留在想法区**（用户定稿），只打一个「已立项」小标，
+   点它跳到那条待办。待办删掉也不影响种子 —— 所以这里只存 id，不建立双向依赖。 */
+/* ★ v5.0：把一条已有条目**就地**变成想法（录入提示条的那个按钮用）。
+   与 addItem 里「行尾 ?」那条路保持同一形状 —— 两条路造出来的种子必须一模一样，
+   否则一条有时间轴起点、一条是空轴，用户会以为是坏的。 */
+function taskToSeed(it){
+  if (!it || isSeed(it)) return null;
+  it.kind = 'seed';
+  it.zone = 'idea';
+  it.date = null; it.dateEnd = null; it.monthOnly = false; it.time = null; it.repeat = null;
+  it.hw = null; it.promoted = null; it.bornFrom = null; it.parent = null;
+  if (!Array.isArray(it.sparks) || !it.sparks.length){
+    it.sparks = [{ at: ymd(new Date()), text: it.raw || it.title }];
+  }
+  if (!Array.isArray(it.suggest)) it.suggest = [];
+  if (it.reviewedAt === undefined) it.reviewedAt = null;
+  if (it.aiUse === undefined) it.aiUse = null;
+  S.ideaUsedAt = ymd(new Date());
+  save(); refresh();
+  toast('已存成想法 —— 在底栏左端那颗灯泡里', '去看看', () => {
+    S.view = 'idea'; ANIM = true; refresh();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+  return it;
+}
+/* ★ v5.0 立项三步走（用户定稿）：点「立项」→ 预填 → 弹确认页 → 确认才真立项。
+   ⚠️ **最要命的一条**：确认页编辑的必须是**一个临时新待办对象**，
+   绝不对种子本身调用编辑器的保存逻辑。现有编辑器的保存分支按分区推导 kind ——
+   分区不是 'idea' 时会 `delete kind / sparks / bornFrom / promoted / suggest`，
+   所以拿种子直接去编辑、用户一按确认，种子的整条时间轴和「已立项」标就全被清掉了，
+   种子退化成一张空白待办 —— 正好毁掉"立项留痕不删原条"这条产品定位。 */
+function openSeedPromote(it, sparkText, sparkIdx){
+  if (!isSeed(it)){ toast('这条不是想法'); return; }
+  if (it.promoted && S.items.some(x => x.id === it.promoted)){ toast('这条已经立过项了'); return; }
+  /* 原文栏：只读，用来让用户"核对"这条想法长成什么样了 —— 原文 + 时间轴摘要。
+     种子自己没有日期语义，但它可能是从待办改过来的，那种情况 date 还在，照实数预填。 */
+  const sp = Array.isArray(it.sparks) ? it.sparks : [];
+  const tl = sp.slice(0, 5).map(s => (s.at || '') + ' ' + (s.text || '')).filter(Boolean).join(' ／ ');
+  const draft = {
+    id: uid(),
+    raw: (it.raw || it.title) + (tl ? '\n' + tl : ''),
+    /* 部分转化（1.12）：从某一步点的 →，标题预填那一句而不是整条想法 */
+    title: (sparkText || it.title),
+    date: it.date || null, dateEnd: it.dateEnd || null, monthOnly: false,
+    time: it.time || null, zone: 'short', tags: [...(it.tags || [])],
+    done: false, doneAt: null, createdAt: Date.now(), hw: null,
+    repeat: null, pri: it.pri || 0, timeMode: 'once'
+  };
+  openItemEditor(draft, true, task => {
+    seedPromote(it, task);
+    /* 部分转化：只把被点的那一步标记成已立项，其余一步不动 */
+    if (sparkIdx != null && it.sparks[sparkIdx]){ it.sparks[sparkIdx].promotedTo = task.id; save(); refresh(); }
+  });
+}
+/* 「重新想」：待办做不下去 → 重新种下一条想法（1.11）。
+   为什么不是"把这条待办变回想法"（撤销式退回）：调研 03 §5 的结论是方向应单向 ——
+   flomo 官方放弃待办、滴答清单官方把「备忘」与「待办」列成两种类型。
+   折中做法是**生成一条新种子，原待办一个字不动**：语义上不是回滚，是重新思考。
+   也正好落在调研 01 §6 做法 7 指出的空白上（「待办类产品全线没有『做不下去退回想法』」）。 */
+function seedFromTask(it){
+  if (!it || isSeed(it)) return null;
+  const t = String(it.raw || it.title || '').trim();
+  if (!t){ toast('这条待办没内容'); return null; }
+  return newSeed(it.title || t, {
+    raw: t, tags: [...(it.tags || [])], pri: it.pri || 0,
+    bornFrom: [it.id],
+    sparks: [{ at: ymd(new Date()), text: t }]
+  });
+}
+/* 立项后的双向活链（1.13）中的**读**这一半：谁是从这条待办立项出来的 */
+function seedOfTask(taskId){
+  return taskId ? S.items.find(x => isSeed(x) && x.promoted === taskId) : null;
+}
+/* 立项的**落库后半段**：任务已经由编辑器推进 S.items 了，这里只补种子侧的留痕。
+   把两者拆开，是为了让"确认页编辑的是临时对象"这件事在代码上就成立 ——
+   种子永远是只读的被引用方，不会走进编辑器那条会清字段的保存分支。 */
+function seedPromote(it, task){
+  if (!task){ return null; }
+  it.promoted = task.id;
+  save(); refresh();
+  toast('已立项：' + task.title, '去看', () => {
+    S.view = 'list'; ANIM = true; refresh();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+  return task;
+}
+/* 合并：勾两条以上 → 生出一条新种子。**原种子不被吃掉**（用户定稿），只挂一行"来自 A ＋ B"。
+   新种子的标题默认是各条标题用 ＋ 连起来，用户可以在编辑器里改。 */
+function seedMerge(ids){
+  const list = (ids || []).map(id => S.items.find(x => x.id === id)).filter(Boolean);
+  /* 只收未用完的种子 —— 已归档的不该参与合并，否则会凭空"复活"一条老想法 */
+  const live = list.filter(isSeed).filter(x => !x.done);
+  if (live.length < 2){ toast('至少勾两条还在用的想法'); return null; }
+  const title = live.map(x => x.title).join(' ＋ ').slice(0, 60);
+  const nx = newSeed(title, {
+    tags: [...new Set(live.flatMap(x => x.tags || []))].slice(0, TAG_PER_ITEM),
+    bornFrom: live.map(x => x.id)
+  });
+  if (nx) toast('合并成一条新想法，原来两条都留着');
+  return nx;
+}
+/* 种子的勾：不叫"完成"，叫"用完了" —— 只沉到想法页底部的"用完了"一组，不播待办的 CRT 退场 */
+function seedUse(it){
+  /* ★ v5.0：这叫「收起来」，不叫完成 —— 想法没有"做完"这回事，只是暂时不想看了。
+     表现是**变暗**（不是打勾）；再点一次「继续想」就亮回来。整棵子树跟着一起沉底。 */
+  it.done = !it.done;
+  it.doneAt = it.done ? Date.now() : null;
+  save(); refresh();
+  toast(it.done ? '收起来了，暗着但还在' : '又亮回来了', '撤销', () => {
+    it.done = !it.done; it.doneAt = it.done ? Date.now() : null;
+    save(); refresh();
+  });
+}
+/* 「＋ 新想法」：复用带遮罩的编辑弹层写法（和标签管理同一套 openMask/closeModal），
+   不新造浮层机制 —— 本项目在浮层层序上踩过坑（见 .glass 层叠上下文那条记忆）。 */
+function openSeedNew(){
+  modal.innerHTML =
+    `<h3 id="modalTitle">新想法</h3>
+     <div class="field"><label>一句话记下它（不懂的术语、抄到的好词、半截念头都行）</label>
+       <input type="text" id="sn_t" value="" placeholder="例如：clash 是什么 / 抄到一句很好的提示词…"></div>
+     <div class="foot"><div class="spacer"></div>
+       <button class="btn" id="sn_no">取消</button>
+       <button class="btn primary" id="sn_yes">记下</button></div>`;
+  openMask();
+  const inp = document.getElementById('sn_t');
+  inp.focus();
+  const ok = () => {
+    const v = inp.value;
+    closeModal();
+    const nx = newSeed(v);
+    if (nx){ S.view = 'idea'; ANIM = true; refresh(); }
+  };
+  document.getElementById('sn_no').onclick = closeModal;
+  document.getElementById('sn_yes').onclick = ok;
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); ok(); }
+    else if (e.key === 'Escape'){ e.preventDefault(); closeModal(); }
+  });
+}
+/* ★ v5.0 想法卡的长按动作菜单（底部抽屉）。
+   为什么把 5 枚小按钮收进来：它们把卡片标题能用的宽度吃掉了，而手机上标题往往是最长的那行。
+   为什么是长按而不是双击：双击是浏览器手势约定，安卓上还会被系统选词菜单抢。
+   复用现有 mask/modal（层序、焦点陷阱、滚动锁、退场都在那一套里）—— 本项目在浮层层序上踩过坑。 */
+function openSeedSheet(it){
+  mask.classList.add('sheet-mode');
+  const item = (act, label, hint) => `<button type="button" class="sheet-item" data-act="${act}" data-id="${esc(it.id)}">
+      <span class="si-label">${label}</span><span class="si-hint">${hint}</span></button>`;
+  modal.innerHTML =
+    `<div class="sheet-head"><b>${esc(it.title)}</b></div>
+     <div class="sheet-list">
+       ${item('sparkadd', '＋ 续写', '现在多了什么信息')}
+       ${item('fork', '⑂ 分叉', '从它岔出一条子想法')}
+       ${item('promote', '↙ 立项', '把它变成一条待办')}
+       ${item('edit', '✎ 编辑', '改标题 / 标签 / 重要程度')}
+       ${item('mergepick', '⧉ 合并', '选上它，再勾别的')}
+       ${it.done ? item('seeduse', '☀ 继续想', '亮回来，回主列表') : item('seeduse', '⏸ 收起来', '变暗、沉到底部')}
+       ${item('del', '✕ 删除', '删掉这条想法')}
+     </div>
+     <div class="sheet-foot"><button type="button" class="btn" data-act="sheetclose">取消</button></div>`;
+  openMask();
+}
+function openSeedPrompt(title, label, placeholder, onOk){
+  modal.innerHTML =
+    `<h3 id="modalTitle">${esc(title)}</h3>
+     <div class="field"><label>${esc(label)}</label>
+       <input type="text" id="sq_t" value="" placeholder="${esc(placeholder || '')}"></div>
+     <div class="foot"><div class="spacer"></div>
+       <button class="btn" id="sq_no">取消</button>
+       <button class="btn primary" id="sq_yes">确定</button></div>`;
+  openMask();
+  const inp = document.getElementById('sq_t');
+  inp.focus();
+  const ok = () => { const v = inp.value; closeModal(); onOk(v); };
+  document.getElementById('sq_no').onclick = closeModal;
+  document.getElementById('sq_yes').onclick = ok;
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); ok(); }
+    else if (e.key === 'Escape'){ e.preventDefault(); closeModal(); }
+  });
+}
+
 function renderStat(){
   const today = ymd(today0());
   const doneItems = S.items.filter(i => i.done);
@@ -3403,20 +4464,25 @@ function renderStat(){
   /* 完成量按来源拆开：循环 / 短期 / 长期 / 考虑。
      清单页每个分区标题本来就带未完成条数，这里就不重复列分区待办数了。 */
   function byOrigin(list){
-    const c = { short: 0, long: 0, consider: 0, loop: 0 };
-    list.forEach(i => { if (i.repeat) c.loop++; else if (c[i.zone] !== undefined) c[i.zone]++; });
+    /* ★ v5.0：「考虑」并入想法。老数据里 zone==='consider' 的历史条目**归到「长期」那一档**算 ——
+       已经打完勾的数据不该因为一次改版就从统计里少掉一格。 */
+    const c = { short: 0, long: 0, loop: 0 };
+    list.forEach(i => {
+      if (i.repeat) c.loop++;
+      else if (i.zone === 'short') c.short++;
+      else if (i.zone === 'long' || i.zone === 'consider') c.long++;
+    });
     return c;
   }
   function breakdown(list){
     const c = byOrigin(list);
-    const total = c.short + c.long + c.consider + c.loop;
+    const total = c.short + c.long + c.loop;
     if (!total) return tile ? `<div class="vsub">还没有打勾</div>`
                             : `<div class="vsub-v"><span class="vchip empty">还没有打勾</span></div>`;
     if (tile){                                   /* 方块太小，chips 会挤爆 → 收成一行小字 */
       const parts = [];
       if (c.short) parts.push('短期 ' + c.short);
       if (c.long) parts.push('长期 ' + c.long);
-      if (c.consider) parts.push('考虑 ' + c.consider);
       if (c.loop) parts.push('循环 ' + c.loop);
       return `<div class="vsub">${parts.join(' · ')}</div>`;
     }
@@ -3424,7 +4490,7 @@ function renderStat(){
        所以这里只管内容顺序；数字在 .vchip b 里居中。 */
     const chip = (label, n, cls) => `<span class="vchip ${cls || ''}">${label}<b>${n}</b></span>`;
     return `<div class="vsub-v">` + chip('短期', c.short) + chip('长期', c.long) +
-      (c.consider ? chip('考虑', c.consider) : '') + chip('循环', c.loop, 'loop') + `</div>`;
+      chip('循环', c.loop, 'loop') + `</div>`;
   }
 
   /* v2.5（用户指定，2026-09-25 二次确认）：块状图顺序固定为
@@ -3561,6 +4627,21 @@ function renderSettings(){
         </div>
         <!-- v3.18：原来的「系统语音（可能联网）」开关已删除 —— 语音改成**内置本地模型**
              （Vosk 中文小模型跟包走），不联网、不弹输入法，所以包也不再声明 INTERNET。 -->
+      </section>
+
+      <section class="glass set-card${rv()}"${rvd(150)}>
+        <h3>想法</h3>
+        <p class="set-sub">底栏左端那颗灯泡里（想法页）的行为。</p>
+        <div class="set-row">
+          <div class="set-txt">
+            <b>想法回顾</b>
+            <span>在想法页顶部放一个「回顾」抽屉，自动挑三条你最近没碰过的想法送到眼前
+              —— 免得念头扔进去就再也没打开过。你用想法用得勤，它就自己收着不打扰；
+              隔几天没看才展开。</span>
+          </div>
+          <button class="switch" data-set="ideaReview" role="switch" aria-label="想法回顾"
+                  aria-checked="${S.ideaReview ? 'true' : 'false'}"></button>
+        </div>
       </section>
 
       <section class="glass set-card${rv()}"${rvd(180)}>
@@ -3766,8 +4847,15 @@ function refresh(){
   if (rafRefresh) return;
   rafRefresh = requestAnimationFrame(() => {
     rafRefresh = 0;
+    /* ★ v3.50：离开想法页就把它那点会话级状态清干净 —— 多选态和展开着的续写框
+       都是"这一屏的临时状态"，带到别的页去只会让人莫名其妙（比如回到想法页时
+       发现上次勾了一半还开着）。 */
+    if (S.view !== 'idea' && (ideaUI.mergeMode || ideaUI.mergeSel.size || ideaUI.sparkOpen)){
+      ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); ideaUI.sparkOpen = null;
+    }
     if (S.view === 'list') renderList();
     else if (S.view === 'entry'){ /* 录入界面由 hero + 录入条 + 标签/提示构成，#view 留空 */ view.innerHTML = ''; }
+    else if (S.view === 'idea') renderIdeas();
     else if (S.view === 'settings') renderSettings();
     else renderStat();   // 其余（含 'stat'）都走统计
     renderFilters();
@@ -4234,13 +5322,28 @@ let toastTimer = null;
 function toast(msg, actionLabel, action, dur){
   const el = document.getElementById('toast');
   if (!el) return;                       // 与 hideToast 同一道空值保护（见下）
+  /* ★ v5.0：第二个参数也可以直接给一个数组 [{label, fn}, …] —— 一次给多个按钮。
+     录入提示条要同时给「存入想法」和「撤销」，一个按钮表达不了。
+     数组形式下，第三个参数是显示时长（因为 action 这个形参被 dur 占了）。 */
+  const multi = Array.isArray(actionLabel);
+  const acts = (multi ? actionLabel : (actionLabel ? [{ label: actionLabel, fn: action }] : []))
+    .filter(a => a && typeof a.fn === 'function');
+  const liveMs = multi ? action : dur;
+  /* ★ v3.40：带着「撤销」按钮的提示不许被后台建议顶掉。
+     实测：循环任务打勾弹出「完成 · …再来一轮 [撤销]」后，0.8s 后那条
+     "长期区有 N 条放了超过 30 天" 的定时提示会把它整条替换掉 —— 用户在
+     撤销窗口内点不到按钮，而需求 A6 明确要求"撤销必须能撤回生成的下一轮"。
+     规则：普通提示遇到"正在显示撤销"时直接放弃（它只是建议，撤销是数据安全）。 */
+  const undoLive = el.classList.contains('on') && el.dataset.act === '1';
+  if (undoLive && !acts.length) return;
   el.innerHTML = `<span>${esc(msg)}</span>`;
-  if (actionLabel){
+  el.dataset.act = acts.length ? '1' : '';
+  acts.forEach(a => {
     const b = document.createElement('button');
-    b.textContent = actionLabel;
-    b.onclick = () => { action(); hideToast(); };
+    b.textContent = a.label;
+    b.onclick = () => { a.fn(); hideToast(); };
     el.appendChild(b);
-  }
+  });
   el.classList.add('on');
   /* v3.32：弹窗开着时把提示挪到顶部，别压住弹窗底部的按钮（用户被"已用语音录入"挡过"取消"）。
      找不到弹窗元素就照旧在底部 —— 最坏情况与改动前一致。 */
@@ -4249,7 +5352,7 @@ function toast(msg, actionLabel, action, dur){
     el.classList.toggle('at-top', !!dlg);
   } catch (_){}
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(hideToast, dur || 5000);
+  toastTimer = setTimeout(hideToast, liveMs || 5000);
 }
 /* 加空值保护：正常运行中 #toast 常驻，不会缺；但外部脚本/将来的重构若把它移走，
    那条已排队的 hideToast 定时器就会在这里抛 TypeError（本项目核验脚本踩过一次）。 */
@@ -4488,10 +5591,18 @@ function commitEntry(){
        （循环任务被归入 short），所以取不到 undefined。但 ZONES 里是有 'repeat' 的，
        一旦将来有代码把 zone 设成它，这行就会拼出「已加入「undefined」」这种用户可见的错。
        加个默认值，代价为零。 */
-    const zl = { short:'短期', long:'长期', consider:'考虑' }[it.zone] || '待办';
+    const zl = { short:'短期', long:'长期', idea:'想法' }[it.zone] || '待办';
+    /* ★ v5.0 录入提示条（1.14）：**没解析出日期**的**新建**条目，顺手给一个「存入想法」出口。
+       为什么要给：现有规则是「没日期的沉长期」，于是长期里混着两种东西 ——
+       真的要长期做的任务，和"其实只是个念头"。当场让你选会抬高记录阻力
+       （调研的硬结论：捕捉那一刻不该要求决策），所以做成提示条上的一个按钮：
+       不点就自己消失，不阻塞，也不改变"默认算待办"这件事。
+       只在新建时给；编辑已有条目不弹（否则每次改长期都要被问一遍）。 */
+    const tActs = [{ label: '撤销', fn: () => { S.items = S.items.filter(x => x.id !== it.id); save(); refresh(); } }];
+    if (!it.date && !isSeed(it)) tActs.unshift({ label: '存入想法', fn: () => taskToSeed(it) });
     toast('已加入「' + zl + '」' + (it.date ? ' · ' + dateLabel(it) : '') +
           ((it.tags && it.tags.length) ? ' · ' + it.tags.join('/') : ''),
-      '撤销', () => { S.items = S.items.filter(x => x.id !== it.id); save(); refresh(); });
+      tActs, 6000);
     // 新增后把看板滚进视野，避免"存了但没看见"
     const sec = document.getElementById('view');
     if (sec && sec.getBoundingClientRect().top > window.innerHeight * 0.6)
@@ -4539,11 +5650,36 @@ view.addEventListener('input', e => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => { searchTimer = 0; refresh(); refocusSearch(caret); }, SEARCH_DEBOUNCE_MS);
 });
+/* ★ v5.0 想法页的搜索：**自己的词、自己的防抖、自己的焦点回填**。
+   跟清单页那套完全平行、互不读写 —— 共用全局 S.q 会让两页互相污染。 */
+let ideaSearchTimer = 0;
+function refocusIdeaSearch(caret){
+  requestAnimationFrame(() => {
+    const el = document.getElementById('ideaSearch');
+    if (!el) return;
+    if (document.activeElement !== el) el.focus();
+    const p = caret === undefined ? el.value.length : Math.min(caret, el.value.length);
+    try { el.setSelectionRange(p, p); } catch (e){}
+  });
+}
+view.addEventListener('input', e => {
+  if (e.target.id !== 'ideaSearch') return;
+  ideaUI.q = e.target.value;
+  const caret = e.target.selectionStart;
+  clearTimeout(ideaSearchTimer);
+  ideaSearchTimer = setTimeout(() => { ideaSearchTimer = 0; refresh(); refocusIdeaSearch(caret); }, SEARCH_DEBOUNCE_MS);
+});
 view.addEventListener('keydown', e => {
   /* 清空要立刻生效（还带一个清空搜索的挂起定时器，否则它稍后会把刚清掉的词又填回去） */
   if (e.target.id === 'searchBox' && e.key === 'Escape'){
     clearTimeout(searchTimer); searchTimer = 0;
     S.q = ''; refresh(); refocusSearch(0);
+    return;
+  }
+  /* 想法页搜索的 Escape：同样要**先清挂起的防抖**，否则它稍后会把刚清掉的词填回去 */
+  if (e.target.id === 'ideaSearch' && e.key === 'Escape'){
+    clearTimeout(ideaSearchTimer); ideaSearchTimer = 0;
+    ideaUI.q = ''; refresh(); refocusIdeaSearch(0);
     return;
   }
   /* 分区标题是 role="button"，Enter / 空格 要能折叠。
@@ -4599,6 +5735,11 @@ view.addEventListener('click', e => {
   /* 按钮自身可能不带 data-id（id 在外层 .item / .hwcard 容器上），向上找一层 */
   const id = el.dataset.id || el.closest('[data-id]')?.dataset.id;
   const it = id ? S.items.find(x => x.id === id) : null;
+  /* ★ v5.0：从回顾抽屉里点出来的动作 = 这条被"过"了一次。
+     记 reviewedAt（近 7 天不再浮出）+ 把今天标成用过想法页（影响抽屉的折叠档位）。
+     放在这里而不是各动作内部：抽屉里的按钮复用的就是全站那几个动作，
+     逐个改会漏；挂 data-rev 标记只在抽屉渲染时加，一处判断就够。 */
+  if (el.dataset.rev && it){ it.reviewedAt = ymd(new Date()); S.ideaUsedAt = ymd(new Date()); save(); }
 
   /* 统计页布局：横条 / 方块。只换视图内部，不走 refresh()，省得整页重排。
      同样走两段式过渡，跟「分区 ⇄ 时间轴」是同一套手感。 */
@@ -4623,6 +5764,16 @@ view.addEventListener('click', e => {
       save();
       applyHelp();
       el.setAttribute('aria-checked', S.showHelp ? 'true' : 'false');
+    }
+    /* ★ v5.0 想法回顾总开关。关掉后想法页顶部**不出现**抽屉 ——
+       调研 02 §6 的结论是"只在页内手动翻的回顾一定不会被用"，所以默认开；
+       但给一个关的出口，免得不想被推的人只能忍着。 */
+    else if (el.dataset.set === 'ideaReview'){
+      S.ideaReview = !S.ideaReview; save();
+      el.setAttribute('aria-checked', S.ideaReview ? 'true' : 'false');
+      ideaUI.reviewOpen = null;                     // 重开后回到"按频率自动"
+      applyHelp(); refresh();
+      toast(S.ideaReview ? '想法回顾已打开' : '想法回顾已关闭');
     }
     /* 流畅模式：改之前那颗 ⚡ 的行为一样 —— 手动选择记进 localStorage，
        以后即使自动检测认为"你是真 GPU"也尊重用户的手动选择（见 currentLite）。
@@ -4670,7 +5821,130 @@ view.addEventListener('click', e => {
     save(); refresh(); return;
   }
   const act = el.dataset.act;
+  /* ---- 随手记 / 种子（v3.50）----
+     这一组 action 全部只可能出现在想法页或编辑器里，和待办的 tick/del/edit 不冲突。
+     顺序放在待办那几行之前：seeduse 与 tick 长得像，先拦住，免得种子误入待办的 CRT 退场。 */
+  if (act === 'pick' && it){
+    if (ideaUI.mergeSel.has(it.id)) ideaUI.mergeSel.delete(it.id);
+    else ideaUI.mergeSel.add(it.id);
+    refresh(); return;
+  }
+  if (act === 'mergestart'){ ideaUI.mergeMode = true; ideaUI.mergeSel.clear(); refresh(); return; }
+  if (act === 'mergecancel'){ ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); refresh(); return; }
+  if (act === 'mergeok'){ const nx = seedMerge([...ideaUI.mergeSel]); ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); refresh(); if (nx) openEdit(nx); return; }
+  if (act === 'seednew'){ openSeedNew(); return; }
+  /* ---- ★ v5.0 想法页自己的标签筛选（不碰清单页的 S.filterTags）---- */
+  if (act === 'ideatag'){
+    const tg = el.dataset.tag;
+    const i = ideaUI.tags.indexOf(tg);
+    if (i >= 0) ideaUI.tags.splice(i, 1); else ideaUI.tags.push(tg);
+    refresh(); return;
+  }
+  if (act === 'ideatagclear'){ ideaUI.tags = []; refresh(); return; }
+  /* ---- ★ v5.0 回顾抽屉 ---- */
+  if (act === 'reviewtoggle'){
+    const cur = ideaUI.reviewOpen === null ? (reviewDaysSinceUse() > 7) : !!ideaUI.reviewOpen;
+    ideaUI.reviewOpen = !cur; refresh(); return;
+  }
+  if (act === 'reviewdone'){
+    S.ideaReviewDone = ymd(new Date()); save(); ideaUI.reviewOpen = null;
+    refresh(); toast('今天就这样'); return;
+  }
+  if (act === 'reviewpurge'){
+    /* 抽屉里那行「清掉已收起的 N 条」＝真正的淘汰动作。
+       调研 02 §7 的第三条必要条件：「必须有淘汰动作 —— 没有淘汰机制的池子一定变成垃圾场」。
+       走 toast 撤销，不做批量硬删。 */
+    const gone = S.items.filter(i => isSeed(i) && i.done);
+    if (!gone.length){ toast('没有可清的'); return; }
+    const keep = S.items.slice();
+    S.items = S.items.filter(i => !(isSeed(i) && i.done));
+    /* 被清掉的可能是别人的父节点 → 子节点上浮为根，**不级联删** */
+    S.items.forEach(x => { if (x.parent && !S.items.some(y => y.id === x.parent)) x.parent = null; });
+    save(); refresh();
+    toast('清掉 ' + gone.length + ' 条已收起的', '撤销', () => { S.items = keep; save(); refresh(); });
+    return;
+  }
+  /* ★ v5.0：折叠/展开一条有子想法的卡片。状态走会话级 collapsed Set（与会话同生命，
+     和清单页复合目标那套是同一个 —— App 里"折叠"从来不持久化）。 */
+  if (act === 'fold' && it){
+    if (collapsed.has(it.id)) collapsed.delete(it.id); else collapsed.add(it.id);
+    refresh(); return;
+  }
+  /* ★ v5.0：「考虑区」老数据一键搬进想法。搬完原待办删除（整批可撤销）。
+     种子第一步 = 原条目的 raw，日期用它的创建日期 —— 这样时间轴从它被写下那天算起，
+     而不是搬家那天。 */
+  if (act === 'consider2seed'){
+    const olds = S.items.filter(i => i.zone === 'consider');
+    if (!olds.length){ toast('考虑区已经空了'); refresh(); return; }
+    const made = [];
+    olds.forEach(old => {
+      const nx = newSeed(old.title, {
+        sparks: [{ at: ymd(new Date(old.createdAt || Date.now())), text: old.raw || old.title }],
+        tags: [...(old.tags || [])], pri: old.pri || 0
+      });
+      if (nx) made.push({ nx, old });
+    });
+    made.forEach(m => { const i = S.items.indexOf(m.old); if (i >= 0) S.items.splice(i, 1); });
+    save(); refresh();
+    toast('搬进想法 ' + made.length + ' 条', '撤销', () => {
+      made.forEach(m => {
+        const i = S.items.indexOf(m.nx); if (i >= 0) S.items.splice(i, 1);
+        S.items.push(m.old);
+      });
+      save(); refresh();
+    });
+    return;
+  }
+  if (act === 'seeduse' && it){ seedUse(it); return; }
+  if (act === 'sparkadd' && it){
+    /* 就地展开输入框，不弹窗 —— 续写是"顺手添一句"，打断越少越好。
+       同一时刻只开一个：先把它记成当前打开的那条，再整页重渲染，renderIdeas 会把焦点还回来。 */
+    ideaUI.sparkOpen = it.id;
+    refresh(); return;
+  }
+  if (act === 'sparkcancel'){ ideaUI.sparkOpen = null; refresh(); return; }
+  if (act === 'fork' && it){ openSeedPrompt('从「' + it.title + '」分叉', '新想法的第一句', '从这儿岔出去的另一条', v => { if (seedFork(it, v)) refresh(); }); return; }
+  if (act === 'promote' && it){ openSeedPromote(it); return; }
+  if (act === 'gototask' && it){
+    const t = it.promoted && S.items.find(x => x.id === it.promoted);
+    if (!t){ toast('那条待办已经删掉了，想法还在'); return; }
+    S.view = 'list'; ANIM = true; refresh(); return;
+  }
+  if (act === 'sparkok'){ const inp = document.getElementById('sp_in'); if (inp && it && seedAddSpark(it, inp.value)) refresh(); return; }
+  if (act === 'sparkdel' && it){
+    const i = +el.dataset.i;
+    if (Array.isArray(it.sparks) && i >= 0 && i < it.sparks.length){
+      /* 撤销：把删掉那一步**插回原位**，而不是追加到末尾 —— 时间轴是有顺序的 */
+      const gone = it.sparks.splice(i, 1)[0];
+      save(); refresh();
+      toast('删掉一步', '撤销', () => { it.sparks.splice(i, 0, gone); save(); refresh(); });
+    }
+    return;
+  }
   if (act === 'fold' && it){ foldWithMotion(el, it); return; }
+  /* ★ v5.0 部分转化（1.12）：把时间轴上的**某一句**变成一条待办。
+     走的是同一个立项确认页，只是标题预填那一句 —— 种子留下，只有这一步被打标。 */
+  if (act === 'sparkpromote' && it){
+    const i = +el.dataset.i;
+    const sp = (Array.isArray(it.sparks) ? it.sparks : [])[i];
+    if (sp) openSeedPromote(it, sp.text, i);
+    return;
+  }
+  /* ★ v5.0 双向活链的**写**这一半（1.13）：把某一步补到那条已立项的待办里。
+     追加到待办的 raw 末尾，**原有内容逐字保留**；种子侧不改动。
+     撤销存的是改之前那一整串 raw —— 按长度切片回退在中文/换行上很容易切错。 */
+  if (act === 'sparkpush' && it){
+    const i = +el.dataset.i;
+    const sp = (Array.isArray(it.sparks) ? it.sparks : [])[i];
+    const task = it.promoted && S.items.find(x => x.id === it.promoted);
+    if (!sp) return;
+    if (!task){ toast('那条待办已经删掉了，想法还在'); return; }
+    const oldRaw = task.raw;
+    task.raw = (task.raw ? task.raw + '\n' : '') + sp.text;
+    save(); refresh();
+    toast('已补到「' + task.title + '」里', '撤销', () => { task.raw = oldRaw; save(); refresh(); });
+    return;
+  }
   if (act === 'tick' && it){ tickWithFeedback(el, it); return; }
   if (act === 'del' && it){ remove(it, el); return; }
   if (act === 'edit' && it){ openEdit(it); return; }
@@ -4882,25 +6156,75 @@ function toggleDone(it){
   it.done = !it.done;
   it.doneAt = it.done ? Date.now() : null;
   if (it.done && it.hw && it.hw.status !== 'submitted'){ it.hw.status = 'submitted'; it.hw.submittedAt = ymd(new Date()); }
-  // 循环任务：打勾即完成一轮，按间隔生成下一次（作业不走循环）
-  let nextId = null, nextLabel = '';
+  /* 循环任务：打勾即完成一轮，按间隔生成下一次（作业不走循环）。
+     ★ v3.40 两条新语义（需求 A6）：
+       · 间隔 = **区间结束后空 N 天**，下一轮起点 = 本轮终点 + N + 1 天；
+         单日任务终点就是它自己，于是 `date + N + 1`。
+       · `每天都做`：区间内每一天是一条独立条目，全部生成、全勾完才排下一轮。 */
+  const cycle = { ids: [], label: '' };
   if (it.done && it.repeat && !it.hw){
-    const base = today0(); base.setDate(base.getDate() + it.repeat);
-    const nx = {
-      id: uid(), raw: it.raw, title: it.title,
-      date: ymd(base), dateEnd: null, monthOnly: false, time: it.time || null,
-      zone: it.zone, tags: [...(it.tags || [])], done: false, doneAt: null,
-      createdAt: Date.now(), hw: null, repeat: it.repeat, pri: it.pri || 0
-    };
-    S.items.unshift(nx); nextId = nx.id;
-    nextLabel = '，' + (+nx.date.slice(5, 7)) + '月' + (+nx.date.slice(8)) + '日再来一轮';
+    const start = it.date || ymd(today0());
+    const end = it.dateEnd && it.dateEnd > start ? it.dateEnd : start;
+    if (it.date && it.timeMode === 'daily') cycle.ids = spawnDailyKids(it, start, end);
+    else cycle.ids = spawnNextCycle(it, start, end);
+    if (cycle.ids.length){
+      const nx = S.items.find(x => x.id === cycle.ids[0]);
+      /* 撤销要用同一个标记把整轮生成的条目一起撤回 */
+      cycle.ids.forEach(id => { const o = S.items.find(x => x.id === id); if (o) o.cycleOf = it.id; });
+      if (nx){
+        const label = (nx.dateEnd && nx.dateEnd !== nx.date)
+          ? '，' + teDateLabelFromStr(nx.date) + '–' + teDateLabelFromStr(nx.dateEnd) + '再来一轮'
+          : '，' + teDateLabelFromStr(nx.date) + '再来一轮';
+        cycle.label = label;
+      }
+    }
   }
   save(); refreshAfterChange(320);
-  if (it.done) toast('完成 · ' + it.title + nextLabel, '撤销', () => {
+  if (it.done) toast('完成 · ' + it.title + cycle.label, '撤销', () => {
     it.done = false; it.doneAt = null;
-    if (nextId) S.items = S.items.filter(x => x.id !== nextId);
+    if (cycle.ids.length){
+      const kill = new Set(cycle.ids);
+      S.items = S.items.filter(x => !kill.has(x.id));
+    }
     save(); refreshAfterChange(320);
   });
+}
+/* 下一轮：起点 = 本轮终点 + 间隔 + 1 天，区间跨度沿用本轮（需求 A6 例：9/20–9/22 间隔2 → 9/25–9/27） */
+function spawnNextCycle(it, start, end){
+  const base = dateFrom(end);
+  base.setDate(base.getDate() + it.repeat + 1);
+  const span = Math.max(0, Math.round((dateFrom(end) - dateFrom(start)) / 86400000));
+  const nx = Object.assign({}, it, {
+    id: uid(), done: false, doneAt: null, createdAt: Date.now(),
+    date: ymd(base), dateEnd: null, cycleOf: null,
+    timeMode: it.timeMode || 'once', hw: null,
+    tags: [...(it.tags || [])]
+  });
+  if (span){
+    const e2 = new Date(base); e2.setDate(e2.getDate() + span);
+    nx.dateEnd = ymd(e2);
+  }
+  S.items.unshift(nx);
+  return [nx.id];
+}
+/* 每天都做：区间内每一天展开成独立条目（跳过本轮已有的日期），全勾完才排下一轮 */
+function spawnDailyKids(it, start, end){
+  const ids = [];
+  const have = new Set(S.items.filter(x => x.title === it.title && x.date).map(x => x.date));
+  const d = dateFrom(start), last = dateFrom(end);
+  while (d <= last){
+    const ds = ymd(d);
+    if (ds !== it.date && !have.has(ds)){
+      const k = Object.assign({}, it, {
+        id: uid(), done: false, doneAt: null, createdAt: Date.now(),
+        date: ds, dateEnd: null, repeat: null, cycleOf: null, hw: null,
+        tags: [...(it.tags || [])]
+      });
+      S.items.unshift(k); ids.push(k.id);
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return ids;
 }
 /* 删除（3.5.2 按用户重新定义）：先把"标题与 ✕ 变红 → 整条像纸一样被压掉"演完，再动数据，
    紧接着下面的条目 FLIP 补位。el 是那颗 ✕（从点击处传进来），用来找它所在的那一行。 */
@@ -4983,7 +6307,15 @@ function openMask(){
 function closeModalNow(){
   clearTimeout(maskOutTimer); maskOutTimer = 0;
   mask.classList.remove('on', 'closing');
+  /* 时刻滑轮挂在 body 上（不是 .modal 里），不主动收掉就会变成弹窗关掉后
+     还浮在页面上的一层。直接摘节点，不走 closeWheel()（它要回写已经不存在的输入框）。 */
+  if (typeof wheelEl !== 'undefined' && wheelEl){ wheelEl.remove(); wheelEl = null; }
+  TE = null;
   modal.innerHTML = '';
+  /* ★ v5.0：底部抽屉是 .mask 上的一个模式类。收在这里清，是因为弹层有**多条关闭路径**
+     （点遮罩、Esc、里面的按钮、被别的弹层顶掉）—— 只在自己那条路上清，迟早漏一条，
+     表现就是"下次开普通弹窗却贴在最底下"。 */
+  mask.classList.remove('sheet-mode');
   /* 等退场动画（~170ms）走完才解锁：这段时间页面还锁着，不然背景会先跟着滑一下。 */
   unlockPage();
   setBackgroundInert(false);
@@ -5011,6 +6343,70 @@ mask.addEventListener('click', e => { if (e.target === mask) closeModal(); });
 /* 没开着就别走一遍关闭流程 —— 否则 closeModalNow() 会去清空 #modal、还会解开滚动锁，
    让"弹层是否打开"和"页面是否上锁"有机会不同步。 */
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && mask.classList.contains('on')) closeModal(); });
+
+/* ---------------- ★ v5.0 想法卡：长按 → 动作菜单 ---------------- */
+/* 阈值取 400ms（底栏圆钮那个语音长按是 350ms）：卡片属于滚动内容，太短会和
+   "按住想上下滑一点"打架。手指移动超过 10px 就当滚动，直接取消 —— 否则翻列表会误弹菜单。 */
+const SEED_LONG_MS = 400;
+let seedPressTimer = 0, seedPressCard = null, seedPressFrom = null;
+function seedPressCancel(){
+  if (seedPressTimer){ clearTimeout(seedPressTimer); seedPressTimer = 0; }
+  if (seedPressCard){ seedPressCard.classList.remove('pressing'); seedPressCard = null; }
+  seedPressFrom = null;
+}
+view.addEventListener('pointerdown', e => {
+  if (e.button) return;                                   // 只认主键 / 单指
+  if (e.target.closest && e.target.closest('button, [data-act], a, input')) return;  // 按钮和角标有自己的动作
+  const card = e.target.closest && e.target.closest('.idea-card');
+  if (!card || ideaUI.mergeMode) return;                  // 多选态下长按不弹菜单，免得和勾选打架
+  const seed = card.querySelector('.item.seed[data-id]');
+  if (!seed) return;
+  seedPressFrom = { x: e.clientX, y: e.clientY };
+  seedPressCard = card;
+  card.classList.add('pressing');
+  seedPressTimer = setTimeout(() => {
+    const id = seed.dataset.id;
+    seedPressCancel();
+    if (navigator.vibrate){ try { navigator.vibrate(10); } catch (_){} }
+    const it = S.items.find(x => x.id === id);
+    if (it) openSeedSheet(it);
+  }, SEED_LONG_MS);
+});
+view.addEventListener('pointermove', e => {
+  if (!seedPressTimer || !seedPressFrom) return;
+  if (Math.abs(e.clientX - seedPressFrom.x) > 10 || Math.abs(e.clientY - seedPressFrom.y) > 10) seedPressCancel();
+});
+view.addEventListener('pointerup', seedPressCancel);
+view.addEventListener('pointercancel', seedPressCancel);
+view.addEventListener('scroll', seedPressCancel, true);   // 捕获阶段：内部任何一层滚动都要取消
+
+/* 长按菜单里的动作：**先收菜单再执行** —— 否则菜单会盖在结果上面
+   （"续写"要展开行内输入框、"立项"要弹编辑器、"编辑"要弹整页编辑器，都不能被挡着）。
+   这些动作原本挂在 #view 的委托上，而菜单在 #view 之外，所以这里单独接一遍；
+   能复用现成函数的就复用，不另写一份逻辑。 */
+modal.addEventListener('click', e => {
+  if (!mask.classList.contains('sheet-mode')) return;
+  if (e.target.closest('[data-act="sheetclose"]')){ closeModal(); return; }
+  const b = e.target.closest('.sheet-item');
+  if (!b) return;
+  const act = b.dataset.act;
+  const it = S.items.find(x => x.id === b.dataset.id);
+  /* 删除要拿到卡片元素播退场动画，所以在关菜单之前先取 */
+  const cardEl = it ? view.querySelector('.item.seed[data-id="' + it.id + '"]') : null;
+  closeModal();
+  if (!it) return;
+  if (act === 'sparkadd'){ ideaUI.sparkOpen = it.id; refresh(); return; }
+  if (act === 'fork'){
+    openSeedPrompt('从「' + it.title + '」分叉', '新想法的第一句', '从这儿岔出去的另一条',
+      v => { if (seedFork(it, v)) refresh(); });
+    return;
+  }
+  if (act === 'promote'){ openSeedPromote(it); return; }
+  if (act === 'edit'){ openEdit(it); return; }
+  if (act === 'mergepick'){ ideaUI.mergeMode = true; ideaUI.mergeSel.clear(); ideaUI.mergeSel.add(it.id); refresh(); return; }
+  if (act === 'seeduse'){ seedUse(it); return; }
+  if (act === 'del'){ remove(it, cardEl); return; }
+});
 
 /* ---------------- 自定义下拉 / 日历 / 确认框 ----------------
    为什么要这三件套：手机上点原生 <select> 弹的是安卓系统的底部单选列表，
@@ -5168,17 +6564,374 @@ function uiConfirm(title, msg, okText, onOk){
   document.getElementById('uc_yes').onclick = () => { closeModal(); onOk(); };
 }
 
+/* ============ 时间编辑器（v3.40 第 1 批）============
+   这一整块只服务编辑弹层的「时间」行，需求见 需求-时间编辑器与随手记.md 的 A1–A4。
+   四条硬规矩：
+   ① 时间字段此后**只由结构化控件写**（update 路径不再回写 parseSmart 的结果）。
+   ② 日历原地内联展开，不新起浮层；时刻滑轮复用 .sel 弹层语言（fixed 底部卡片）。
+   ③ 日期点选是"第1次单日 / 第2次成区间 / 第3次旧区间作废重开"的状态机。
+   ④ 循环间隔 = **区间结束后空 N 天**，不是周期总长。 */
+
+/* 编辑会话内的临时状态。放模块级而不是闭包里，因为滑轮（另一个函数）也要读写它。 */
+let TE = null;
+const TE_WD = ['日','一','二','三','四','五','六'];
+
+function teParseDate(str){
+  const m = String(str || '').trim();
+  if (!m) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(m)) return m;
+  if (/^今天$/.test(m)) return ymd(today0());
+  if (/^明天$/.test(m)){ const d = today0(); d.setDate(d.getDate() + 1); return ymd(d); }
+  if (/^后天$/.test(m)){ const d = today0(); d.setDate(d.getDate() + 2); return ymd(d); }
+  const w = m.match(/^周([一二三四五六日天])$/);
+  if (w){
+    const target = TE_WD.indexOf(w[1] === '天' ? '日' : w[1]);
+    const d = today0();
+    d.setDate(d.getDate() + ((target - d.getDay() + 7) % 7));
+    return ymd(d);
+  }
+  /* 复用 numToDate：921 / 9.21 / 9月21日 / 21号 都在它的能力范围内，别另写一套解析 */
+  const r = numToDate(m.replace(/\s+/g, ''));
+  if (r && r.date) return r.date;
+  return null;
+}
+/* 三位数字的歧义（930 → 9:30）用 numToDate 顶不上，时刻得自己收：
+   930 / 9:30 / 9.30 / 9点30 / 下午5点 / 晚上8点半 … */
+function teParseTime(str){
+  let s = String(str || '').trim();
+  if (!s) return null;
+  let pm = null, am = null;
+  if (/下午|晚上|傍晚|夜里/.test(s)) pm = true;
+  if (/凌晨|早上|上午/.test(s)) am = true;
+  s = s.replace(/[点時时]/g, ':').replace(/[分]/g, '').replace(/[^\d:]/g, '');
+  if (!s) return null;
+  let h = null, mi = 0;
+  if (/^\d{3,4}$/.test(s)){
+    /* 930 → 9:30；0930 → 9:30；1730 → 17:30 */
+    const n = s.padStart(4, '0');
+    h = +n.slice(0, 2); mi = +n.slice(2);
+  } else if (s.includes(':')){
+    const [a, b] = s.split(':');
+    h = +a; mi = b ? +b : 0;
+  } else {
+    h = +s;
+    if (!isFinite(h)) return null;
+    /* 单个数字当小时：5 → 05:00（下午 5 → 17:00） */
+    mi = 0;
+  }
+  if (!isFinite(h) || !isFinite(mi)) return null;
+  if (pm && h < 12) h += 12;
+  if (am && h === 12) h = 0;
+  if (h < 0 || h > 23 || mi < 0 || mi > 59) return null;
+  return String(h).padStart(2, '0') + ':' + String(mi).padStart(2, '0');
+}
+function teDateLabelFromStr(ds){
+  if (!ds) return '';
+  const d = dateFrom(ds);
+  return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+}
+/* 区间内语义：做一次 = once（缺省，老数据也走它）；每天都做 = daily */
+function teMode(){ return TE && TE.mode === 'daily' ? 'daily' : 'once'; }
+
+/* 日历点选状态机（需求 A2 定稿）：
+     · 第 1 次点 → 单日
+     · 第 2 次点 → 自动成区间
+     · 第 3 次点 → 旧区间作废，以它为起点重来
+   两条不显眼但必需的细节：
+   ① **弹层一打开就数用户点击**（userClicks）。条目本来就有日期时，TE 的初始态
+      带着"单日/区间"，如果直接拿 picks 计数，第一次点日期会被当成"第 2 次点"→
+      区间从老日期一路拉过来。用户看到的是"我只点了一下，怎么出来一大段区间"。
+   ② 同一天连点两次 → 按单日处理（不算区间）。 */
+function tePick(ds){
+  if (!TE) return;
+  TE.userClicks = (TE.userClicks || 0) + 1;
+  if (TE.userClicks === 1){
+    TE.start = ds; TE.end = ds; TE.picks = 1;
+    return;
+  }
+  if (TE.picks === 1){
+    if (ds === TE.start){ TE.picks = 2; }            // 同一天点两次：按单日处理
+    else {
+      TE.end = ds < TE.start ? TE.start : ds;
+      TE.start = ds < TE.start ? ds : TE.start;
+      TE.picks = 2;
+    }
+  } else {
+    TE.start = ds; TE.end = ds; TE.picks = 1;        // 第 3 次：旧区间全部作废
+  }
+}
+function teRenderCal(){
+  const wrap = document.querySelector('#te_cal');
+  if (!wrap || !TE) return;
+  /* 幂等守卫：这个函数在每次 teSyncUI 里都会被调到，而它每次都重建 innerHTML。
+     绝不能让它携带任何"会被累加"的状态 —— 早期版本把点击处理器写成
+     addEventListener，结果同一个格子挂了两份 handler，一次点击被算成两次：
+     第 1 次点 10/23 → 直接落到"第 2 次点"分支，区间被拉成 10/4–10/23，
+     再点 10/25 → 旧区间作废只剩 10/25。症状就是"区间永远选不出来"。
+     现在一律用 onclick（赋值语义，天然幂等），并在这里做一次显式清空，
+     给以后改这块代码的人留个记号。 */
+  const y = TE.cur.getFullYear(), m = TE.cur.getMonth();
+  const shift = (new Date(y, m, 1).getDay() + 6) % 7;   // 周一开头，跟 makeCal 一致
+  const days = new Date(y, m + 1, 0).getDate();
+  const t0 = ymd(today0());
+  const inRange = ds => TE.picks === 2 && TE.start && TE.end && ds >= TE.start && ds <= TE.end;
+  let cells = '';
+  for (let i = 0; i < shift; i++) cells += '<span class="cal-pad"></span>';
+  for (let d = 1; d <= days; d++){
+    const ds = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    let cls = 'cal-d';
+    if (inRange(ds)){
+      cls += ' inrange';
+      if (ds === TE.start && ds === TE.end) cls += ' rboth edge';
+      else if (ds === TE.start) cls += ' rstart edge';
+      else if (ds === TE.end) cls += ' rend edge';
+    } else if (TE.picks === 1 && ds === TE.start){
+      cls += ' rboth edge';
+    }
+    if (ds === t0) cls += ' today-d';
+    cells += `<button type="button" class="${cls}" data-d="${ds}" aria-pressed="${inRange(ds) || ds === TE.start ? 'true' : 'false'}">${d}</button>`;
+  }
+  wrap.innerHTML =
+    '<div class="cal-head">' +
+      '<button type="button" class="cal-nav" data-nav="-1" aria-label="上个月">‹</button>' +
+      '<span class="cal-title">' + y + '年' + (m + 1) + '月</span>' +
+      '<button type="button" class="cal-nav" data-nav="1" aria-label="下个月">›</button>' +
+    '</div>' +
+    '<div class="cal-grid">' + ['一','二','三','四','五','六','日'].map(w => '<span class="cal-wd">' + w + '</span>').join('') + cells + '</div>';
+  wrap.querySelectorAll('.cal-nav').forEach(n => n.onclick = e => {
+    e.stopPropagation();
+    TE.cur = new Date(y, m + (+n.dataset.nav), 1);
+    teRenderCal();
+  });
+  wrap.querySelectorAll('.cal-d').forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    tePick(b.dataset.d);
+    teSyncUI();
+  });
+}
+/* 把 TE 的当前值刷到界面上（折叠行文案 + 输入框 + 循环派生值 + 日历高亮） */
+function teSyncUI(){
+  if (!TE) return;
+  const dEl = document.querySelector('#te_dtxt');
+  if (dEl && document.activeElement !== dEl)
+    dEl.value = TE.start ? teDateLabelFromStr(TE.start) + (TE.picks === 2 && TE.end !== TE.start ? '–' + teDateLabelFromStr(TE.end) : '') : '';
+  const tEl = document.querySelector('#te_ttxt');
+  if (tEl && document.activeElement !== tEl) tEl.value = TE.time || '';
+  const val = document.querySelector('#te_val');
+  if (val){
+    const gapEl2 = document.querySelector('#te_gap');
+    const rn = TE.repeatOn ? Math.max(1, Math.min(365, parseInt(gapEl2 && gapEl2.value, 10) || 1)) : null;
+    const tmp = { date: TE.start, dateEnd: TE.picks === 2 ? TE.end : null, time: TE.time, repeat: rn };
+    const txt = (TE.start || TE.time) ? teRangeLabel(tmp) : '';
+    val.textContent = txt || '未设置';
+    val.classList.toggle('mute', !txt);
+  }
+  const sw = document.querySelector('#te_sw');
+  const rp = document.querySelector('#te_rep');
+  if (sw && rp){
+    if (!TE.start){ TE.repeatOn = false; sw.checked = false; sw.disabled = true; rp.classList.add('dis'); }
+    else { sw.disabled = false; sw.checked = !!TE.repeatOn; rp.classList.toggle('dis', !sw.checked); }
+  }
+  /* 区间内语义两颗按钮的选中态 */
+  document.querySelectorAll('#te_mode button').forEach(b => {
+    b.classList.toggle('on', (b.dataset.m === 'daily' ? 'daily' : 'once') === teMode());
+  });
+  const de = document.querySelector('#te_derive');
+  if (de){
+    /* 「周期结束于」= 本区间终点（用户确认理解一致的只读派生值） */
+    de.textContent = (TE.repeatOn && TE.picks === 2 && TE.end) ? '周期结束于 ' + teDateLabelFromStr(TE.end) : '';
+  }
+  teRenderCal();
+}
+/* 展开 / 收起「时间」行。
+   ★ v3.42（B 方案）：只切自己这一行的 .open —— 不再往 #modal 上挂类，
+   下面的字段一律不受影响（原来那套 modal 级联收放的机制已删干净）。 */
+function teToggle(open){
+  const row = document.querySelector('#te_row');
+  if (!row) return;
+  const on = (open === undefined) ? !row.classList.contains('open') : !!open;
+  row.classList.toggle('open', on);
+  const btn = row.querySelector('.te-head');
+  if (btn) btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+  if (on) teSyncUI();
+}
+
+/* ---- 时刻滑轮 ----
+   ⚠️ 两条都来自需求 A3 的实现约束：
+   ① stopPropagation：根元素上有 wheel 监听（桌面滚轮导航），滑轮内部必须拦下；
+   ② 取值时机用 scroll 结束 debounce 80ms，**不靠 click**（手指滑动不触发 click）。 */
+let wheelEl = null;
+function buildWheel(col, list, cur, onPick){
+  const idx = Math.max(0, list.indexOf(cur));
+  col.innerHTML = '<div class="wheel-pad"></div>' +
+    list.map((v, i) => `<button type="button" class="wheel-it${i === idx ? ' on' : ''}" data-i="${i}">${v}</button>`).join('') +
+    '<div class="wheel-pad"></div>';
+  const it = col.querySelector('.wheel-it');
+  const step = it ? it.getBoundingClientRect().height || 44 : 44;
+  /* 关掉滑轮时按"最终位置"取值要用的两样东西（不靠 click：手指滑动不触发 click） */
+  col._list = list; col._step = step;
+  requestAnimationFrame(() => { col.scrollTop = idx * step; });
+  /* ⚠️ 「好」按钮随时会被点，而 scroll 的 debounce 还在路上 ——
+     所以这里**不**清 debounce 之外的东西：读值走 colRead()，谁需要谁现算。 */
+  let settle = 0;
+  const read = () => {
+    const i = Math.max(0, Math.min(list.length - 1, Math.round(col.scrollTop / step)));
+    col.querySelectorAll('.wheel-it').forEach((n, k) => n.classList.toggle('on', k === i));
+    onPick(list[i]);
+  };
+  col.addEventListener('scroll', () => {
+    clearTimeout(settle);
+    settle = setTimeout(read, 80);
+  }, { passive: true });
+  col.querySelectorAll('.wheel-it').forEach((n, i) => {
+    n.onclick = () => { col.scrollTo({ top: i * step, behavior: 'smooth' }); onPick(list[i]); };
+  });
+  /* 桌面滚轮：拦在这里，别让页面翻页（根元素上那个 wheel 监听见需求 A3-2） */
+  col.addEventListener('wheel', e => { e.stopPropagation(); }, { passive: true });
+  col.addEventListener('touchstart', e => { e.stopPropagation(); }, { passive: true });
+}
+function colRead(){
+  if (!wheelEl) return null;
+  const h = wheelEl.querySelector('#wh_h'), m = wheelEl.querySelector('#wh_m');
+  if (!h || !m) return null;
+  const pick = c => {
+    const i = Math.max(0, Math.min(c._list.length - 1, Math.round(c.scrollTop / c._step)));
+    return c._list[i];
+  };
+  return pick(h) + ':' + pick(m);
+}
+function openWheel(){
+  if (!TE || wheelEl) return;
+  const H = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+  const M = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+  const cur = TE.time && /^\d{2}:\d{2}$/.test(TE.time) ? TE.time : '09:00';
+  const wrap = document.createElement('div');
+  wrap.className = 'wheel-mask';
+  wrap.innerHTML =
+    '<div class="wheel-sheet" role="dialog" aria-modal="true" aria-label="选择时刻">' +
+      '<div class="wheel-head"><span class="wheel-cap">时刻</span>' +
+        '<button type="button" class="wheel-ok" id="wh_ok">确定</button></div>' +
+      '<div class="wheel-units"><span>时</span><span>分</span></div>' +
+      '<div class="wheel-cols">' +
+        '<div class="wheel-col" id="wh_h"></div>' +
+        '<div class="wheel-col" id="wh_m"></div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(wrap);
+  wheelEl = wrap;
+  let hh = cur.slice(0, 2), mm = cur.slice(3);
+  const sync = () => {
+    TE.time = hh + ':' + mm;
+    const t = document.querySelector('#te_ttxt');
+    if (t) t.value = TE.time;
+    teSyncUI();
+  };
+  buildWheel(wrap.querySelector('#wh_h'), H, hh, v => { hh = v; sync(); });
+  buildWheel(wrap.querySelector('#wh_m'), M, mm, v => { mm = v; sync(); });
+  wrap.addEventListener('click', e => { if (e.target === wrap) closeWheel(); });
+  wrap.querySelector('#wh_ok').onclick = closeWheel;
+  wrap.querySelectorAll('.wheel-col').forEach(c => {
+    c.addEventListener('wheel', e => { e.preventDefault(); e.stopPropagation();
+      c.scrollTop += (e.deltaMode === 1 ? e.deltaY * 26 : e.deltaY); }, { passive: false });
+  });
+}
+function closeWheel(){
+  if (!wheelEl) return;
+  /* 关之前按**最终位置**取一次值 —— scroll 的 80ms debounce 可能还没跑，
+     用户滑完立刻点「好」时若只信 debounce，就会回填上一个值。 */
+  const v = colRead();
+  wheelEl.remove(); wheelEl = null;
+  if (v && TE) TE.time = v;
+  teSyncUI();
+}
+/* 重建「时间」行（每次打开编辑器都重建，避免上一次的状态串台） */
+function teMount(it){
+  const t0 = today0();
+  TE = {
+    start: it.date || null,
+    end: it.dateEnd || null,
+    /* 老数据没有 timeMode → 一律当「做一次」（需求「边界与异常」） */
+    mode: it.timeMode === 'daily' ? 'daily' : 'once',
+    time: it.time || null,
+    cur: it.date ? new Date(dateFrom(it.date).getFullYear(), dateFrom(it.date).getMonth(), 1)
+                 : new Date(t0.getFullYear(), t0.getMonth(), 1),
+    picks: (it.date && it.dateEnd && it.dateEnd !== it.date) ? 2 : (it.date ? 1 : 0),
+    /* 用户点击计数：从 0 开始，见 tePick 的说明① */
+    userClicks: 0
+  };
+}
+function teRead(){
+  if (!TE) return { date: null, dateEnd: null, time: null, repeat: null, mode: 'once' };
+  return {
+    date: TE.start || null,
+    dateEnd: (TE.picks === 2 && TE.end && TE.end !== TE.start) ? TE.end : null,
+    time: TE.time || null,
+    mode: teMode()
+  };
+}
+
 /* 编辑弹层：既有条目编辑（isNew=false）与"语音 / 快捷录入"新建（isNew=true）共用同一套。
    复用现有的 .mask/.modal/.sel/makeSel，焦点陷阱 / 滚动锁 / Escape 关闭都靠 openMask 那套，不新造。 */
-function openItemEditor(it, isNew){
-  const zoneOpts = [['short','短期'], ['long','长期'], ['consider','考虑']];
+function openItemEditor(it, isNew, onSaved){
+  /* ★ v5.0：「考虑」并入想法，下拉里不再有它 */
+  const zoneOpts = [['short','短期'], ['long','长期'], ['idea','想法']];
   const stOpts = [['todo','未开始'], ['doing','在做'], ['submitted','已交']];
   modal.innerHTML = `
     <h3 id="modalTitle">${isNew ? '新建' : '编辑'}</h3>
-    <div class="field"><label>原文（改完重解析；写「每2天」= 循环任务，打勾自动排下一次）</label><input type="text" id="m_raw" value="${esc(it.raw || it.title)}"></div>
     <div class="row">
       <div class="field"><label>分区</label><div class="sel" id="m_zone"></div></div>
       <div class="field"><label>标题</label><input type="text" id="m_title" value="${esc(it.title)}"></div>
+      ${(() => {
+        /* ★ v5.0 双向活链的**读**这一半：这条待办是从哪条想法立项出来的。
+           点它跳回那条想法。只有"由想法立项而来"的待办才有这一行。 */
+        const src = isNew ? null : seedOfTask(it.id);
+        return src ? `<div class="field"><label>想法来源</label>
+          <button type="button" class="btn ghost srcseed" id="m_srcseed" data-id="${esc(src.id)}">💡 ${esc(src.title)}</button></div>` : '';
+      })()}
+    </div>
+    <div class="te-row" id="te_row">
+      <button type="button" class="te-head" id="te_head" aria-expanded="false" aria-controls="te_body">
+        <span class="te-cap">时间</span>
+        <span class="te-val mute" id="te_val">未设置</span>
+        <svg class="te-chev" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9.2l6 6 6-6"/></svg>
+      </button>
+      <div class="te-body" id="te_body">
+        <div class="te-dline">
+          <input type="text" id="te_dtxt" inputmode="text" autocomplete="off" placeholder="921 / 9月21日 / 明天 / 周四" aria-label="日期">
+          <button type="button" class="te-clear" id="te_dclear" title="清空日期" aria-label="清空日期">✕</button>
+        </div>
+        <div class="te-quick" id="te_quick">
+          <button type="button" data-q="今天">今天</button>
+          <button type="button" data-q="明天">明天</button>
+          <button type="button" data-q="后天">后天</button>
+          <button type="button" data-q="周一">周一</button>
+          <button type="button" data-q="周二">周二</button>
+          <button type="button" data-q="周三">周三</button>
+          <button type="button" data-q="周四">周四</button>
+          <button type="button" data-q="周五">周五</button>
+          <button type="button" data-q="周六">周六</button>
+          <button type="button" data-q="周日">周日</button>
+        </div>
+        <div class="te-cal" id="te_cal"></div>
+        <div class="te-tline">
+          <input type="text" id="te_ttxt" inputmode="numeric" autocomplete="off" placeholder="14:00 / 930 / 下午5点" aria-label="时刻">
+          <button type="button" class="te-clear" id="te_tclear" title="清空时刻" aria-label="清空时刻">✕</button>
+        </div>
+        <div class="te-rep" id="te_rep">
+          <div class="te-rep-top">
+            <label class="te-sw"><input type="checkbox" id="te_sw"> ⟳ 循环</label>
+            <span class="te-gap">间隔 <input type="number" class="te-num" id="te_gap" min="1" max="365" step="1" value="1"> 天</span>
+            <span class="te-derive" id="te_derive"></span>
+          </div>
+          <div class="te-mode" id="te_mode" role="group" aria-label="区间内语义">
+            <button type="button" data-m="once" class="on">做一次</button>
+            <button type="button" data-m="daily">每天都做</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="field"><label>原文</label>
+      <div class="modal-note raw-ro" id="m_raw">${esc(it.raw || it.title)}</div>
     </div>
     <div class="field"><label>重要程度</label><div class="sel" id="m_pri"></div></div>
     <div class="field"><label>标签（可多选，也可以不选）</label>
@@ -5201,11 +6954,31 @@ function openItemEditor(it, isNew){
     </div>
     <div class="foot">
       <button class="btn danger" id="m_del"${isNew ? ' style="display:none"' : ''}>删除</button>
+      ${(!isNew && !isSeed(it)) ? '<button class="btn" id="m_rethink" title="做不下去了？把这条重新种成一条想法（原待办不动）">重新想</button>' : ''}
       <div class="spacer"></div>
       <button class="btn" id="m_cancel">取消</button>
       <button class="btn primary" id="m_save">${isNew ? '确定' : '保存'}</button>
     </div>`;
   openMask();
+
+  /* ★ v5.0「重新想」（1.11）：做不下去的待办 → 重新种下一条想法。
+     点完**直接跳想法页**并给 toast —— 让用户马上看见"种下来了"，
+     原待办一个字不动（是重新思考，不是回滚，见 seedFromTask 的说明）。 */
+  const rsBtn = document.getElementById('m_rethink');
+  if (rsBtn) rsBtn.onclick = () => {
+    const nx = seedFromTask(it);
+    if (!nx) return;
+    closeModal();
+    S.view = 'idea'; ANIM = true; refresh();
+    toast('已经重新种下一条想法，原待办还在', '去看', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  };
+  /* ★ v5.0 双向活链：点「想法来源」跳回那条想法 */
+  const ssBtn = document.getElementById('m_srcseed');
+  if (ssBtn) ssBtn.onclick = () => {
+    S.lastOpenedSeed = ssBtn.dataset.id;
+    closeModal();
+    S.view = 'idea'; ANIM = true; ideaUI.q = ''; ideaUI.tags = []; refresh();
+  };
 
   /* 三个下拉改自定义控件后在这里赋值（模板里只剩空的 <div class="sel">）。
      m_pri 的初始值：原文里解析出的 ! / !! 优先，否则用条目上已有的档位。 */
@@ -5215,24 +6988,127 @@ function openItemEditor(it, isNew){
   makeSel(document.getElementById('m_status'), stOpts, (it.hw && it.hw.status) || 'todo');
 
   modal.querySelectorAll('#m_tags .pill').forEach(b => b.onclick = () => b.classList.toggle('on'));
+  /* ★ v3.50：分区选到「想法」时，时间栏和作业栏整块收起 —— 种子没有死线、也没有作业状态。
+     写在 change 回调里而不是只在打开时判一次：用户会在这个弹层里把一条待办改成想法，
+     那一刻就得立刻让位。（.hide 在 CSS 里是 display:none !important，压得住 .te-row 的 display。） */
+  const hwField = document.getElementById('m_hw') ? document.getElementById('m_hw').closest('.field') : null;
+  const hwBox = document.getElementById('m_hwbox');
+  function syncZone(){
+    const idea = selValue('m_zone') === 'idea';
+    const teRow = document.getElementById('te_row');
+    const f = document.getElementById('m_raw') ? document.getElementById('m_raw').closest('.field') : null;
+    if (teRow) teRow.classList.toggle('hide', idea);
+    if (hwField) hwField.classList.toggle('hide', idea);
+    if (hwBox) hwBox.classList.toggle('hide', idea);
+    if (f) f.querySelector('label').textContent = idea ? '原文（种子记下的那句话）' : '原文';
+  }
+  {
+    const sel = document.getElementById('m_zone');
+    if (sel) sel.addEventListener('click', () => setTimeout(syncZone, 0));
+  }
+  syncZone();
   document.getElementById('m_hw').onchange = e => {
     document.getElementById('m_hwbox').style.display = e.target.checked ? 'block' : 'none';
   };
+
+  /* ---- 时间行接线（v3.40）----
+     顺序很重要：先 teMount() 建状态，再接线（接线里要读 TE），最后 teSyncUI() 刷界面。 */
+  teMount(it);
+  document.getElementById('te_head').onclick = () => teToggle();
+  const gapEl = document.getElementById('te_gap');
+  const swEl = document.getElementById('te_sw');
+  if (gapEl) gapEl.value = String(it.repeat || 1);
+  if (swEl) swEl.checked = !!it.repeat;
+  if (it.repeat) TE.repeatOn = true;
+  /* 日期自由输入：输入即生效 */
+  const dTxt = document.getElementById('te_dtxt');
+  dTxt.oninput = () => {
+    const ds = teParseDate(dTxt.value);
+    if (ds){ TE.start = ds; TE.end = ds; TE.picks = 1; teRenderCal(); teSyncUI(); }
+  };
+  dTxt.onchange = () => { if (!teParseDate(dTxt.value)) teSyncUI(); };
+  document.getElementById('te_dclear').onclick = e => {
+    e.stopPropagation();
+    TE.start = null; TE.end = null; TE.picks = 0;
+    if (swEl){ swEl.checked = false; }
+    teSyncUI();
+  };
+  document.getElementById('te_quick').querySelectorAll('button').forEach(b => {
+    b.onclick = e => {
+      e.stopPropagation();
+      const ds = teParseDate(b.dataset.q);
+      if (ds){ TE.start = ds; TE.end = ds; TE.picks = 1; teSyncUI(); }
+    };
+  });
+  /* 时刻自由输入：输入即生效；失焦时的值不回退（允许只写时刻、不写日期） */
+  const tTxt = document.getElementById('te_ttxt');
+  tTxt.oninput = () => {
+    const v = teParseTime(tTxt.value);
+    if (v){ TE.time = v; }
+    else if (!tTxt.value.trim()){ TE.time = null; }
+    teSyncUI();
+  };
+  tTxt.onchange = () => { const v = teParseTime(tTxt.value); TE.time = v; teSyncUI(); };
+  document.getElementById('te_tclear').onclick = e => { e.stopPropagation(); TE.time = null; teSyncUI(); };
+  /* 点输入框弹滑轮（需求 A3b）；键盘仍可直接打字 */
+  tTxt.onpointerdown = () => { setTimeout(openWheel, 0); };
+  if (swEl) swEl.onchange = () => {
+    TE.repeatOn = swEl.checked;
+    if (!swEl.checked && gapEl) gapEl.value = String(Math.max(1, parseInt(gapEl.value, 10) || 1));
+    teSyncUI();
+  };
+  if (gapEl) gapEl.oninput = () => {
+    const n = Math.max(1, Math.min(365, parseInt(gapEl.value, 10) || 1));
+    if (String(n) !== gapEl.value && gapEl.value !== '') gapEl.value = String(n);
+    teSyncUI();
+  };
+  document.getElementById('te_mode').querySelectorAll('button').forEach(b => {
+    b.onclick = e => {
+      e.stopPropagation();
+      TE.mode = b.dataset.m === 'daily' ? 'daily' : 'once';
+      teSyncUI();
+    };
+  });
+  teSyncUI();
+
   document.getElementById('m_cancel').onclick = closeModal;
   document.getElementById('m_del').onclick = () => { closeModal(); if (!isNew) remove(it); };
   document.getElementById('m_save').onclick = () => {
-    const raw = document.getElementById('m_raw').value;
-    const p = parseSmart(raw);
     const titleVal = document.getElementById('m_title').value.trim();
-    it.raw = raw.trim();
-    it.title = titleVal || p.title;
+    const priVal = +selValue('m_pri') || 0;
+    const t = teRead();
+    it.title = titleVal || it.title;
     it.zone = selValue('m_zone');
     it.tags = [...modal.querySelectorAll('#m_tags .pill.on')].map(b => b.dataset.t);
-    if (raw.trim() && titleVal === p.title){
-      it.date = p.date; it.dateEnd = p.dateEnd; it.monthOnly = p.monthOnly; it.time = p.time;
+    /* ★ v3.40 核心修复：日期/时刻/循环只由结构化控件写入。
+       v3.39 及以前这里拿原文重解析的结果覆盖 date/dateEnd/time/repeat，
+       而原文栏一改就重解析 —— "标题没改、只改日期"这条路必然被覆盖回去，
+       时间怎么点都改不动（旧 bug 的根因）。原文栏现在是只读备注，不再参与写入。
+       ⚠️ 「原文」保存时不覆盖：它记的就是用户最初粘贴/语音进来的那句话（需求 A5）。 */
+    it.date = t.date; it.dateEnd = t.dateEnd; it.time = t.time;
+    it.monthOnly = false;
+    it.timeMode = t.mode;
+    const rep = (swEl && swEl.checked && t.date) ? Math.max(1, Math.min(365, parseInt(gapEl && gapEl.value, 10) || 1)) : null;
+    it.repeat = rep;
+    it.pri = priVal;
+    /* ★ v3.50：分区选「想法」＝把它变成种子，选别处＝变回待办。两个方向都要管 ——
+       否则会出两种"看着不对"：待办改成想法后渲染不出时间轴（kind 还是 task），
+       种子改回短期后还带着 sparks 和「种子」chip。kind 由分区推导，是唯一的真相源。 */
+    if (it.zone === 'idea'){
+      it.kind = 'seed';
+      if (!Array.isArray(it.sparks)) it.sparks = [];
+      /* ★ v5.0：刚变成种子、时间轴还空着 → 拿标题起第一步。
+         否则想法卡是一条没有起点的空轴，看着像坏了。
+         已经有 sparks 的（真种子、续写过的）一律不动。 */
+      if (!it.sparks.length) it.sparks.push({ at: ymd(new Date()), text: it.raw || it.title });
+      /* 字段形状跟 newSeed() 对齐 —— 两条路（新建 / 编辑器改分区）造出来的种子必须一样 */
+      if (!Array.isArray(it.suggest)) it.suggest = [];
+      if (it.reviewedAt === undefined) it.reviewedAt = null;
+      if (it.aiUse === undefined) it.aiUse = null;
+    } else {
+      delete it.kind;
+      delete it.sparks; delete it.bornFrom; delete it.promoted;
     }
-    it.repeat = p.repeat || null;
-    it.pri = p.pri || (+selValue('m_pri') || 0);
     if (document.getElementById('m_hw').checked){
       it.hw = it.hw || { status:'todo' };
       it.hw.course = document.getElementById('m_course').value.trim();
@@ -5242,8 +7118,15 @@ function openItemEditor(it, isNew){
       it.hw.naming = document.getElementById('m_naming').value.trim();
       if (it.hw.status === 'submitted' && !it.hw.submittedAt) it.hw.submittedAt = ymd(new Date());
     } else it.hw = null;
+    /* 新建：原文栏只读，所以 parseSmart 的结果（分区/标签/重要程度）在 openEditNew 里就已落成初值，
+       这里不再重解析 —— 否则用户在弹层里手动改的分区/优先级会被原文静默盖掉。 */
     if (isNew) S.items.push(it);   // 新建：先入库存，再统一 save/refresh（编辑则本来就在库里）
-    save(); closeModal(); refresh(); toast(isNew ? '已加入' : '已保存');
+    save(); closeModal(); refresh();
+    /* ★ v5.0：onSaved 是给「立项确认页」用的钩子 —— 它编辑的是一条临时新待办，
+       入库之后还要回种子上补一个「已立项」的留痕。有回调就不弹通用的"已加入"，
+       由回调自己给更准确的提示。 */
+    if (typeof onSaved === 'function') onSaved(it);
+    else toast(isNew ? '已加入' : '已保存');
   };
 }
 function openEdit(it){ openItemEditor(it, false); }
@@ -5253,12 +7136,12 @@ function openEditNew(rawText){
   const it = { id: uid(), raw: (rawText || '').trim(), title: p.title || (rawText || '').trim(),
     date: p.date, dateEnd: p.dateEnd, monthOnly: p.monthOnly, time: p.time,
     zone: p.zone || 'short', tags: p.tags || [], done: false, doneAt: null,
-    createdAt: Date.now(), hw: null, repeat: p.repeat || null, pri: p.pri || 0 };
+    createdAt: Date.now(), hw: null, repeat: p.repeat || null, pri: p.pri || 0, timeMode: 'once' };
   openItemEditor(it, true);
 }
 
 /* ---------------- 导入 / 导出 ---------------- */
-const SEC = { '长期':'long', '短期':'short', '考虑':'consider', '已完成':'short', '完成':'short' };
+const SEC = { '长期':'long', '短期':'short', '已完成':'short', '完成':'short' };   /* v5.0：删掉「考虑」——该分区已并入想法 */
 function importText(txt, base){
   const lines = txt.split(/\r?\n/);
   let zone = 'long', n = 0, sawSection = false;
@@ -5362,6 +7245,12 @@ window.addEventListener('drop', e => {
              备份是外部数据，别让里面的任意字符串直接变成 class 名 */
           if (Array.isArray(o.foldedZones)) S.foldedZones = o.foldedZones.filter(k => ZONES.includes(k));
           if (o.lastBackup) S.lastBackup = o.lastBackup;
+          /* ★ v5.0：想法系统的全局状态也恢复 —— 缺字段时保持当前值，不用 undefined 覆盖 */
+          if (typeof o.ideaUsedAt === 'string') S.ideaUsedAt = o.ideaUsedAt;
+          if (typeof o.lastOpenedSeed === 'string') S.lastOpenedSeed = o.lastOpenedSeed;
+          if (Number.isFinite(o.lastScanAt)) S.lastScanAt = o.lastScanAt;
+          if (typeof o.ideaReview === 'boolean') S.ideaReview = o.ideaReview;
+          if (typeof o.ideaReviewDone === 'string') S.ideaReviewDone = o.ideaReviewDone;
           save(); applyHelp(); refresh();
           toast('已从备份恢复 ' + S.items.length + ' 条');
         });
@@ -5385,8 +7274,9 @@ tabbar.addEventListener('click', e => {
   const v = b.dataset.view;
   /* ★ 真 bug（用户实测："点外观按钮会跳转到统计页"）：外观键为了复用底栏样式也挂着 .tab，
      但它**不是一页**、没有 data-view → 原来会把 S.view 写成 undefined 再 refresh()，
-     于是界面跳走（同时 cycleTheme 照样生效，所以"外观变了 + 页面也跳了"）。
-     凡是带 .tab 但不是页面切换的按钮，一律在这里退出。 */
+     于是界面跳走。凡是带 .tab 但不是页面切换的按钮，一律在这里退出。
+     ⚠️ v3.50 起外观键已从底栏撤走（想法键顶替了它的位置），这条守卫仍然保留 ——
+     它是"带 .tab 却没有页"这类按钮的通用护栏，不是只为外观键写的。 */
   if (!v) return;
   if (v === S.view) return;
   S.view = v;
@@ -5611,7 +7501,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '3.5.7';
+const APP_VERSION = '3.6.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
@@ -6219,12 +8109,13 @@ function cycleTheme(){
   applyTheme(next, true);
 }
 
-/* 外观键（v2.5 定稿）：它现在是**底栏左端的图标键**，与右端的设置齿轮同款同尺寸。
-   所以不再需要"10 秒淡出 / 点右上角唤回"那套（那是它做右上角浮层时的权宜之计），
-   点击即三档循环。图标与文案仍由 applyTheme 统一同步。 */
+/* ★ v3.50：外观键已从底栏撤掉（位置让给「想法」页），三档改在设置页选。
+   这个 IIFE 里**还住着筛选抽屉的开关**（setToolsOpen + #filterFab 的事件委托）——
+   原来它第一行是 `if (!btn) return;`，一旦外观键不存在，整个块连抽屉一起失效。
+   所以这里改成：外观键有就接、没有也不早退，抽屉那部分照常跑。
+   外观三档的点击逻辑在设置页的 data-theme 分支（view 的点击代理里），见那里的说明。 */
 (function themeFabWire(){
   const btn = document.getElementById('themeFab');
-  if (!btn) return;
   /* 筛选抽屉的高补间（原因见 .toolbar 那段注释：高度不能交给 CSS 过渡）。 */
   const TOOLS_MS = 300;
   let toolsRaf = 0;
@@ -6263,7 +8154,7 @@ function cycleTheme(){
     };
     toolsRaf = requestAnimationFrame(step);
   }
-  btn.addEventListener('click', () => cycleTheme());
+  if (btn) btn.addEventListener('click', () => cycleTheme());
   /* v3.13：筛选抽屉的开关改用**事件委托**。
      为什么不能像上一版那样直接给 #filterFab 挂监听 —— 3.13 起这颗按钮被搬进了列表模板，
      每次 refresh()/切页都会重建它，一对一监听会随着旧节点一起消失（表现：按钮点不动）。
@@ -6322,12 +8213,16 @@ function applyTheme(t, animate){
   /* 外观三档图标据此切换（见 .theme-fab .ti 那组规则）——必须写 S.theme 档位，不是
      effectiveTheme()，否则"浅色"和"跟随系统（当前浅）"会显示成同一枚图标。 */
   document.documentElement.dataset.mode = S.theme;
-  /* 图标与 aria/title 文案都在这里统一同步：右上角那颗按钮点一次就换一枚图标 + 一句话。 */
-  const tb = document.getElementById('themeFab');
-  if (tb){
-    const nm = { light:'浅色', dark:'深色', auto:'跟随系统' };
-    tb.setAttribute('title', '外观：' + nm[S.theme]);
-    tb.setAttribute('aria-label', '外观：当前' + nm[S.theme] + '，点击切换');
+  /* ★ v3.50：外观三档控件从底栏搬进了设置页，所以这里同步的对象改成**设置页那三个按钮**。
+     图标与 aria/title 那套已经不需要了（按钮上有文字），改成同步 .on 与 aria-pressed；
+     设置页没渲染时（其它视图）这两个集合都是空的，什么也不做。 */
+  const seg = document.querySelector('.seg [data-theme]');
+  if (seg){
+    seg.closest('.seg').querySelectorAll('[data-theme]').forEach(b => {
+      const on = b.dataset.theme === S.theme;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
   }
   try { localStorage.setItem(LS + '.theme', S.theme); } catch (e){}
   save();
@@ -6427,15 +8322,6 @@ backupNudge();
   box.addEventListener('toggle', () => { S.hintOpen = box.open; save(); });
 })();
 refresh();
-</script>
-<!-- 注册 Service Worker：装上之后断网也能打开（这个 App 的数据本来就全在本地，
-     不该因为没网就开不了）。放在 </body> 前，不阻塞首屏。 -->
-<script>
-if ('serviceWorker' in navigator) {
-  addEventListener('load', function () {
-    navigator.serviceWorker.register('sw.js').catch(function () { /* 本地 file:// 打开时注册失败，正常 */ });
-  });
-}
 </script>
 </body>
 </html>
