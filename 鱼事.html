@@ -2694,13 +2694,23 @@ html.soft-render .mask.sheet-mode .modal{
 /* ★ v5.0：手势说明那颗 `?` 复用底栏图标键的 `.bar-ico`（40px 圆形热区 + 细线 SVG），
    所以这里只补一点间距，不另写一套按钮样式 —— 用户要求跟底栏导航同一个风格。 */
 .idea-toolbar .idea-help{margin-left:4px}
-/* ★ v5.0（用户："只要里面这个 UI 就行了，外面这个圆球就不要了，然后把里面的 UI 再放大一些"）：
-   ① **去掉外面那圈聚焦环** —— 里面的图标本身已经是一个圆圈，外面再套一圈就成了"双圈"。
-      键盘可见性不丢：改成用**底色**表示聚焦（还是看得见，只是不再多一圈线）。
-   ② 图标从 19px 放大到 **26px**（+37%）；描边相应降到 1.5，
-      放大后的视觉笔触 = 1.5 × 26/24 ≈ 1.63，跟底栏图标的 1.65 一致 —— 变大不变粗。 */
+/* ★ v5.0（用户："最外边这个气泡一样的框就不要了，只留里边那个 UI"）：
+   查了半天 outline / background / box-shadow 都不是 —— 真凶是**浏览器给 `<button>` 的默认边框**
+   （computed 里那行 `border-style: outset`，2px 立体描边，所以看起来"左上浅、右下深"）。
+   底栏那几个键之所以没有，是因为它们都带 `.tab`，而 `.tab` 里有 `appearance:none;border:0`；
+   这颗只有 `.bar-ico`，没有那套重置 —— 于是套着一个"气泡"。
+   现在补齐重置：外框、底色、内边距全部归零，屏幕上只剩里面有圈的那个问号。
+   键盘可见性改用**图标颜色**表达（聚焦时提到 --fg）—— 看得见，但不占任何额外的框。
+   另：图标 19px → 26px（+37%）；描边降到 1.5，放大后视觉笔触 = 1.5 × 26/24 ≈ 1.63，
+   跟底栏图标的 1.65 一致 —— 变大不变粗。 */
+.bar-ico.idea-help{
+  appearance:none;-webkit-appearance:none;
+  border:0;background:transparent;padding:0;cursor:pointer;
+}
 .bar-ico.idea-help .np-ico{width:26px;height:26px;stroke-width:1.5}
-.bar-ico.idea-help:focus-visible{outline:none!important;background:var(--pill);border-radius:50%}
+.bar-ico.idea-help:focus-visible{
+  outline:none!important;background:transparent!important;color:var(--fg);
+}
 
 /* ---------- ★ v5.0 树状图（第 2 批第 3 块） ----------
    画布是**一层 SVG 连线 + 一堆绝对定位的 HTML 节点**，外面套一个可平移缩放的平面。
