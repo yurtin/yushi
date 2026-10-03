@@ -1983,10 +1983,12 @@ html.soft-render .bar-glass{
    ② 下面那根 18×3 的小短杠。整条栏因此是连续一体的，指示读起来是「栏的一部分」。 */
 .tab[aria-current="page"]{color:var(--fg)}
 .tab::after{
-  content:"";position:absolute;left:50%;bottom:7px;transform:translateX(-50%);
+  content:"";position:absolute;left:var(--dot-x,50%);bottom:7px;transform:translateX(-50%);
   width:18px;height:3px;border-radius:2px;opacity:0;
   background:color-mix(in srgb,var(--fg) 55%,transparent);
-  transition:opacity var(--mo-quick) ease;
+  /* left 用 --dot-x 而不是 50%：指示条要落在**图标**正下方，不是按钮盒子正中。
+     这个值由 syncTabDots() 量出来；left 也参与过渡，切换页签时它跟 opacity 一起动 */
+  transition:opacity var(--mo-quick) ease,left var(--mo-base) var(--mo-soft);
 }
 .tab[aria-current="page"]::after{opacity:1}
 /* 按下态：跟全站 .btn:active 同一语言（沉一下 + 灰罩），但 .tab 不在那条选择器里，这里单独写 */
@@ -2001,6 +2003,13 @@ html.soft-render .bar-glass{
 .bar-gear::after{width:14px;bottom:3px}
 /* v3.2（用户："清单和统计这两个 UI 按钮距离中间太近"）：两个页签各自往**外**让开 26px ——
    在内侧加内边距（不是移动盒子本身），所以等分布局、两端对称、圆钮位置全都不受影响。 */
+/* ★ v5.0 修 bug（用户："点进清单和统计，底下这个灰色小指示条为什么不在图标正下方"）：
+   指示条原来是 `.tab::after{left:50%}` —— 按**按钮盒子**居中。
+   可这两个页签为了给中间圆钮让位，各带 26px 单边内边距，flex 居中的是**内容盒**，
+   两者本就差一截。而且差值**不只是 padding/2** —— gap 和图标尺寸也掺在里面，
+   实测差了 10px 而不是 13px，手算一定会偏。
+   所以改成：JS 量出图标的真实中心写进 `--dot-x`（见 syncTabDots），
+   内边距 / gap / 图标尺寸任何一处再变，指示条都自动跟上。 */
 .tab[data-view="list"]{padding-right:26px}
 .tab[data-view="stat"]{padding-left:26px}
 /* 长按态：两端图标一起退场 —— 那一刻栏体只该有「直接录入 / 进入编辑」两件事。 */
@@ -2669,11 +2678,6 @@ html.soft-render .mask.sheet-mode .modal{
 /* ★ v5.0：手势说明那颗 `?` 复用底栏图标键的 `.bar-ico`（40px 圆形热区 + 19px 细线 SVG），
    所以这里只补一点间距，不另写一套按钮样式 —— 用户要求跟底栏导航同一个风格。 */
 .idea-toolbar .idea-help{margin-left:4px}
-/* 用户："问号里面的 UI 可以，但放大一些；外边套个圆很别扭"
-   → SVG 里已经没有 <circle> 了，问号本体在模板里被放大 1.45 倍。
-   描边相应降到 1.15：放大后的视觉笔触 = 1.15 × 1.45 ≈ 1.67 用户单位，
-   和底栏图标的 1.65 一致 —— "变大"不该变成"变粗"。 */
-.bar-ico .idea-help-ico{stroke-width:1.15}
 
 /* ---------- ★ v5.0 树状图（第 2 批第 3 块） ----------
    画布是**一层 SVG 连线 + 一堆绝对定位的 HTML 节点**，外面套一个可平移缩放的平面。
@@ -4727,17 +4731,15 @@ function renderIdeas(){
           </svg>
         </button>
       </span>
-      <!-- ★ v5.0：手势说明。用户："问号里面的 UI 可以，但把它稍微放大一些；主要是外边套个圆感觉很别扭"
-           → 去掉外边那一圈 <circle>，把问号本体放大 1.45 倍；同时把描边降到 1.15，
-           这样放大后的视觉笔触 = 1.15 × 1.45 = 1.67 用户单位，和底栏图标 1.65 基本一致，
-           "变大"不会变成"变粗"。 -->
+      <!-- ★ v5.0：手势说明那颗问号键 —— 用户要的是**上一版那个"小圈中间一个问号"**，
+           跟底栏导航同一个风格（19px 细线 SVG + 40px 圆形热区），不要文字胶囊。
+           ⚠️ 模板字符串里不能出现反引号和 JS 块注释，两者都会把模板提前截断。 -->
       <button type="button" class="bar-ico idea-help" data-act="gesturehelp"
               aria-label="手势说明" title="手势说明">
-        <svg class="np-ico idea-help-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <g transform="translate(12 12) scale(1.45) translate(-12 -12)">
-            <path d="M9.4 9.5a2.7 2.7 0 1 1 3.5 2.55c-.9.32-1.4 1.05-1.4 2v.35"/>
-            <path d="M11.5 17.3h.01"/>
-          </g>
+        <svg class="np-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="9.2"/>
+          <path d="M9.4 9.5a2.7 2.7 0 1 1 3.5 2.55c-.9.32-1.4 1.05-1.4 2v.35"/>
+          <path d="M11.5 17.3h.01"/>
         </svg>
       </button>
     </div>
@@ -5504,6 +5506,15 @@ function aiParseJSON(txt){
   if (i < 0 || j <= i) throw new Error('no json');
   return JSON.parse(s.slice(i, j + 1));
 }
+/* 失败提示必须先清掉当前那条。toast() 有一条"带按钮的提示不被顶掉"的规则（保护撤销），
+   而「问我一问」成功后会留一条带「怎么回」按钮的提示 —— 不清掉的话，紧跟着的
+   「AI 没接上」会被整条吃掉，用户只看到上一条，等于报错静默。
+   （2026-10-03 实测：连点两次提问，第二次失败时页面上什么都不显示。） */
+function aiFail(msg){ hideToast(); toast(msg || 'AI 没接上'); }
+/* AI 的其它消息也走同一条路：先清掉当前那条再说，免得被上面那条带按钮的提示吃掉。
+   （「问我一问」成功那条带「怎么回」，它自己就是被保护的那一条，不走这里。） */
+function aiSay(msg){ hideToast(); toast(msg); }
+
 /* 未开启 / 没 key 时的引导页。**不替用户打开开关** —— 隐私开关必须由他本人点。 */
 function openAiNeedOn(){
   modal.innerHTML =
@@ -5527,7 +5538,7 @@ function openAiNeedOn(){
 async function aiAsk(it){
   if (!isSeed(it)) return;
   if (!aiOn()){ openAiNeedOn(); return; }
-  if (aiQuotaLeft() <= 0){ toast('今天先消化一下，明天再来'); return; }
+  if (aiQuotaLeft() <= 0){ aiSay('今天先消化一下，明天再来'); return; }
   const r = AI_ROLES[Math.floor(Math.random() * AI_ROLES.length)];
   toast('以「' + r + '」的身份问着…');
   let txt;
@@ -5541,10 +5552,10 @@ async function aiAsk(it){
         '你现在扮演：' + r + '。\n下面是我的这条想法：\n' + aiPayload(it)
         + '\n\n请只问一个问题。' }
     ]);
-  } catch (e){ toast('AI 没接上'); return; }          // 失败不扣配额
+  } catch (e){ aiFail('AI 没接上'); return; }          // 失败不扣配额
   const q = txt.replace(/^[\s"'「『（(]+/, '').replace(/[\s"'」』）)]+$/, '')
     .split('\n').map(x => x.trim()).filter(Boolean)[0] || '';
-  if (!q){ toast('AI 没接上'); return; }
+  if (!q){ aiFail('AI 没接上'); return; }
   if (!Array.isArray(it.sparks)) it.sparks = [];
   it.sparks.push({ at: ymd(new Date()), text: q, by: 'ai', role: r });
   S.ideaUsedAt = ymd(new Date());
@@ -5564,10 +5575,10 @@ function seedOpenInline(it){
 /* ---------- 3.4 找关联：产物是**挂载建议**，不是相关列表 ---------- */
 async function aiScanLinks(manual){
   if (!aiOn()){ if (manual) openAiNeedOn(); return; }
-  if (aiQuotaLeft() <= 0){ if (manual) toast('今天先消化一下，明天再来'); return; }
+  if (aiQuotaLeft() <= 0){ if (manual) aiSay('今天先消化一下，明天再来'); return; }
   const pool = S.items.filter(i => isSeed(i) && !i.done)
     .sort((a, b) => ideaLastAt(b) - ideaLastAt(a)).slice(0, AI_MAX_SCAN);
-  if (pool.length < 2){ if (manual) toast('想法还太少，再多记几条'); return; }
+  if (pool.length < 2){ if (manual) aiSay('想法还太少，再多记几条'); return; }
   const lines = pool.map((it, i) => (i + 1) + '. ' + aiPayload(it).replace(/\n/g, ' / ')).join('\n');
   if (manual) toast('找着…');
   let out;
@@ -5580,7 +5591,7 @@ async function aiScanLinks(manual){
         + '要求：from / to 都是上面的编号（整数）；why 是一句中文，必须引用这两条里出现过的词。'
         + '只输出这个形状：{"links":[{"from":1,"to":2,"why":"…"}]}。没有就输出 {"links":[]}。' }
     ], { json: true });
-  } catch (e){ if (manual) toast('AI 没接上'); return; }   // 失败不扣配额
+  } catch (e){ if (manual) aiFail('AI 没接上'); return; }   // 失败不扣配额
 
   let links = [];
   try { links = (aiParseJSON(out).links || []); } catch (e){ links = []; }
@@ -5598,7 +5609,7 @@ async function aiScanLinks(manual){
   S.lastScanAt = Date.now();
   aiQuotaSpend();
   save(); refresh();
-  if (manual) toast(n ? ('找到 ' + n + ' 条可以挂的，卡片上有 ✦') : '这次没找到可挂的');
+  if (manual) aiSay(n ? ('找到 ' + n + ' 条可以挂的，卡片上有 ✦') : '这次没找到可挂的');
 }
 /* to 是不是 it 的后代（防环：挂过去会形成 A→B→A 的圈） */
 function aiIsDescendant(cand, it){
@@ -5654,12 +5665,12 @@ function aiSuggestDrop(it, idx){
 /* ---------- 设置页里的几个动作 ---------- */
 /* 自检**不花配额**：这不是质疑也不是扫描，只是一次连通性确认。 */
 function aiTestSelf(){
-  if (!S.aiMode){ toast('先选一下"发多少内容"'); return; }
-  if (!aiKey()){ toast('先填一把 key'); return; }
-  toast('试连接…');
+  if (!S.aiMode){ aiSay('先选一下"发多少内容"'); return; }
+  if (!aiKey()){ aiSay('先填一把 key'); return; }
+  aiSay('试连接…');
   aiCall([{ role: 'user', content: '只回复两个字：通了' }])
-    .then(t => toast('连上了：' + String(t).slice(0, 20)))
-    .catch(err => toast('没连上：' + String((err && err.message) || err)));
+    .then(t => aiSay('连上了：' + String(t).slice(0, 20)))
+    .catch(err => aiFail('没连上：' + String((err && err.message) || err)));
 }
 /* §14 I-49：设置页能一键筛出所有 by:'ai' 的 spark 并删掉 */
 function aiPrune(){
@@ -5996,6 +6007,19 @@ function restoreStripScroll(el){
    - 已经滚到底（scrollLeft ≈ max）→ 右边同理。
    留 1px 容差：某些缩放下 scrollLeft 会是 1.0001 这种小数，卡死等号会让边缘反复闪。
    统一挂类而不是写 inline 样式，是为了让"要不要渐隐"只由这一处决定。 */
+/* ★ v5.0：量出每个底栏页签里**图标**的真实中心，写进 --dot-x，供 `.tab::after`（小指示条）定位。
+   为什么不在 CSS 里手算：清单/统计为中间圆钮让位、各带单边内边距，而 flex 居中算的是内容盒 ——
+   差值受 padding / gap / 图标尺寸共同影响，实测是 10px 而不是 padding/2 的 13px。
+   量一次就永远准；以后谁改内边距都不会再让指示条悄悄偏掉。 */
+function syncTabDots(){
+  document.querySelectorAll('.tab-strip .tab').forEach(t => {
+    const ic = t.querySelector('.np-ico');
+    const r = t.getBoundingClientRect();
+    if (!ic || !r.width){ t.style.removeProperty('--dot-x'); return; }
+    const ir = ic.getBoundingClientRect();
+    t.style.setProperty('--dot-x', Math.round(ir.left + ir.width / 2 - r.left) + 'px');
+  });
+}
 function syncStripFades(){
   document.querySelectorAll('.pillstrip').forEach(el => {
     const max = el.scrollWidth - el.clientWidth;
@@ -6132,6 +6156,9 @@ function refresh(){
     /* 分段控件的滑块也要重新对齐：refresh 会重建整个 .seg，新 DOM 里没有旧位置。
        animate=false —— 页面渲染不该让滑块从上一个位置飘过来（那是"换挡"才该有的动作）。 */
     syncSegPills(false);
+    /* ★ v5.0：底栏小指示条要落在**图标**正下方。这一帧的 DOM 刚建好、布局已定，
+       正是量图标中心的时候（见 syncTabDots）。放在最后，确保读到的是最终布局。 */
+    syncTabDots();
   });
 }
 
@@ -7363,6 +7390,7 @@ function refreshAfterChange(dur){
   renderList();
   renderFilters();
   syncStripFades();
+  syncTabDots();
   syncSegPills(false);
   /* 补位比常规切换快一点：它接在"被压掉"之后，太长会让"下面的顶上来"显得迟钝。 */
   flipPlay(before, dur || 420);
