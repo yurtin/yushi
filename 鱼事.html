@@ -2725,6 +2725,20 @@ html.soft-render .mask.sheet-mode .modal{
   position:absolute;left:12px;right:12px;bottom:9px;
   font-size:11px;color:var(--faint);pointer-events:none;text-align:center;
 }
+/* ★ v5.0 两个区的区名。**一定要有** —— 否则用户看到右边那堆，不知道它们为什么在右边。
+   淡淡的就行：它是注释，不是标题。 */
+.tree-zone{
+  position:absolute;top:2px;height:20px;line-height:20px;
+  font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--faint);
+  pointer-events:none;
+}
+/* 拖拽改挂载：被拖的那张抬起来，落点那张套一圈强调色 */
+.tree-node.dragging{
+  box-shadow:0 14px 34px rgba(0,0,0,.24);border-color:var(--accent);
+  cursor:grabbing;
+}
+.tree-node.drop-into{box-shadow:0 0 0 2px var(--accent), 0 8px 24px rgba(0,0,0,.14)}
+.tree-wrap.dragging-node{cursor:grabbing}
 @media (prefers-reduced-motion: no-preference){
   .idea-card{transition:transform 140ms ease}
 }
@@ -4295,7 +4309,11 @@ function reviewDrawerHTML(){
      虚线 = 血缘（这条是那几条**合并**出来的）
    合并出来的想法不属于任何人（它是根节点），所以没法靠缩进表达来源 —— 虚线补上这一块。 */
 const TREE_W = 172, TREE_H = 62, TREE_GX = 18, TREE_GY = 54;
+const TREE_ZONE_GAP = 64;          // 「独立的」和「有关系的」两片之间的距离
 const TREE_PERF = 80;              // 超过它就自动只画前 3 层，免得一屏几百个方块卡住
+/* 打开时的最小可读比例。**低于它就不要缩** —— 缩成 0.3 那种"全貌"字是读不出来的，
+   用户还得先放大，那一段缩放纯属白花；宁可让他在 0.7 下横滑。 */
+const TREE_MIN_K = 0.7;
 const treeView = { tx: 0, ty: 0, k: 1 };
 /* 分段开关换挡动画播放期间上锁：这 200ms 里再点一次会打架 */
 let layoutBusy = false;
@@ -4338,25 +4356,46 @@ function treeMapLayout(list){
   list.forEach(i => {
     if (i.parent){ if (!rawKids.has(i.parent)) rawKids.set(i.parent, []); rawKids.get(i.parent).push(i); }
   });
-  const roots = vis.filter(i => !(i.parent && visIds.has(i.parent)));
-  const pos = new Map();
+  /* ★ v5.0 重排（用户实测反馈）：「那些独立的、没什么关联的内容，不需要横着排一大排」。
+     所以分成**两个区**：
+       左区「独立的」—— 既没有父、也没有子的，排成 **2 列**往下长。
+         为什么是 2 列而不是横着一排：手机是竖的，纵向滚动是免费的、横向要手势；
+         2 列正好是一屏宽度，一眼看完一片，不用左右来回拉。
+       右区「有关系的」—— 分层布局（同一套 Reingold–Tilford 简化版）。
+     两区之间留 ZONE_GAP，并且各带一个淡淡的区名，否则用户不知道右边那堆为什么在右边。 */
+  const isRootOf = i => !(i.parent && visIds.has(i.parent));
+  const lone = [], treeRoots = [];
+  vis.filter(isRootOf).forEach(r => {
+    if ((rawKids.get(r.id) || []).length) treeRoots.push(r); else lone.push(r);
+  });
+  /* 区名那一行占掉的高度。两区都要下移同样多，否则区名会压在节点上。 */
+  const TOP = 30;
+  const pitchX = TREE_W + TREE_GX, pitchY = TREE_H + TREE_GY;
+  const LONE_COLS = 2;
+  const posPx = new Map();
+  lone.forEach((it, i) => {
+    posPx.set(it.id, { x: (i % LONE_COLS) * pitchX, y: TOP + Math.floor(i / LONE_COLS) * pitchY });
+  });
+  const loneW = lone.length ? LONE_COLS * pitchX - TREE_GX : 0;
+  const loneH = lone.length ? Math.ceil(lone.length / LONE_COLS) * pitchY - TREE_GY : 0;
+  const zoneX = lone.length ? loneW + TREE_ZONE_GAP : 0;
   let leaf = 0;
-  const place = (it, depth) => {
+  const placeT = (it, depth) => {
     const ks = kids.get(it.id) || [];
-    let x;
-    if (!ks.length){ x = leaf++; }
+    let c;
+    if (!ks.length){ c = leaf++; }
     else {
-      const xs = ks.map(k => place(k, depth + 1));
-      x = (xs[0] + xs[xs.length - 1]) / 2;
+      const xs = ks.map(k => placeT(k, depth + 1));
+      c = (xs[0] + xs[xs.length - 1]) / 2;
     }
-    pos.set(it.id, { x, depth });
-    return x;
+    posPx.set(it.id, { x: zoneX + c * pitchX, y: TOP + depth * pitchY });
+    return c;
   };
-  roots.forEach((r, idx) => { place(r, 0); if (idx < roots.length - 1) leaf += 0.6; });   // 根与根之间留一点空
+  treeRoots.forEach((r, idx) => { placeT(r, 0); if (idx < treeRoots.length - 1) leaf += 0.6; });
+  const treeW = treeRoots.length ? Math.max(1, leaf) * pitchX - TREE_GX : 0;
   const nodes = vis.map(i => {
-    const p = pos.get(i.id);
-    return { it: i, x: p.x * (TREE_W + TREE_GX), y: p.depth * (TREE_H + TREE_GY),
-      depth: p.depth, kids: (rawKids.get(i.id) || []).length };
+    const p = posPx.get(i.id) || { x: 0, y: 0 };
+    return { it: i, x: p.x, y: p.y, kids: (rawKids.get(i.id) || []).length };
   });
   const at = id => nodes.find(n => n.it.id === id);
   const edges = [];
@@ -4373,9 +4412,22 @@ function treeMapLayout(list){
       if (s) lineage.push({ x1: s.x + TREE_W / 2, y1: s.y + TREE_H, x2: n.x + TREE_W / 2, y2: n.y });
     });
   });
-  const rows = nodes.reduce((m, n) => Math.max(m, n.depth + 1), 1);
-  return { nodes, edges, lineage, clipped,
-    w: Math.max(1, leaf) * (TREE_W + TREE_GX), h: rows * (TREE_H + TREE_GY) };
+  const zones = [];
+  if (lone.length) zones.push({ label: '独立的', x: 0, w: loneW });
+  if (treeRoots.length) zones.push({ label: '有关系的', x: zoneX, w: treeW });
+  return { nodes, edges, lineage, clipped, zones, loneCount: lone.length,
+    w: Math.max(loneW, zoneX + treeW, 1),
+    h: Math.max(TOP + loneH, TOP + (treeRoots.length ? treeHeight(treeRoots, kids) : 0), TREE_H) };
+}
+/* 成树那一片有几行（用来算画布高度） */
+function treeHeight(roots, kids){
+  let maxD = 0;
+  const walk = (it, d) => {
+    maxD = Math.max(maxD, d);
+    (kids.get(it.id) || []).forEach(k => walk(k, d + 1));
+  };
+  roots.forEach(r => walk(r, 0));
+  return (maxD + 1) * (TREE_H + TREE_GY) - TREE_GY;
 }
 /* 正交折线：父底中 → 竖 → 横 → 子顶中。**不用斜线** —— 斜线一多就像蜘蛛网，
    而且父子关系会被"哪条线连到哪"的歧义糊掉。 */
@@ -4406,15 +4458,18 @@ function treeMapHTML(list){
       </div>
     </div>`;
   }).join('');
+  const zones = (L.zones || []).map(z =>
+    `<div class="tree-zone" style="left:${Math.round(z.x)}px;width:${Math.round(z.w)}px">${esc(z.label)}</div>`).join('');
   return `<div class="tree-wrap" id="treeWrap">
     <div class="tree-canvas" id="treeCanvas"
          style="width:${Math.round(L.w)}px;height:${Math.round(L.h)}px">
+      ${zones}
       <svg class="tree-edges" width="${Math.round(L.w)}" height="${Math.round(L.h)}" aria-hidden="true">
         <g class="e">${edges}</g><g class="l">${lineage}</g>
       </svg>
       ${nodes}
     </div>
-    <div class="tree-hint">拖动平移 · 双指或滚轮缩放${
+    <div class="tree-hint">拖动平移 · 双指或滚轮缩放 · 长按节点拖到另一个节点上 = 挂到它下面${
       L.clipped ? ` · 太挤了，先只画到第 3 层（还有 ${L.clipped} 条没画）` : ''}</div>
   </div>`;
 }
@@ -4426,20 +4481,67 @@ function mountTreeMap(){
   if (!wrap || !cv) return;
   const cw = parseFloat(cv.style.width) || 1, ch = parseFloat(cv.style.height) || 1;
   const apply = () => { cv.style.transform = `translate(${treeView.tx}px,${treeView.ty}px) scale(${treeView.k})`; };
-  /* 首次进来把内容缩放着放进视野里，免得"打开是一片空白，得自己找" */
+  /* 边界：内容比视口小就居中；比视口大就**不许整个滑出去**（两端各留 48px 让人抓得住）。
+     没有这条，一拖就能把内容甩到屏幕外，看着像"页面空了"。 */
+  const clamp = () => {
+    const r = wrap.getBoundingClientRect();
+    const w = cw * treeView.k, h = ch * treeView.k;
+    treeView.tx = w <= r.width ? (r.width - w) / 2
+      : Math.min(48, Math.max(r.width - w - 48, treeView.tx));
+    treeView.ty = h <= r.height ? Math.max(10, (r.height - h) / 2)
+      : Math.min(48, Math.max(r.height - h - 48, treeView.ty));
+  };
+  /* 打开时：装得下就缩放居中；装不下就**按最小可读比例打开、左上角对齐**，剩下的交给横滑。
+     原来一律 Math.min(1, 装下所需比例) 再夹一个 0.3 下限 —— 内容一多就缩到 0.3，
+     点进来第一眼是一堆读不出来的小方块（用户实测："直接太小了，没办法直接看"）。
+     缩到读不出字的"全貌"没有价值：用户还得先放大，中间那一步纯属白花。 */
   const fit = () => {
     const r = wrap.getBoundingClientRect();
     if (r.width < 40) return;
-    treeView.k = Math.max(0.3, Math.min(1, (r.width - 20) / cw, (r.height - 40) / ch));
-    treeView.tx = (r.width - cw * treeView.k) / 2;
-    treeView.ty = 14;
-    apply();
+    const fitK = Math.min(1, (r.width - 20) / cw, (r.height - 40) / ch);
+    if (fitK >= TREE_MIN_K){ treeView.k = fitK; treeView.tx = 0; treeView.ty = 0; }
+    else { treeView.k = TREE_MIN_K; treeView.tx = 12; treeView.ty = 12; }
+    clamp(); apply();
   };
   fit();
   const pts = new Map();
   let pan = null, pinch = null;
+  /* ★ v5.0 拖拽改挂载：长按一个节点，拖到另一个节点上松手 → 它挂到那个节点下面。
+     这就是用户问的"那些独立的内容，怎么把它弄到右边去"的答案 —— **不是加动画**：
+     动画只能"演示"位置变化，不能"执行"它。位置变化本身就是最直白的反馈。
+     约束：不能挂到自己的后代上（会形成环），所以落点要先查一遍祖先链。 */
+  let press = 0, dragEl = null, dragFrom = null, dropEl = null;
+  const descendsFrom = (a, b) => {         // b 是不是 a 的后代（或 a 自己）
+    let p = a, guard = 0;
+    while (p && guard++ < 64){ if (p === b) return true; p = p.parent; }
+    return false;
+  };
+  const clearDrop = () => { if (dropEl){ dropEl.classList.remove('drop-into'); dropEl = null; } };
+  const endDrag = () => {
+    if (press){ clearTimeout(press); press = 0; }
+    if (dragEl){ dragEl.classList.remove('dragging'); dragEl.style.transform = ''; dragEl.style.pointerEvents = ''; dragEl.style.zIndex = ''; }
+    clearDrop();
+    dragEl = null; dragFrom = null;
+    wrap.classList.remove('dragging-node');
+  };
   wrap.addEventListener('pointerdown', e => {
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const nodeEl = e.target.closest && e.target.closest('.tree-node');
+    if (nodeEl && !(e.target.closest && e.target.closest('[data-act]'))){
+      dragEl = nodeEl; dragFrom = { x: e.clientX, y: e.clientY };
+      wrap.classList.add('dragging-node');
+      press = setTimeout(() => {
+        press = 0;
+        if (!dragEl) return;
+        dragEl.classList.add('dragging');
+        /* ⚠️ 被拖的节点要**暂时不参与命中测试**：它跟着指针走，正好压在落点上面，
+           而 elementFromPoint 返回的是最上层那个元素 —— 不关掉就永远命中它自己，
+           于是"怎么拖都找不到目标"（这个 bug 就是这样来的）。 */
+        dragEl.style.pointerEvents = 'none';
+        if (navigator.vibrate){ try { navigator.vibrate(10); } catch (_){} }
+      }, 400);
+      return;
+    }
     if (pts.size === 2){
       const a = [...pts.values()];
       pinch = { d: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y), k: treeView.k,
@@ -4447,7 +4549,7 @@ function mountTreeMap(){
         tx: treeView.tx, ty: treeView.ty };
       pan = null; wrap.classList.add('panning'); return;
     }
-    if (pts.size === 1 && !(e.target.closest && e.target.closest('.tree-node'))){
+    if (pts.size === 1){
       pan = { x: e.clientX - treeView.tx, y: e.clientY - treeView.ty };
       wrap.classList.add('panning');
     }
@@ -4455,6 +4557,25 @@ function mountTreeMap(){
   wrap.addEventListener('pointermove', e => {
     if (!pts.has(e.pointerId)) return;
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    /* ① 拖节点（长按之后） */
+    if (dragEl && dragEl.classList.contains('dragging')){
+      const dx = (e.clientX - dragFrom.x) / treeView.k, dy = (e.clientY - dragFrom.y) / treeView.k;
+      dragEl.style.transform = `translate(${Math.round(dx)}px,${Math.round(dy)}px)`;
+      dragEl.style.zIndex = 5;
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      const hit = under && under.closest ? under.closest('.tree-node') : null;
+      const me = it_byId(dragEl.dataset.id);
+      const to = hit && hit !== dragEl ? it_byId(hit.dataset.id) : null;
+      const ok = to && me && !descendsFrom(to, me);
+      if ((ok ? hit : null) !== dropEl){ clearDrop(); if (ok){ dropEl = hit; hit.classList.add('drop-into'); } }
+      return;
+    }
+    /* ② 还没到长按就动了 → 取消这次"可能的拖拽"（按滚动/平移处理） */
+    if (dragEl){
+      if (Math.abs(e.clientX - dragFrom.x) > 8 || Math.abs(e.clientY - dragFrom.y) > 8) endDrag();
+      return;
+    }
+    /* ③ 双指缩放 */
     if (pinch && pts.size >= 2){
       const a = [...pts.values()];
       const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
@@ -4463,13 +4584,26 @@ function mountTreeMap(){
       const px = pinch.cx - r.left, py = pinch.cy - r.top;
       treeView.tx = px - (px - pinch.tx) * (k2 / pinch.k);
       treeView.ty = py - (py - pinch.ty) * (k2 / pinch.k);
-      treeView.k = k2; apply(); return;
+      treeView.k = k2; clamp(); apply(); return;
     }
-    if (pan){
-      treeView.tx = e.clientX - pan.x; treeView.ty = e.clientY - pan.y; apply();
-    }
+    /* ④ 平移 */
+    if (pan){ treeView.tx = e.clientX - pan.x; treeView.ty = e.clientY - pan.y; clamp(); apply(); }
   });
   const end = e => {
+    if (dragEl && dragEl.classList.contains('dragging')){
+      const me = it_byId(dragEl.dataset.id);
+      const to = dropEl ? it_byId(dropEl.dataset.id) : null;
+      endDrag();
+      if (me && to){
+        me.parent = to.id;
+        collapsed.delete(to.id);            // 目标原先收着的话，展开才能看见接上去的那条
+        save(); refresh();
+        toast('挂到「' + to.title + '」下面了', '撤销', () => { me.parent = null; save(); refresh(); });
+        return;
+      }
+      refresh();                           // 没落到地方：把节点复位的 DOM 变化落定
+    }
+    endDrag();
     pts.delete(e.pointerId);
     if (pts.size < 2) pinch = null;
     if (pts.size === 0){ pan = null; wrap.classList.remove('panning'); }
@@ -4484,9 +4618,10 @@ function mountTreeMap(){
     /* 以指针为锚点缩放 —— 不以指针锚定的话，放大时内容会从视野里跑掉 */
     treeView.tx = px - (px - treeView.tx) * (k2 / treeView.k);
     treeView.ty = py - (py - treeView.ty) * (k2 / treeView.k);
-    treeView.k = k2; apply();
+    treeView.k = k2; clamp(); apply();
   }, { passive: false });
-  /* 点节点 → 打开同一条动作菜单（全 App 一套菜单，不在这里另造一套） */
+  /* 点节点 → 打开同一条动作菜单（全 App 一套菜单，不在这里另造一套）。
+     刚拖完的那一下不算点击 —— 否则拖完松手会顺手弹出菜单，很烦。 */
   wrap.addEventListener('click', e => {
     if (e.target.closest && e.target.closest('[data-act]')) return;      // 折叠钮有自己的动作
     const n = e.target.closest && e.target.closest('.tree-node');
@@ -7338,7 +7473,17 @@ modal.addEventListener('click', e => {
   const cardEl = it ? view.querySelector('.item.seed[data-id="' + it.id + '"]') : null;
   closeModal();
   if (!it) return;
-  if (act === 'sparkadd'){ ideaUI.sparkOpen = it.id; refresh(); return; }
+  /* ★ v5.0 树状图里**没有卡片，也就没有那行就地输入框**。
+     原来一律走 ideaUI.sparkOpen —— 在树状图里就是"点了一下续写、什么也没发生"（真 bug）。
+     树状图里改成开弹窗。 */
+  if (act === 'sparkadd'){
+    if (S.ideaLayout === 'tree'){
+      openSeedPrompt('续写', it.title, '现在多了什么信息？',
+        v => { if (seedAddSpark(it, v)) refresh(); });
+      return;
+    }
+    ideaUI.sparkOpen = it.id; refresh(); return;
+  }
   if (act === 'fork'){
     openSeedPrompt('从「' + it.title + '」生长', '新的想法第一句', '从这里分出去的那条',
       v => { if (seedGrow(it, v)) refresh(); });
