@@ -415,10 +415,17 @@ body[data-view="settings"] .pdaim-section{padding-top:clamp(18px,3vh,36px)}
 
 /* 「外观 → 页面说明文字」关掉时，各页标题下面那段解释文案整段收起。
    开关状态只写在 body 的一个属性上（applyHelp 同步），不在三个视图里各写一份，
-   所以切换时不需要重渲染、页面也不会跳。
+   所以切换时不需要重渲染、页面也不会跳一下。
+   ★ v5.2（用户："打开页面说明文字时，这个字体的弹出太过于生硬了，让它像隐藏或折叠的部分
+   被展开时那样出现，而不是现在直接跳转到这种有说明文字的界面"）：
+   **收起态不能再是 display:none** —— 那样一开一关就是整页高度瞬移。改成"高度收到 0 + 淡出"，
+   真实高度由 revealAnim() 量出来写 inline，于是打开是"撑开"、关掉是"收回去"。
+   ⚠️ overflow:hidden 必须跟着写：只给 max-height:0 的话内容照样画在盒子外面。
+   ⚠️ visibility:hidden 也要跟：高度动画的元素还能被 Tab 聚焦，display:none 没这个问题。
    注意这里收的是**说明性文字**：条数 / 逾期这类事实数字不在其中
    （时间轴那行已单独挪到列表上方，见 .tl-meta），各栏的空态提示也不受影响。 */
-body[data-help="off"] .intro-note{display:none}
+body[data-help="off"] .intro-note{
+  max-height:0;overflow:hidden;opacity:0;margin-top:0;visibility:hidden}
 
 /* ---------- 区块（原站 .pdaim-section / .section-intro / .section-kicker） ---------- */
 .pdaim-section{
@@ -1495,7 +1502,10 @@ html.soft-render .feature-card:hover{transform:none}
 /* ★ v5.0：设置页改成**默认全收起的栏目列表**（用户："设置栏目有点太长了，把它变成可折叠的"）。
    标题变成一行按钮（.set-head），内容包进 .set-body；展开态存进存档（S.setOpen，默认空数组
    = 全收起），下次进来还是上次展开的那几栏。
-   展开/收起用 display 切换、**不做高度动画**：设置页是"翻找"的地方，动画只会让它更慢。 */
+   ★ v5.2（用户："让它像隐藏或折叠的部分被展开时那样出现"）：展开/收起也从 display 切换
+   改成**高度撑开**，和"页面说明文字"共用 revealAnim() 同一套节奏 —— 全页动画语言统一。
+   收起态：max-height:0 + overflow:hidden + 淡出 + visibility:hidden（收起的内容不该还能 Tab 聚焦），
+   真实高度由 revealAnim() 量出来写 inline 再过渡。 */
 .set-head{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;
   margin:0;padding:14px 0 12px;background:none;border:0;font:inherit;color:inherit;
   text-align:left;cursor:pointer}
@@ -1504,9 +1514,11 @@ html.soft-render .feature-card:hover{transform:none}
   transition:transform var(--mo-fast) ease}
 .set-card.open .set-head .sh-chev{transform:rotate(90deg)}
 .set-head:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:10px}
-.set-body{display:none}
-.set-card.open .set-body{display:block}
-/* 收起时卡片只剩一行标题，底部那 18px 内边距也要跟着收 —— 否则一屏 8 张卡就是 8 段空白 */
+.set-body{max-height:0;overflow:hidden;opacity:0;visibility:hidden}
+.set-card.open .set-body{max-height:none;opacity:1;visibility:visible}
+/* 收起时卡片只剩一行标题，底部那 18px 内边距也要跟着收 —— 否则一屏 5 张卡就是 5 段空白。
+   这一段也给它过渡：不然高度动画跑完了还会"咔"地跳 16px。 */
+.set-card{transition:padding-bottom var(--mo-base) var(--mo-size)}
 .set-card:not(.open){padding-bottom:2px}
 /* 灰字（每栏标题下那行 + 每项下面那行）。⚠️ 选择器用**后代**而不是 `>`：
    v5.0 折叠改造后它们被搬进了 .set-body，不再是 .set-card 的直接子元素了。 */
@@ -1514,10 +1526,16 @@ html.soft-render .feature-card:hover{transform:none}
 /* 「页面说明文字」那颗开关（外观栏里）一并管到设置页自己的灰字：
    关掉后只剩设置项本身，不留解释。⚠️ AI 那段隐私告知（.ai-quote）**不在**此列 ——
    它是知情同意，不该被一个显示开关藏起来。
+   ★ v5.2（用户："关于这个栏目下面的版本灰字说明永久显示"）：带 data-keephelp 的那段
+   也**不在**此列 —— 它是"数据在哪、有没有账号"的交代，不该被显示开关收掉，所以用
+   `:not([data-keephelp])` 把它摘出去。
    选择器必须写成 `.set-txt > span`（直接子元素）：示例数、配额数那些数字是
-   `<b>…<span class="mono">N</span>…</b>`，用后代选择器会把数字本身也一起隐藏。 */
+   `<b>…<span class="mono">N</span>…</b>`，用后代选择器会把数字本身也一起隐藏。
+   收起态和 .intro-note 同一套：高度 0 + overflow:hidden + 淡出 + visibility:hidden
+   （不是 display:none —— 那样就没有"撑开"的过程），真实高度由 revealAnim() 量。 */
 body[data-help="off"] .set-card .set-sub,
-body[data-help="off"] .set-row .set-txt > span{display:none}
+body[data-help="off"] .set-row .set-txt > span:not([data-keephelp]){
+  max-height:0;overflow:hidden;opacity:0;margin-top:0;visibility:hidden}
 /* 数字一行写完，前后各留一点空隙（用户："这个数字跟左右两边的字体稍微空出一些距离，
    就可以了"）—— 不学统计页那种"标签 / 大数字 / 单位"三行块。
    只作用于设置页：统计页那个三行块是刻意突出的，不受影响。 */
@@ -4798,7 +4816,7 @@ function treeMapHTML(list){
   /* ★ 审查修复（2026-10-04）：§6.3 / §12 的第三档兜底（>200 提示「想法太多了，先回列表看」）
      原来完全没有。这一档不画节点 —— 200 个方块铺出来既卡又读不了。 */
   if (list.length > TREE_HARD){
-    return `<div class="tree-frame${treeFull ? ' full' : ''}" id="treeFrame">
+    return `<div class="tree-frame${treeFull ? ' full' : ''}${treeFull ? '' : rv()}" id="treeFrame">
       <div class="empty-soft">想法太多了（${list.length} 条），先回列表看吧 —— 这样画出来也读不了。</div>
       <div class="tree-foot">
         <span class="tree-hint">在想法页右上角切回卡片流，或者先收起 / 删掉一些。</span>
@@ -4806,7 +4824,7 @@ function treeMapHTML(list){
       </div>
     </div>`;
   }
-  return `<div class="tree-frame${treeFull ? ' full' : ''}" id="treeFrame">
+  return `<div class="tree-frame${treeFull ? ' full' : ''}${treeFull ? '' : rv()}" id="treeFrame">
     <div class="tree-wrap" id="treeWrap">
       <div class="tree-canvas" id="treeCanvas"
            style="width:${Math.round(L.w)}px;height:${TREE_H}px">
@@ -4950,6 +4968,22 @@ function mountTreeMap(){
   else { clampKeep(); apply(); }
   const pts = new Map();
   let pan = null, pinch = null;
+  /* ★ v5.2：竖直方向"还给页面"的锚点（用户报："这个视图为什么我上下滑动不了，只能左右滑动"）。
+     真因：`.tree-wrap` 是 touch-action:none（不然单指拖会被浏览器当成滚动、画布拖不动），
+     画布又按内容宽高夹住边界 —— 树"宽而扁"时（宽 > 视口、高 ≤ 视口），竖直方向被
+     clamp 钉死在居中位置：手指竖向滑，画布不吃这段位移，页面也滚不了，于是只剩横向能动。
+     修法：每一帧算出"画布实际吃掉了多少竖直位移"，**剩下没被吃掉的还给 window.scrollBy** ——
+     画布还能动就纯平移，画布到头就自然接着滚页面（嵌套滚动的标准手感）。 */
+  let panLastY = 0;
+  const panTo = e => {
+    const dY = e.clientY - panLastY;
+    panLastY = e.clientY;
+    const tyBefore = treeView.ty;
+    treeView.tx = e.clientX - pan.x; treeView.ty = e.clientY - pan.y;
+    clamp(); apply();
+    const left = dY - (treeView.ty - tyBefore);
+    if (left) window.scrollBy(0, -left);
+  };
   /* ★ v5.0 拖拽改挂载：长按一个节点，拖到另一个节点上松手 → 它挂到那个节点下面。
      这就是用户问的"那些独立的内容，怎么把它弄到右边去"的答案 —— **不是加动画**：
      动画只能"演示"位置变化，不能"执行"它。位置变化本身就是最直白的反馈。
@@ -4997,6 +5031,7 @@ function mountTreeMap(){
     }
     if (pts.size === 1){
       pan = { x: e.clientX - treeView.tx, y: e.clientY - treeView.ty };
+      panLastY = e.clientY;
       wrap.classList.add('panning');
     }
   });
@@ -5025,9 +5060,9 @@ function mountTreeMap(){
         const from = dragFrom;
         endDrag();
         pan = { x: from.x - treeView.tx, y: from.y - treeView.ty };
+        panLastY = from.y;                       // 从"最初按下的那一点"起算，别吞掉这 8px
         wrap.classList.add('panning');
-        treeView.tx = e.clientX - pan.x; treeView.ty = e.clientY - pan.y;
-        clamp(); apply();
+        panTo(e);
       }
       return;
     }
@@ -5042,8 +5077,8 @@ function mountTreeMap(){
       treeView.ty = py - (py - pinch.ty) * (k2 / pinch.k);
       treeView.k = k2; clamp(); apply(); return;
     }
-    /* ④ 平移 */
-    if (pan){ treeView.tx = e.clientX - pan.x; treeView.ty = e.clientY - pan.y; clamp(); apply(); }
+    /* ④ 平移（含"画布到头 → 接着滚页面"，见 panTo） */
+    if (pan) panTo(e);
   });
   const end = e => {
     if (dragEl && dragEl.classList.contains('dragging')){
@@ -5511,6 +5546,9 @@ function openGestureHelp(){
      <h3 id="modalTitle2" class="gh-sub">树状图的手势</h3>
      <div class="gh-list">
        <div class="gh-row"><b>拖动空白处</b><span>平移画布（从节点上起手也可以，只要别停住 400ms）</span></div>
+       <!-- ★ v5.2（用户："这个视图为什么我上下滑动不了，只能左右滑动"）：画布竖直到头时，
+            多出来的竖直位移会接着滚页面 —— 这条行为要写出来，不然用户以为是"卡住了"。 -->
+       <div class="gh-row"><b>竖着滑到头</b><span>画布上下已经拖到头时，再竖着滑就是滚页面本身</span></div>
        <div class="gh-row"><b>双指 / 滚轮</b><span>缩放，以你指的位置为锚点</span></div>
        <div class="gh-row"><b>点节点</b><span>打开同一个动作菜单</span></div>
        <div class="gh-row"><b>长按节点后拖到另一个节点上</b><span>把它挂到那条下面（松手在空白处 = 变成根）</span></div>
@@ -6270,14 +6308,80 @@ function aiMaybeAutoScan(){
 /* ---------- 设置页 ---------- */
 
 /* 「外观 → 页面说明文字」的总开关。
-   实现成一个 body 属性 + 一条 CSS（见 body[data-help="off"] .intro-note），
+   实现成一个 body 属性 + 两条 CSS（见 body[data-help="off"] .intro-note / .set-card .set-sub），
    不在清单/时间轴/统计三个视图里各写一份判断 —— 所以切换时不需要重渲染，
-   当前页和之后切过去的每一页都会自动跟上，页面也不会跳一下。
-   启动时（load 之后）就要调一次：refresh 是 rAF 延迟的，等它来会先闪一下那段字。 */
-function applyHelp(){ document.body.dataset.help = S.showHelp ? 'on' : 'off'; }
+   当前页和之后切过去的每一页都会自动跟上。
+   启动时（load 之后）就要调一次：refresh 是 rAF 延迟的，等它来会先闪一下那段字。
+
+   ★ v5.2（用户："打开页面说明文字时，这个字体的弹出太过于生硬了，让它像隐藏或折叠的部分
+   被展开时那样出现，而不是现在直接跳转到这种有说明文字的界面"）：
+   开关带 animate 参数。关→开是"从 0 撑到真实高度"，开→关是"收回 0" —— 都走 revealAnim。
+   **必须在切 body 属性之前量高度**：展开态才量得到自然高度与外边距（切完就都是 0 了）。 */
+function applyHelp(animate){
+  const on = !!S.showHelp;
+  const was = document.body.dataset.help === 'on';
+  const anim = !!animate && was !== on;
+  /* 收起方向必须在切属性**之前**量：切完高度就是 0，量不到要收回去的那个高度。 */
+  const pre = (anim && !on) ? helpEls().map(el => ({
+    el,
+    h: Math.max(0, Math.round(el.getBoundingClientRect().height)),
+    mt: getComputedStyle(el).marginTop,
+  })) : null;
+  document.body.dataset.help = on ? 'on' : 'off';
+  if (!anim) return;
+  if (on){
+    /* 展开方向反过来：切完属性才量得到自然高度与外边距，再从这里从 0 撑开。 */
+    helpEls().forEach(el => revealAnim(el, true,
+      Math.round(el.getBoundingClientRect().height), getComputedStyle(el).marginTop));
+  } else {
+    pre.forEach(m => revealAnim(m.el, false, m.h, m.mt));
+  }
+}
+/* 受「页面说明文字」开关管的元素（设置页自己的灰字 + 各页标题下的解释）。
+   带 data-keephelp 的**不在**其中（版本说明要永久显示，见 renderSettings 的「关于」栏）。 */
+const HELP_SEL = '.intro-note,.set-card .set-sub,.set-row .set-txt > span';
+function helpEls(){
+  return [...view.querySelectorAll(HELP_SEL)].filter(el => !el.hasAttribute('data-keephelp'));
+}
+
+/* 高度"撑开 / 收回"的通用动画（说明文字、设置栏目折叠共用）。
+   参数：open=目标状态；h/mt = **展开态**的自然高度与外边距（收起方向要在切状态前自己量好）。
+   为什么用 rAF 逐帧补间、不用 CSS 过渡：`.toolbar` 那段注释里记着实测结论 ——
+   `max-height` 的 CSS 过渡在真实 click 回调里**不建过渡**（写死大数又会"前 30% 就走完"），
+   当年筛选抽屉就是这么改成 rAF 的。这里沿用同一条缓出曲线，全站节奏一致。
+   连点两次时用 el.__rt 记的令牌作废上一次的收尾，避免两段动画抢同一份 inline 样式。 */
+const REVEAL_MS = 300;
+function revealAnim(el, open, h, mt){
+  if (!el) return;
+  const clear = () => ['max-height','opacity','margin-top','visibility','overflow']
+    .forEach(p => el.style.removeProperty(p));
+  if (!el.isConnected || reduceMotion() || !h){ clear(); return; }
+  const token = (el.__rt = (el.__rt || 0) + 1);
+  const H0 = open ? 0 : h, H1 = open ? h : 0;
+  const m0 = open ? 0 : (parseFloat(mt) || 0), m1 = open ? (parseFloat(mt) || 0) : 0;
+  el.style.overflow = 'hidden';
+  el.style.visibility = 'visible';       // 收起态是 visibility:hidden（为了不被 Tab 聚焦），动画期间要显出来
+  el.style.maxHeight = H0 + 'px';
+  el.style.opacity = open ? '0' : '1';
+  el.style.marginTop = m0 + 'px';
+  const t0 = performance.now();
+  const ease = u => 1 - Math.pow(1 - u, 2.6);      // 与筛选抽屉同族的强缓出
+  const step = now => {
+    if (el.__rt !== token) return;                 // 被下一次点击接管了，这一趟作废
+    const u = Math.min(1, (now - t0) / REVEAL_MS), k = ease(u);
+    el.style.maxHeight = (H0 + (H1 - H0) * k).toFixed(2) + 'px';
+    el.style.opacity = ((open ? 0 : 1) + ((open ? 1 : 0) - (open ? 0 : 1)) * k).toFixed(3);
+    el.style.marginTop = (m0 + (m1 - m0) * k).toFixed(2) + 'px';
+    if (u < 1) requestAnimationFrame(step);
+    else clear();                                  // 收尾清 inline：展开回自然高、收起交回 CSS
+  };
+  requestAnimationFrame(step);
+}
 
 /* 设置页：**按语义分区**（用户原话："你怎么能把它们归到'外观'这个栏目里边呢"）。
-   四个区各一张 .glass.set-card —— .set-wrap 本来就是 flex 纵列 + gap，天然支持多卡片。
+   ★ v5.2 重新分组（用户一次性给了四条）：外观（含从「性能」搬来的流畅模式）/
+   功能（语音＋想法合成一栏）/ AI / 数据（含示例数据）/ 关于 —— 从 8 张卡收到 5 张。
+   每个区各一张 .glass.set-card —— .set-wrap 本来就是 flex 纵列 + gap，天然支持多卡片。
    开关一律用 role="switch" + aria-checked 表达状态（键盘可达、读屏能读出开/关），
    位置状态由 aria-checked 驱动，不在 CSS 里另存一套类名。 */
 function renderSettings(){
@@ -6317,11 +6421,25 @@ function renderSettings(){
           <button class="switch" data-set="help" role="switch" aria-label="显示页面说明文字"
                   aria-checked="${S.showHelp ? 'true' : 'false'}"></button>
         </div>
+        <!-- ★ v5.2（用户："把性能里的流畅模式归入到外观里边"）：整张「性能」卡随之撤掉 ——
+             它本来就只有这一项，而它改的正是"屏幕上看到什么"，跟外观同栏最顺。
+             流畅模式原来在顶栏（一颗 ⚡）。撤掉是因为手机上它和主题滑块一起挤掉了标题。
+             aria-checked 直接读 html.soft-render —— 那是唯一真相：
+             它由"软件渲染自动检测"或"用户手动选择"共同决定，这里不另存一份状态。 -->
+        <div class="set-row">
+          <div class="set-txt">
+            <b>流畅模式</b>
+            <span>关掉玻璃模糊、背景点阵和入场动画，老机型滚动明显更顺。
+              检测到设备在用软件渲染时会自动打开；这里的开关可以手动覆盖它。</span>
+          </div>
+          <button class="switch" data-set="lite" role="switch" aria-label="流畅模式"
+                  aria-checked="${document.documentElement.classList.contains('soft-render') ? 'true' : 'false'}"></button>
+        </div>
       </section>
 
       <section class="glass set-card${rv()}"${rvd(120)}>
-        <h3>语音</h3>
-        <p class="set-sub">长按底部圆钮说话的能力。它跟界面长什么样无关，所以单独一栏。</p>
+        <h3>功能</h3>
+        <p class="set-sub">跟界面长什么样无关的那几件：录进来的方式、想法页的行为。</p>
         <!-- 语音输入：默认关。开了才在安卓上走设备端离线识别（零联网）；关着时长按圆钮直接弹键盘。
              不支持离线识别 / 没给权限 → 页面自己降级为"弹键盘 + 提示"，见 startVoiceIfAllowed。 -->
         <div class="set-row">
@@ -6338,11 +6456,9 @@ function renderSettings(){
              ⚠️ v5.0 第 3 批的口径修正：**语音**仍然不联网，但从这一版起「AI」那一栏是可选联网的
              （默认关闭）。所以"包不声明 INTERNET"这句不再适用于全部构建 ——
              现在出两个包：纯净版不含 INTERNET，联网版含（见 _android/build.py 的 --ai 开关）。 -->
-      </section>
-
-      <section class="glass set-card${rv()}"${rvd(150)}>
-        <h3>想法</h3>
-        <p class="set-sub">底栏左端那颗灯泡里（想法页）的行为。</p>
+        <!-- ★ v5.2（用户："把想法还有语音这两个归到一个大栏目功能里边"）：
+             「语音」和「想法」原来各占一张卡，但两者都是"能力"，跟外观 / AI / 数据不是一类。
+             现在合成这一栏：语音输入 + 想法回顾 + 录入默认落点。 -->
         <div class="set-row">
           <div class="set-txt">
             <b>想法回顾</b>
@@ -6372,49 +6488,15 @@ function renderSettings(){
         </div>
       </section>
 
-      <!-- ★ v5.0 示例数据：给"想试功能但还没攒够数据"的人用。
-           三条硬规则写在 demoFill 上方：只加不盖 / 每条带 demo 标记 / 设置页显示条数。
-           清空按钮在没有示例时是禁用的 —— 免得用户点一下以为删掉了自己的东西。 -->
-      <section class="glass set-card${rv()}"${rvd(170)}>
-        <h3>示例数据</h3>
-        <p class="set-sub">只为试功能用。示例条目和你自己的条目<b>完全分开</b> —— 一键清空只删带标记的那些，删不到你自己的。</p>
-        <div class="set-row stack">
-          <div class="set-txt">
-            <b>现在有 <span class="mono">${demoCount()}</span> 条示例</b>
-            <span>放进来的是：今天到期 / 逾期 / 长期 / 短期 / 循环 / 复合目标 / 高优先的待办，
-              以及带三层父子、续写时间轴、合并血缘、沉睡、已收起的想法 —— 这一版新加的东西都能立刻看到形状。
-              日期按"今天"算，过几天再放也不会变成一堆过期条目。</span>
-          </div>
-          <div class="seg-cap">
-            <button type="button" class="pill" data-act="demofill">放一批进来</button>
-            <button type="button" class="pill${demoCount() ? '' : ' is-off'}" data-act="democlear"
-                    ${demoCount() ? '' : 'disabled'} aria-disabled="${demoCount() ? 'false' : 'true'}">清空示例</button>
-          </div>
-        </div>
-      </section>
+      <!-- ★ v5.2：「示例数据」原来独立一张卡，已搬进下面的「数据」栏。
+           用户原话："把示例数据归入到这个数据栏目下"。 -->
 
-      <section class="glass set-card${rv()}"${rvd(180)}>
-        <h3>性能</h3>
-        <p class="set-sub">老机型、省电模式下可以把这套视觉降下来，数据不受影响。</p>
-        <!-- 流畅模式原来在顶栏（一颗 ⚡）。撤掉是因为手机上它和主题滑块一起挤掉了标题，
-             功能本身有用（老机型 / 软件渲染滚动更顺），所以搬到这里。
-             aria-checked 直接读 html.soft-render —— 那是唯一真相：
-             它由"软件渲染自动检测"或"用户手动选择"共同决定，这里不另存一份状态。 -->
-        <div class="set-row">
-          <div class="set-txt">
-            <b>流畅模式</b>
-            <span>关掉玻璃模糊、背景点阵和入场动画，老机型滚动明显更顺。
-              检测到设备在用软件渲染时会自动打开；这里的开关可以手动覆盖它。</span>
-          </div>
-          <button class="switch" data-set="lite" role="switch" aria-label="流畅模式"
-                  aria-checked="${document.documentElement.classList.contains('soft-render') ? 'true' : 'false'}"></button>
-        </div>
-      </section>
+      <!-- ★ v5.2：「性能」整栏取消 —— 它只有"流畅模式"一项，已并进「外观」。 -->
 
       <!-- ★ v5.0 第 3 批：AI（联网）。**默认关闭** —— 这是本页唯一会让数据离开这台手机的开关，
            所以它单独占一张卡，文案直白说明"发什么、发到哪"，不写成免责声明。
            三档的差别就是"发多少内容出去"：关闭一个字都不发 / 只发标题 / 标题+原文+时间轴。 -->
-      <section class="glass set-card${rv()}"${rvd(200)}>
+      <section class="glass set-card${rv()}"${rvd(170)}>
         <h3>AI</h3>
         <p class="set-sub">给想法找关系、以及以某个身份问你一句。要用它就得联网，还得有一把模型服务商的 key。</p>
         <p class="ai-quote">打开之后，鱼事会把<b>当前这一条想法的文字</b>发到模型服务商那里去。
@@ -6482,9 +6564,9 @@ function renderSettings(){
         </div>
       </section>
 
-      <section class="glass set-card${rv()}"${rvd(240)}>
+      <section class="glass set-card${rv()}"${rvd(200)}>
         <h3>数据</h3>
-        <p class="set-sub">数据只存在这台手机上、不上云。这里只做"导出留底"。</p>
+        <p class="set-sub">数据只存在这台手机上、不上云。这里做"导出留底"，以及只给试功能用的示例数据。</p>
         <!-- 备份导出从清单页工具行搬来（原来和粘贴导入并排）。#exportBtn 的点击在脚本里统一处理，
              #backup 角标由 refresh 每帧同步（未备份 / 几天前备份）。 -->
         <div class="set-row">
@@ -6495,6 +6577,25 @@ function renderSettings(){
           <div style="display:flex;align-items:center;gap:12px">
             <button class="btn" id="exportBtn">备份</button>
             <span class="backup" id="backup"></span>
+          </div>
+        </div>
+        <!-- ★ v5.0 示例数据：给"想试功能但还没攒够数据"的人用。
+             三条硬规则写在 demoFill 上方：只加不盖 / 每条带 demo 标记 / 设置页显示条数。
+             清空按钮在没有示例时是禁用的 —— 免得用户点一下以为删掉了自己的东西。
+             ★ v5.2（用户："把示例数据归入到这个数据栏目下"）：从独立一张卡降级成这栏里的第二行，
+             原来的 set-sub（"只为试功能用…"）并进这一行的说明里。 -->
+        <div class="set-row stack">
+          <div class="set-txt">
+            <b>现在有 <span class="mono">${demoCount()}</span> 条示例</b>
+            <span>示例数据只为试功能用，和你自己的条目<b>完全分开</b> —— 一键清空只删带标记的那些，删不到你自己的。
+              放进来的是：今天到期 / 逾期 / 长期 / 短期 / 循环 / 复合目标 / 高优先的待办，
+              以及带三层父子、续写时间轴、合并血缘、沉睡、已收起的想法 —— 这一版新加的东西都能立刻看到形状。
+              日期按"今天"算，过几天再放也不会变成一堆过期条目。</span>
+          </div>
+          <div class="seg-cap">
+            <button type="button" class="pill" data-act="demofill">放一批进来</button>
+            <button type="button" class="pill${demoCount() ? '' : ' is-off'}" data-act="democlear"
+                    ${demoCount() ? '' : 'disabled'} aria-disabled="${demoCount() ? 'false' : 'true'}">清空示例</button>
           </div>
         </div>
       </section>
@@ -6514,7 +6615,10 @@ function renderSettings(){
         <div class="set-row">
           <div class="set-txt">
             <b>版本 v${APP_VERSION}</b>
-            <span>装在这台手机上的独立 App，没有账号：数据只存在这台手机里，不会上传到任何地方。
+            <!-- ★ v5.2（用户："关于这个栏目下面的版本灰字说明永久显示，不跟这个页面说明文字开关相关联"）：
+                 这段是"数据在哪、有没有账号"的关键交代，属于该永远看得见的信息 ——
+                 加 data-keephelp 把自己从 body[data-help=off] 那条收起规则里摘出去。 -->
+            <span data-keephelp="1">装在这台手机上的独立 App，没有账号：数据只存在这台手机里，不会上传到任何地方。
               「AI」那一栏默认是关的 —— 关着的时候它一个字都不出这台手机；打开后也只发当前这一条想法的文字。
               换手机时用「备份」导出一份文件，在新手机上导入即可。</span>
           </div>
@@ -6525,8 +6629,8 @@ function renderSettings(){
 }
 
 /* ★ v5.0：设置页的折叠 —— 在上面那份 markup 渲染完之后**原地加工**，不改各栏自己的写法。
-   为什么不在模板里逐栏包壳：这里 8 栏，以后还会加；包壳写法要求每加一栏都记得再包一次，
-   漏了就成一个"点了没反应"的标题。在这里统一加工，新加的栏自动带上折叠。
+   为什么不在模板里逐栏包壳：这里 5 栏（v5.2 从 8 栏并到 5 栏），以后还会加；包壳写法要求
+   每加一栏都记得再包一次，漏了就成一个"点了没反应"的标题。在这里统一加工，新加的栏自动带上折叠。
    加工后每张卡的形状：button.set-head（里面是 h3 + ▸）→ div.set-body（原来的其余内容）。
    展开态读 S.setOpen（默认空数组 = 全收起）；收起时卡片只剩一行标题。 */
 function setFoldInit(){
@@ -7706,7 +7810,7 @@ view.addEventListener('click', e => {
     if (el.dataset.set === 'help'){
       S.showHelp = !S.showHelp;
       save();
-      applyHelp();
+      applyHelp(true);          // ★ v5.2：撑开/收回，而不是整页瞬移（见 applyHelp 的注释）
       el.setAttribute('aria-checked', S.showHelp ? 'true' : 'false');
     }
     /* ★ v5.0 想法回顾总开关。关掉后想法页顶部**不出现**抽屉 ——
@@ -7889,7 +7993,10 @@ view.addEventListener('click', e => {
   }
   if (act === 'ideatagclear'){ ideaUI.tags = []; refresh(); return; }
   /* ★ v5.0：设置页每栏的折叠开关。**就地切换、不整页重渲染** —— 展开会改变页面高度，
-     走 refresh 之后滚动位置会跳一下，用户刚点开的那一栏可能已经不在指尖下了。 */
+     走 refresh 之后滚动位置会跳一下，用户刚点开的那一栏可能已经不在指尖下了。
+     ★ v5.2：展开/收起改成"高度撑开"（和「页面说明文字」共用 revealAnim）。
+     高度必须在**切换类之前**量：收起态自己被压到 0，要收的那个高度量不到；展开态用
+     scrollHeight（收起时它照样是内容高度）。 */
   if (act === 'setfold'){
     const key = el.dataset.key || '';
     const i = S.setOpen.indexOf(key);
@@ -7897,8 +8004,20 @@ view.addEventListener('click', e => {
     save();
     const nowOpen = S.setOpen.indexOf(key) >= 0;
     const card = el.closest('.set-card');
+    const body = card && card.querySelector('.set-body');
+    /* 量内容高：把 max-height 临时放开量一次（同 setToolsOpen 的手法）。收起态被压成 0 高，
+       直接量只能得到 0；而展开方向要的就是"展开后该有多高"。全程在同一个任务里，不会绘制。 */
+    let h = 0, mt = '0px';
+    if (body){
+      const was = body.style.maxHeight;
+      body.style.maxHeight = 'none';
+      h = Math.ceil(body.offsetHeight);
+      body.style.maxHeight = was;
+      mt = getComputedStyle(body).marginTop;
+    }
     if (card) card.classList.toggle('open', nowOpen);
     el.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+    revealAnim(body, nowOpen, h, mt);
     return;
   }
   /* ★ v5.0：「没写时间的条目默认去哪」—— 只改默认落点，不改录入流程本身 */
@@ -9821,7 +9940,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.1.0';
+const APP_VERSION = '5.1.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
