@@ -14,6 +14,11 @@
   --bg:#ffffff; --fg:#070707;
   --muted:rgba(7,7,7,.58); --faint:rgba(7,7,7,.38);
   --line:rgba(7,7,7,.08); --line2:rgba(7,7,7,.16);
+  /* ★ 缩进树的脊线专用色：**故意用实色**。脊是"主干 + 每级钩子 + 每级下行段"首尾相接
+     拼出来的，接缝处必须让两段**重叠 2px** 才不会因为抗锯齿露出一条 1px 的缝
+     （实测就是这么裂的）。半透明色一重叠就会叠深（16% 叠成 29%），接缝反而显出来；
+     实色重叠前后一模一样，接缝彻底消失。浅色主题：#d7d7d7 ≈ rgba(7,7,7,.16) 在白底上的效果。 */
+  --tree-line:#d7d7d7;
   --pill:rgba(7,7,7,.045); --pill-hover:rgba(7,7,7,.075);
   --dot:rgba(7,7,7,.34);
   /* 折射色球：原站首页 body::after 的五色 */
@@ -75,6 +80,8 @@ html[data-theme="dark"]{
   --bg:#050505; --fg:#ffffff;
   --muted:rgba(255,255,255,.62); --faint:rgba(255,255,255,.4);
   --line:rgba(255,255,255,.12); --line2:rgba(255,255,255,.22);
+  /* 深色主题的脊线实色：rgba(255,255,255,.22) 叠在 #050505 上 ≈ #3c3c3c */
+  --tree-line:#3c3c3c;
   --pill:rgba(255,255,255,.08); --pill-hover:rgba(255,255,255,.14);
   --dot:rgba(255,255,255,.34);
   --refraction-opacity:.56;
@@ -821,7 +828,11 @@ body:not([data-view="settings"]) .pdaim-footer{display:none}
 .udot.u4{background:var(--u4);box-shadow:0 0 10px color-mix(in srgb,var(--u4) 60%,transparent)}  /* 深红＝标了 !! */
 .item.done .udot{opacity:.35}    /* 已完成的不再喊紧急，点留着只为对齐 */
 .tick{
-  flex:0 0 auto;width:20px;height:20px;margin-top:2px;border-radius:7px;cursor:pointer;padding:0;
+  /* ★ 本轮（用户截图指它："这个依然不是一个圆呀，它还是一个长条状的。
+     跟点击「想法」呈现出来的效果也不一样"）：原来 radius:7px —— 是个圆角方块，
+     而想法页多选态的圆钮 .pick 是 border-radius:50% 的正圆，同一套"选中"语义两种形状。
+     统一成正圆，形状不再随页面变。 */
+  flex:0 0 auto;width:20px;height:20px;margin-top:2px;border-radius:50%;cursor:pointer;padding:0;
   border:1.6px solid var(--line2);background:transparent;color:transparent;font-size:12px;line-height:1;
   display:flex;align-items:center;justify-content:center;transition:all var(--mo-fast) ease;
 }
@@ -881,7 +892,8 @@ body:not([data-view="settings"]) .pdaim-footer{display:none}
 /* 折叠/展开的高度过渡：高度由 JS 量出来写成 inline 值（auto 没法参与过渡），
    这里只提供曲线。overflow:hidden 是必需的 —— 高度塌到 0 时内容会溢出来。
    上下的 6px/2px 外边距也要一起过渡，不然高度收完了外边距还在，会留一条 8px 的缝。 */
-.goal-kids.folding{
+.goal-kids.folding,
+.seed-kids.folding{
   overflow:hidden;
   transition:height var(--mo-base) var(--mo-size),
              opacity var(--mo-fast) ease,
@@ -1027,7 +1039,10 @@ html.locked{overflow:hidden}
 .mask .modal,
 html.gpu-render .mask .modal,
 html.soft-render .mask .modal{
-  background:color-mix(in srgb,var(--bg) 97%,transparent);
+  /* ★ 审查修复（2026-10-04）：原来剩 3% 透明 —— 项目自己的硬规则是"浮层必须实底"
+     （§14 L-64 的自动断言也要求 backgroundColor 无 alpha）。下面垫着 42% 黑遮罩时
+     肉眼几乎看不出，但规则与断言都该一致。 */
+  background:var(--bg);
   -webkit-backdrop-filter:none;backdrop-filter:none;
 }
 /* ★ 3.5.6 修「下拉展开像透明的」的真凶（用户 2026-09-27 第二次提同一处）：
@@ -1337,7 +1352,7 @@ html.soft-render .mask .modal{
    用 ID 选择器（#toast）而不是加 !important：ID 权重天然压过 html.gpu-render .glass，
    这里不需要靠 !important 打补丁。顺带补一圈极淡描边 —— 纯浮动的一小条，
    只靠 .glass 那团柔影在白底上分不出边界。 */
-#toast{background:color-mix(in srgb,var(--bg) 97%,transparent);
+#toast{background:var(--bg);
   -webkit-backdrop-filter:none;backdrop-filter:none;
   border:1px solid color-mix(in srgb,var(--glass-edge) 26%,transparent)}
 /* ★ v3.32（用户实测：语音录入的提示压住了弹窗的「取消」键）：弹窗打开时提示挪到屏幕顶部 ——
@@ -1814,6 +1829,18 @@ input:focus-visible,textarea:focus-visible{outline:none!important}
    真要做"划掉"的正确姿势是 `text-decoration:line-through`：它会给每一行各画一条、
    自动贴合行高，只是没有"从左划到右"的过程。用户没要这个，先不加。 */
 .item.row-out-del{box-shadow:inset 0 0 0 999px color-mix(in srgb,var(--danger) 9%,transparent);border-radius:12px}
+/* 「已立项」跳回目标待办时闪一下（一次性，不是常驻光效） */
+@keyframes jumpHl{
+  0%{box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 70%,transparent)}
+  100%{box-shadow:0 0 0 2px transparent}
+}
+.item.jump-hl{animation:jumpHl 1.6s ease both}
+/* ★ 本轮（用户："清单里有个按钮删一下，看不太出来。是不是因为你这个闪了一下，
+   在卡片消失之前闪的"）：删除和"完成"共用同一道**白**闪。白色是"打勾"的语言，
+   用在删除上是错的语言，而且它盖住了"整条被压掉"的过程，删了什么反而看不清。
+   删除改成红色闪 —— 两个动作各说各的话。 */
+.item.row-out-del::after,
+.hwcard.row-out-del::after{background:color-mix(in srgb,var(--danger) 45%,transparent)}
 .item.row-out-del .t{color:var(--danger)}
 .item.row-out-del .acts .mini{color:var(--danger)}
 
@@ -1865,7 +1892,7 @@ input:focus-visible,textarea:focus-visible{outline:none!important}
      --bar-h 栏高、--btn-d 圆钮直径、--wrap 包边宽、--tr-r 过渡凹角半径、--end-r 两端圆角。
      实际轮廓由 JS 按实测栏宽算出 SVG 路径（见底部 buildBarShape）：垂直尺寸固定 px，
      只有水平布局随栏宽自适应，保证圆钮永远是 56px、栏永远是 48px。 */
-  --bar-h:48px;--btn-d:56px;--wrap:6px;--wrap-max:20px;--tr-r:16px;--end-r:24px;
+  --bar-h:48px;--btn-d:56px;--wrap:8px;--wrap-max:20px;--tr-r:16px;--end-r:24px;
   /* 玻璃层 / 水波层比轮廓大一圈的 overscan：长按时「水环」膨胀，轮廓会探出 capsule
      的底边（那是正常的——水环本来就该凸出去），所以承载它的元素必须比轮廓大这么多，
      否则会被自己的盒子切平。JS 会把裁切路径同步平移同样的距离，两边永远对齐。 */
@@ -2020,7 +2047,7 @@ html.soft-render .bar-glass{
    ② 下面那根 18×3 的小短杠。整条栏因此是连续一体的，指示读起来是「栏的一部分」。 */
 .tab[aria-current="page"]{color:var(--fg)}
 .tab::after{
-  content:"";position:absolute;left:var(--dot-x,50%);bottom:7px;transform:translateX(-50%);
+  content:"";position:absolute;left:var(--dot-x,50%);bottom:6px;transform:translateX(-50%);
   width:18px;height:3px;border-radius:2px;opacity:0;
   background:color-mix(in srgb,var(--fg) 55%,transparent);
   /* left 用 --dot-x 而不是 50%：指示条要落在**图标**正下方，不是按钮盒子正中。
@@ -2036,24 +2063,35 @@ html.soft-render .bar-glass{
    一排里两种"高亮范围"，看着就像没对齐。
    改成四个键共用**同一枚 44×44 圆环**，圆心跟着图标（--dot-x，见 syncTabDots）。
    键盘无障碍没有丢：环还在，只是不再是"元素的形状"，而是"图标的形状"。 */
-.tab:focus-visible{outline:none!important}
-.tab:focus-visible::before{
+/* ★ 第 3 波（用户截图指着底栏："你这个确实让它变成一个圆了，但是我点一下，你看这个整体
+   变灰的，就是有视觉反馈的，仍然是这么大一个区域，还不是一个圆"）：
+   聚焦环上一版已经是 44px 圆了，但**按下态的灰罩**还是整格 —— `.tab` 是 flex:1 的整格
+   （清单/统计还各带 26px 单边内边距，给中间圆钮让位），直接给它加背景色就是一大条胶囊。
+   现在把「按下灰罩」和「聚焦环」都挂到同一枚 `.tab::before` 上：44×44 正圆、圆心跟着图标
+   （--dot-x 由 syncTabDots 量出）。四个键的**全部**视觉反馈从此都是同一个圆。 */
+.tab::before{
   content:'';position:absolute;left:var(--dot-x,50%);top:50%;
   width:44px;height:44px;border-radius:50%;
   transform:translate(-50%,-50%);
-  box-shadow:0 0 0 2px var(--ring);
+  background:transparent;box-shadow:none;
   pointer-events:none;
+  transition:background var(--mo-quick) ease;
 }
-/* 按下态：跟全站 .btn:active 同一语言（沉一下 + 灰罩），但 .tab 不在那条选择器里，这里单独写 */
-.tab:active{transform:translateY(1px) scale(.96);transition-duration:60ms;
-  background-image:linear-gradient(var(--tap),var(--tap))}
+.tab:active::before{background:var(--tap)}
+.tab:focus-visible{outline:none!important}
+.tab:focus-visible::before{box-shadow:0 0 0 2px var(--ring);}
+/* 按下态：跟全站 .btn:active 同一语言（沉一下）—— 灰罩改由上面那颗圆承担，
+   这里不再写 background-image（那就是"一大条胶囊"的来源）。 */
+.tab:active{transform:translateY(1px) scale(.96);transition-duration:60ms}
 
 /* v2.5：底栏右端的「设置」入口 + 它的左端占位。
    .bar-gear 固定 36px（不参与 flex:1 等分），只留图标；左端 .tab-pad 等宽，
    所以两个页签的中心仍对称压在中间圆钮两侧。 */
 /* v2.5：底栏两端的「设置」入口已经并入 .bar-ico（见上方那段），
    原来「左端等宽假占位 .tab-pad / 右端齿轮 .bar-gear」的写法已删除。 */
-.bar-gear::after{width:14px;bottom:3px}
+/* ★ 第 10 波：原来这条写的是 `{width:14px;bottom:3px}` —— 宽度和偏心都跟另外三个键不一样，
+   于是"设置"那条指示条比别的短、还高 3px。现在四个键统一：宽度 18px、位置交给 .tab::after 的 bottom。 */
+.bar-gear::after{width:18px}
 /* v3.2（用户："清单和统计这两个 UI 按钮距离中间太近"）：两个页签各自往**外**让开 26px ——
    在内侧加内边距（不是移动盒子本身），所以等分布局、两端对称、圆钮位置全都不受影响。 */
 /* ★ v5.0 修 bug（用户："点进清单和统计，底下这个灰色小指示条为什么不在图标正下方"）：
@@ -2365,6 +2403,14 @@ html[data-theme="dark"] .fab{
   color:var(--muted);
   display:flex;align-items:center;justify-content:center;
 }
+/* ★ 第 10 波（用户："底下这个灰色的指示条，跟其他那个高低都不一样，就这个想法……
+   底下的距离都不一样"）：底栏四个键里，`.bar-ico`（想法 / 设置）是 40×40 的方盒、
+   `.tab`（清单 / 统计）是 48px 高 —— 而"当前页"那根指示条是用 `bottom:6px` 贴着**各自的盒子底**
+   定位的，盒子不一样高，条就不在一条水平线上（差 4~5px，电脑上看得很清楚）。
+   修法：让**底栏里**的 `.bar-ico` 跟 `.tab` 一样高（48px），图标照旧居中对齐、
+   按下/聚焦那颗 44px 圆也照旧（它挂在 ::before 上，与盒子形状无关）。
+   ⚠️ 只限 `.tab.bar-ico` —— 工具栏那颗「?」帮助键也用 .bar-ico，它不是页签，尺寸不能跟着变。 */
+.tab.bar-ico{height:48px}
 .bar-ico .np-ico,.bar-ico svg{width:19px;height:19px;fill:none;stroke:currentColor;
   stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round}
 .bar-ico:hover{color:var(--fg)}
@@ -2426,29 +2472,55 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
    （--bg / --panel-solid / --accent / --mo-soft），不引入新颜色、新字体。
    ⚠️ 浮层铁律（本项目踩过）：凡是浮在内容之上的层必须实底，不许靠 backdrop-filter 兜底。
    这里的 .merge-bar 是浮层，所以底色写实值 --panel-solid，不写半透明。 */
+/* ★ 本轮（用户："想法界面的卡片明显比清单页窄，清单页卡片离屏幕边缘更近"）：
+   想法页这一整组块的**宽度基准改了**。原来它们各写 `min(1240px,calc(100% - 36px))`，
+   而父级 `.pdaim-section` 已经是 `calc(100% - 36px)` —— 两层各扣 18px，
+   想法卡左右各让 36px，清单页的 `.zone` 只让 18px，于是同一台手机上两张卡差了 36px 宽。
+   现在统一 `width:100%`：宽度基准只由 `.pdaim-section` 一处决定（这也是本项目
+   "同一件事只能有一个真相源"的老规矩）。
+   gap 10 → 8：给「＋新想法 / 多选 / 视图开关 / 手势说明」腾出一行放得下的余量。 */
 .idea-toolbar{
-  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-  margin:0 auto 18px;width:min(1240px,calc(100% - 36px));
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  /* ★ 本轮（用户："想法这两个字最底下的边缘，跟新想法/多选/视图转换这些框离得非常近"）：
+     实测确认了 —— 把「解释文案」关掉时（body[data-help="off"] 会隐藏 .intro-note），
+     大标题的字形下沿在 y=149，而工具条上沿在 y=141，**压了 8px**（大标题 line-height:.9，
+     字形会溢出自己的行盒）。原来工具条上外边距是 0，全靠那段解释文案撑着间距。
+     现在给它固定 26px 上边距：文案开着 → 保留原有呼吸；关掉 → 与标题字底至少 18px。 */
+  margin:26px auto 18px;width:100%;
 }
 .idea-toolbar .len{font-size:12px;color:var(--faint);letter-spacing:.06em}
 .idea-toolbar .btn{flex:0 0 auto}
-.idea-toolbar .idea-new{margin-right:0}
-/* ★ v5.0：多选挪到左边跟「＋ 新想法」并排后，靠视图开关自己撑开左边距来分组 ——
+/* ★ 本轮（用户："你这个'新想法'这三个字怎么还没去？'多选'这两个字也没去"）：
+   这两颗键去掉文字，只留图标 —— 跟底栏导航、视图开关同一套"图标即语义"，
+   文字交给 aria-label / title（读屏和长按提示都还在）。
+   方框 40×40 正圆 + flex 居中：图标 17px，上下各留 11.5px。
+   ⚠️ 上一轮用户就先警告过"把界面文字去掉之后，那个图标的下边缘会离框太近" ——
+   所以居中必须是 flex 算出来的，不能用行高/基线对（文字一走，基线对齐就会偏低）。 */
+.idea-toolbar .btn.key{
+  display:inline-flex;align-items:center;justify-content:center;
+  padding:0;width:40px;height:40px;border-radius:50%;
+}
+.idea-toolbar .btn.key .btn-ico{width:17px;height:17px;stroke-width:1.8}
+.btn-ico{width:14px;height:14px;flex:0 0 auto;fill:none;stroke:currentColor;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* 本轮起 `.idea-toolbar .idea-new{margin-right:0}` 这条规则删除 —— 那两颗键换成 SVG 后
+   类名已无人使用，空转规则不留（本项目的规矩：改样式前先数一遍同一选择器的定义次数）。 */
+/* ★ v5.0：多选挪到左边跟「新想法」并排后，靠视图开关自己撑开左边距来分组 ——
    左组（新想法 / 多选）贴左，右组（视图开关 / 手势说明）贴右。 */
 .idea-toolbar .idea-seg{margin-left:auto}
 /* ★ v5.0：想法页自己的搜索条与标签筛选（不共用清单页那套全局状态） */
-.idea-searchbar{width:min(1240px,calc(100% - 36px));margin:0 auto 10px}
+.idea-searchbar{width:100%;margin:0 auto 10px}
 .idea-searchbar .search{width:100%}
 .idea-filters{
   display:flex;flex-wrap:wrap;gap:6px;
-  width:min(1240px,calc(100% - 36px));margin:0 auto 14px;
+  width:100%;margin:0 auto 14px;
 }
 .idea-filters .pill{padding:5px 12px;font-size:12px}
 /* ★ v5.0：老数据的「考虑区」搬家提示（一次性，搬完就不出现）。
    底色必须实底 —— 本项目浮层/提示条禁止靠 backdrop-filter 提供可读性（见坑记录）。 */
 .consider-migrate{
   display:flex;align-items:center;gap:12px;flex-wrap:wrap;
-  width:min(1240px,calc(100% - 36px));margin:0 auto 14px;
+  width:100%;margin:0 auto 14px;
   padding:12px 14px;border-radius:16px;
   background:var(--panel-solid,var(--bg));border:1px solid var(--line,var(--pill));
   font-size:13px;line-height:1.5;color:var(--fg);
@@ -2459,7 +2531,7 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
    位置必须**在列表上方**：放底部就没人滚得到，等于没有。
    默认开合由使用频率决定（见 reviewDrawerHTML / reviewDaysSinceUse），不写死。 */
 .review-drawer{
-  width:min(1240px,calc(100% - 36px));margin:0 auto 14px;
+  width:100%;margin:0 auto 14px;
   border-radius:16px;overflow:hidden;
   background:var(--panel-solid,var(--bg));border:1px solid var(--line,var(--pill));
 }
@@ -2489,20 +2561,19 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
 .ri-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .review-foot{display:flex;gap:8px;flex-wrap:wrap}
 .review-foot .btn{flex:0 0 auto}
-.idea-list{display:grid;gap:14px;width:min(1240px,calc(100% - 36px));margin:0 auto}
-.idea-used-head{
-  display:flex;align-items:center;gap:9px;width:min(1240px,calc(100% - 36px));
-  margin:26px auto 10px;font-size:12px;font-weight:900;letter-spacing:.2em;
-  text-transform:uppercase;color:var(--muted);
-}
-.idea-used-head::after{content:'';flex:1;height:1px;background:var(--line,var(--pill))}
-.idea-used-head .n{margin-left:0;color:var(--faint)}
+.idea-list{display:grid;gap:14px;width:100%;margin:0 auto}
+/* ★ 第 2 波（用户："这个分割线还有这个二也不需要了"）：`.idea-used-head`（分隔线 + 条数）
+   整条规则删除，DOM 里也不再生成了 —— 不留没人用的死样式。
+   两组之间只靠这一条上外边距分开（收起来的卡片本身是暗的，边界看得见）。 */
+.idea-list.used{margin-top:26px}
 .empty-soft{
-  width:min(1240px,calc(100% - 36px));margin:0 auto 6px;
+  width:100%;margin:0 auto 6px;
   font-size:12px;color:var(--faint);text-align:center;
 }
 /* 想法卡：**不带勾选框那套 lead 布局**时也要好看，所以 seedHTML 里 .lead 只有一颗按钮。
-   .ic-body 让 seedHTML 产出的 .item 直接铺满卡内，不再套一层玻璃。 */
+   .ic-body 让 seedHTML 产出的 .item 直接铺满卡内，不再套一层玻璃。
+   ★ 本轮（用户："卡片太靠右 / 左边那个点放靠左一些 / 时间太长了，正文被挤太右"）：
+   左右内边距 16 → 12，"脊椎"起点 18 → 12，日期列不再吃 44px 的最小宽度。见下面三条。 */
 .idea-card{padding:0;overflow:hidden}
 .idea-card .ic-body > .item{border:0;background:none;box-shadow:none;margin:0;width:100%}
 /* 「用过了」的变暗样式统一放在下面 `.idea-card.sleep` 那条之后 ——
@@ -2510,8 +2581,12 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
    （一条既"用过了"又"沉睡"的卡片就会只按沉睡显示，暗得不够）。 */
 .idea-card.used{}
 /* 种子自己的条目皮肤：不用待办那条横排（点/勾/标题），改成竖排的"脊椎 + 步骤"。
-   .lead 只放那一颗按钮，固定在左上。 */
-.item.seed{padding:16px 16px 6px;align-items:flex-start}
+   .lead 只放那一颗按钮，固定在左上。
+   ★ 第 4 波（用户："每个卡片上字体与卡片上边缘、跟卡片下边缘的距离也不相等"）：
+   原来下边距是 6px，但卡底还压着一行"长按说明"（默认隐藏却仍占 18px 高度）+ 它的上下外边距，
+   实测下半身比上半身多出 20 多像素。那行说明整块删掉（见 seedHTML 与 .seed-acts 的删除），
+   上下内边距改成对称的 14px。 */
+.item.seed{padding:14px 12px 14px;align-items:flex-start}
 .item.seed .lead{flex-direction:column;gap:8px;padding-top:1px}
 .seed-tick{color:var(--faint)}
 /* ★ v5.0：勾选框删了 —— 原来就是上面这条 .seed-tick（按钮式勾）。
@@ -2531,23 +2606,45 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
 /* 缩进树：.seed-node 是 .idea-list 网格的直接子项；子想法在 .seed-kids 里再排一层网格。
    16px 一步；第 5 层起加 .flat（不再位移），层级改由卡上的「第 N 层」小标表达。 */
 .seed-node{display:block;min-width:0}
-.seed-kids{display:grid;gap:14px;padding-left:16px;margin-top:14px;min-width:0}
 /* ★ v5.0：**缩进之外再加连接线**。用户实测反馈：「单纯缩进一下看不太出来」
    —— 是下一级、还是另外一棵，光靠位移分不清。
    做法是常见的树形骨架：每个孩子一根拐角横线接到左边那条竖脊上；
    竖脊由"除最后一个之外"的孩子自己往下画一段（含 14px 的行距），
    所以线的末端正好停在最后一个孩子的拐角处，不会拖出一截无意义的尾巴。 */
-.seed-kids > .seed-node{position:relative}
-.seed-kids > .seed-node::after{
-  content:'';position:absolute;left:-9px;top:26px;width:9px;height:1px;
-  background:var(--line,var(--pill));opacity:.65;
+/* ★ 第 8 波（用户："这个线怎么不是连续的"）——**像素扫描实测**出来的真相：
+   三段线只是"算术上首尾相接"时，相接处是抗锯齿的两个端头，实际渲染会露缝。
+   修法两条一起上：
+     ① 相接处**重叠**（见下面注释，最终定在 8px）；
+     ② 线色用**实色** `--tree-line` —— 半透明色一重叠会叠深（16%→29%），接缝反而更明显；
+        实色重叠前后完全一样，缝就彻底没了。
+   ★ 第 11 波（用户第二次说"我要的是连续的一条线"）：重叠 2px 在 100%/200%/300% 下都连续，
+   但把**浏览器缩放换成 125%**（deviceScaleFactor=1.25，脚本 `_ref/_g12h-junction.mjs 1.25`）
+   就露馅：脊线在 y=304 断开 0.8px。原因是圆角钩的弧线一离开切点就往右偏，
+   竖线只多画 2px —— 那 1 个设备像素的行上，竖线已画完、弧线已偏右，两边都没盖住脊线那一列。
+   重叠加到 **8px**：半径 11 的弧在切点下方 8px 处仍压在脊线这一列上，竖线多画的这段
+   把弧线的抗锯齿端头整个盖住；同色实底，看不出多画。 */
+.seed-kids{
+  display:grid;gap:14px;padding-left:16px;margin-top:14px;min-width:0;   /* §6.1：16px 一步 */
+  position:relative;
 }
-.seed-kids > .seed-node:not(:last-child)::before{
-  content:'';position:absolute;left:-9px;top:26px;bottom:-14px;width:1px;
-  background:var(--line,var(--pill));opacity:.65;
+.seed-kids::before{                      /* 主干：父卡下边缘 → 越过第一个钩子的切点 8px */
+  content:'';position:absolute;left:0;top:-14px;width:2px;height:40px;
+  background:var(--tree-line,var(--line2));
+}
+.seed-kids > .seed-node{position:relative}
+.seed-kids > .seed-node::after{          /* 接驳：圆角钩（下边框 + 左下圆角 = 柔和转角） */
+  content:'';position:absolute;left:-16px;top:17px;width:16px;height:12px;
+  border-bottom:2px solid var(--tree-line,var(--line2));
+  border-bottom-left-radius:11px;
+}
+.seed-kids > .seed-node:not(:last-child)::before{   /* 脊：接到下一个孩子、并越过它的切点 8px */
+  content:'';position:absolute;left:-16px;top:18px;bottom:-40px;width:2px;
+  background:var(--tree-line,var(--line2));
 }
 .seed-kids.flat > .seed-node::after,
-.seed-kids.flat > .seed-node::before{display:none}   /* 第 5 层起不再缩进，线也一并收掉 */
+.seed-kids.flat > .seed-node::before,
+.seed-kids.flat::before,
+.seed-kids.flat::after{display:none}   /* 第 5 层起不再缩进，线也一并收掉 */
 .seed-kids.flat{padding-left:0}
 .seed-kids[hidden]{display:none}
 
@@ -2568,17 +2665,17 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
 .item.seed .body{min-width:0;flex:1;gap:8px}
 /* 时间轴：一条 1px 竖脊 + 每步一颗点。第一步（种子本身）的点用强调色实心，
    后面长出来的用空心 —— 一眼能分出"种子"和"长出来的"。 */
-.spine{position:relative;padding-left:18px}
-.spine::before{content:'';position:absolute;left:5px;top:6px;bottom:6px;width:1px;
+.spine{position:relative;padding-left:12px}
+.spine::before{content:'';position:absolute;left:4px;top:6px;bottom:6px;width:1px;
   background:var(--line,var(--pill))}
 .sp-step{position:relative;display:flex;align-items:baseline;gap:8px;padding:3px 0;min-width:0}
-.sp-dot{position:absolute;left:-17px;top:8px;width:7px;height:7px;border-radius:50%;
+.sp-dot{position:absolute;left:-11px;top:8px;width:7px;height:7px;border-radius:50%;
   background:var(--faint);flex:0 0 auto}
 .sp-step.seed-first .sp-dot{background:var(--accent);
   box-shadow:0 0 8px color-mix(in srgb,var(--accent) 55%,transparent)}
 .sp-step.seed-first .sp-tx{font-weight:800;font-size:15px}
 .sp-at{flex:0 0 auto;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums;
-  min-width:44px}
+  min-width:0}
 .sp-tx{min-width:0;word-break:break-word;line-height:1.5}
 .sp-x{
   flex:0 0 auto;margin-left:auto;border:0;background:none;color:var(--faint);
@@ -2605,8 +2702,8 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
   display:flex;align-items:center;justify-content:center;font-family:inherit;
 }
 .pick.on{background:var(--accent);border-color:var(--accent);color:#fff}
-/* 种子卡上的动作排：比待办多几个键，允许换行，不挤成一坨 */
-.seed-acts{flex-wrap:wrap;gap:6px;margin:2px 0 10px}
+/* ★ 第 4 波：`.seed-acts`（长按说明那一行的外框）与 `.seed-acts .mini`（早期的 5 枚小按钮）
+   两条规则一起删除 —— 元素已经从卡片模板里拿掉了，不留空转样式。 */
 /* ★ v5.0：时间轴上每步的两个小动作。
    `→` = 把这一句变成待办（部分转化）；`↑` = 把这一句补到已立项的那条待办里。
    **都不做成勾选框形状** —— 种子一旦长出"可勾的进度"，就退化成第二个清单了。 */
@@ -2618,9 +2715,6 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
 }
 .sp-go:hover,.sp-push:hover{color:var(--accent);border-color:var(--accent)}
 .sp-done{color:var(--accent);font-size:11px;margin-left:2px}
-.seed-acts .mini{width:auto;min-width:34px;padding:0 10px;font-size:12px;font-weight:700;
-  border-radius:10px;height:30px}
-.chip.seedchip{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--fg)}
 .chip.promoted{cursor:pointer;border:1px solid var(--accent);color:var(--accent)}
 .chip.srcchip{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 多选确认条：**浮层，必须实底**（见文件里"浮层铁律"那条）。粘在底部、居中、不遮底栏。 */
@@ -2756,15 +2850,37 @@ html.soft-render .mask.sheet-mode .modal{
    为什么不用 foreignObject 把 HTML 塞进 SVG：跨浏览器的排版差异太大，
    而节点里要截断两行标题 —— 那是 HTML 的长项。
    touch-action:none 必须写：不然单指拖会被浏览器当成滚动，画布永远拖不动。 */
+/* ★ 本轮：树状图外面套一层 .tree-frame —— 为了能整块进全屏，并且把底部那行灰色说明
+   从画布里搬出来（用户："说明小字放到查看框的外面，也就是放到最下面；放在现在这个位置
+   反而会造成遮挡"）。实测：搬到外面之前，那行字压在 1 个节点上。 */
+.tree-frame{width:100%;margin:6px auto 2px;display:flex;flex-direction:column;gap:8px}
 .tree-wrap{
   position:relative;overflow:hidden;
-  /* ★ v5.0：宽度必须跟想法页其它块（.idea-list / .review-drawer）对齐 ——
-     少了这一条，画布会铺满 #view，左右各比上下两条卡片多出 18px（用户："你看这个左右都凸出来了"）。 */
-  width:min(1240px,calc(100% - 36px));margin:6px auto 2px;
+  /* 宽度基准由 .pdaim-section 一处决定（同上面 .idea-list 那条注释）。 */
+  width:100%;margin:0;
   border-radius:22px;background:var(--bg);
   border:1px solid var(--line,var(--pill));
   height:min(64vh,620px);touch-action:none;cursor:grab;
 }
+/* 全屏查看（本轮新增）：整块铺满视口，底部说明与「退出全屏」键一起搬到最下面。
+   为什么用 .tree-frame 而不是直接让 .tree-wrap 固定：说明行与退出键必须在全屏里也够得着。
+   ⚠️ z-index 只有 75 —— 底栏是 80；真要让画布盖住底栏，靠的是 html.tree-full 把底栏藏掉，
+   而不是硬抬 z-index（.pdaim-section 自己 z-index:2，里面再大的 z-index 也压不过外面的 80，
+   这个坑本项目在鱼问里踩过一次）。 */
+.tree-frame.full{
+  position:fixed;left:0;right:0;top:0;bottom:0;z-index:75;margin:0;
+  padding:calc(env(safe-area-inset-top) + 10px) 10px calc(env(safe-area-inset-bottom) + 10px);
+  background:var(--bg);
+  animation:none!important;   /* #view.swap-in 会给直接子元素挂 transform 动画，全屏时不要 */
+}
+.tree-frame.full .tree-wrap{height:auto;flex:1;min-height:0;border-radius:18px}
+html.tree-full,html.tree-full body{overflow:hidden!important}
+html.tree-full .tabbar{display:none}
+/* ★ 审查修复（2026-10-04）：.merge-bar（z-index:60）与 .tree-frame.full（75）同处
+   #view（.pdaim-section，z-index:2）的层叠上下文里 —— 全屏时合并条被画布整个盖住，
+   而画布底部提示行偏偏写着"用下面的「合并」"。同层里把它抬到 85：弹层 90、提示条 95
+   仍稳在它上面。 */
+html.tree-full .merge-bar{z-index:85}
 .tree-wrap.panning{cursor:grabbing}
 .tree-canvas{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
 .tree-edges{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
@@ -2804,10 +2920,22 @@ html.soft-render .mask.sheet-mode .modal{
   padding:1px 7px;cursor:pointer;
 }
 .tn-fold.col{color:var(--muted)}
+/* 底部说明行：**在画布外面**（本轮从 .tree-wrap 里搬出来）。
+   原来绝对定位在画布内部底边，节点铺满时会压住节点（用户："放在现在这个位置反而会造成遮挡"）。 */
+.tree-foot{display:flex;align-items:flex-start;gap:10px}
 .tree-hint{
-  position:absolute;left:12px;right:12px;bottom:9px;
-  font-size:11px;color:var(--faint);pointer-events:none;text-align:center;
+  flex:1;min-width:0;font-size:11px;line-height:1.55;color:var(--faint);text-align:center;
 }
+/* 「全屏查看 / 退出全屏」——右端一枚小键。用 SVG，不用 ⛶ 这类符号字形：
+   符号会从另一套字体里取字形，跟旁边的中文对不上（本轮正在治的"两个字体"就是这个毛病）。 */
+.tree-fullbtn{
+  flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;
+  border:1px solid var(--line,var(--pill));background:transparent;color:var(--muted);
+  border-radius:999px;padding:5px 11px;font:inherit;font-size:11.5px;font-weight:700;
+  cursor:pointer;white-space:nowrap;
+}
+.tree-fullbtn:hover{color:var(--fg);border-color:var(--fg)}
+.tree-fullbtn .np-ico{width:14px;height:14px}
 /* ★ v5.0 修订：`.tree-zone`（两区区名那小字）已按用户要求删除，
    规则一并删掉 —— 不留没人用的死样式。两区的划分还在，只是不再写名字。 */
 /* 拖拽改挂载：被拖的那张抬起来，落点那张套一圈强调色 */
@@ -2820,8 +2948,8 @@ html.soft-render .mask.sheet-mode .modal{
 @media (prefers-reduced-motion: no-preference){
   .idea-card{transition:transform 140ms ease}
 }
-/* 长按菜单的发现性问题：长按是hidden手势，卡片底部留一行极淡的说明 */
-.seed-longhint{font-size:11px;color:var(--faint);letter-spacing:.02em}
+/* ★ 第 4 波：`.seed-longhint`（卡片底部那行常显/隐藏的长按说明）已随模板一起删除。
+   长按的发现性由长按时浮出的 .seed-hud 与「?」手势说明承担。 */
 
 /* ---------- ★ v5.0 第 3 批：AI（联网）----------
    全部复用现有 token，不新增配色 / 字体。三处用到：
@@ -3158,6 +3286,15 @@ function guessTags(text){
 /* ---------------- 日期工具 ---------------- */
 function pad2(n){ return String(n).padStart(2, '0'); }
 function ymd(d){ return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+/* ★ 本轮（用户："时间太长了，把想法的正文都挤得太靠右"）：想法卡的时间轴日期原来一律
+   写全 `2026-10-04`，在 11px 字号下占 ~61px，手机上一行正文只剩 165px。
+   当年日期省掉年份（`10-04`），跨年的仍写全年 —— 少一截，信息不丢。
+   非 `YYYY-MM-DD` 的值（老数据、别的格式）原样返回，不做猜测。 */
+function shortDay(s){
+  const v = String(s == null ? '' : s);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  return v.slice(0, 4) === String(new Date().getFullYear()) ? v.slice(5) : v;
+}
 function dateFrom(s){ const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
 
 /* 导入历史笔记时，相对日期（今天/周四/17号）按「基准日」算，而不是按今天 */
@@ -3918,6 +4055,9 @@ function seedHTML(it, info){
     .map(x => x.title)
     .join(' ＋ ');
   const promoted = it.promoted ? S.items.find(x => x.id === it.promoted) : null;
+  /* ↑「补到待办里」的目标 = 最近一次立项产生的那条（整条立项或单步立项都算） */
+  const pushTarget = it.promoted || it.lastPromoted;
+  const pushTask = pushTarget ? S.items.find(x => x.id === pushTarget) : null;
   const pri = it.pri || 0;
   /* ★ v5.0 卡片状态（第 1 批 1.2）：
        sleeping —— 超过 14 天没长过一步就变淡；8~14 天仍按 live 显示（不留空档）
@@ -3941,19 +4081,19 @@ function seedHTML(it, info){
   const spine =
     `<div class="spine">` +
       `<div class="sp-step seed-first"><span class="sp-dot"></span>` +
-        `<span class="sp-at">${esc(first)}</span><span class="sp-tx">${esc(it.title)}</span></div>` +
+        `<span class="sp-at">${esc(shortDay(first))}</span><span class="sp-tx">${esc(it.title)}</span></div>` +
       /* ★ v5.0：每一步都带一个 `→`（**不是 ✓**）—— 点它就把这一句变成一条待办。
          设计稿的红线：**只有 →，没有勾选框，卡片上不显示「3/5 已完成」这类进度**，
          否则种子会退化成第二个清单（调研 01 §6 做法 9 明确这么说）。
          已立项的种子，每步再多一个 `↑`：把这一步补到那条待办里去（双向活链的写这一半）。 */
       sparks.map((s, i) =>
         `<div class="sp-step"><span class="sp-dot"></span>` +
-        `<span class="sp-at">${esc(s.at || '')}</span>` +
+        `<span class="sp-at">${esc(shortDay(s.at || ''))}</span>` +
         (s.by === 'ai' ? `<span class="sp-ai" title="AI 以「${esc(s.role || '')}」的身份问的">✦${esc(s.role || 'AI')}</span>` : '') +
         `<span class="sp-tx">${esc(s.text)}</span>` +
         (s.promotedTo ? `<span class="sp-done" title="这一步已经立项">↗</span>` : '') +
         `<button type="button" class="sp-go" data-act="sparkpromote" data-id="${esc(it.id)}" data-i="${i}" title="把这一句变成待办" aria-label="把这一句变成待办">→</button>` +
-        (promoted ? `<button type="button" class="sp-push" data-act="sparkpush" data-id="${esc(it.id)}" data-i="${i}" title="把这一句补到待办里" aria-label="把这一句补到待办里">↑</button>` : '') +
+        (pushTask ? `<button type="button" class="sp-push" data-act="sparkpush" data-id="${esc(it.id)}" data-i="${i}" title="把这一句补到待办里" aria-label="把这一句补到待办里">↑</button>` : '') +
         `<button type="button" class="sp-x" data-act="sparkdel" data-id="${esc(it.id)}" data-i="${i}" title="删掉这一步" aria-label="删掉这一步">✕</button>` +
         `</div>`).join('') +
       (ideaUI.sparkOpen === it.id
@@ -3973,7 +4113,6 @@ function seedHTML(it, info){
     <div class="body">
       ${spine}
       <div class="meta">
-        <span class="chip seedchip">种子</span>
         ${pri ? `<span class="chip prichip p${pri}">${pri === 2 ? '紧急' : '重要'}</span>` : ''}
         ${sparks.length ? `<span class="chip">${sparks.length} 步</span>` : ''}
         ${kidCount ? `<span class="chip kidchip" title="从这里还长出了 ${kidCount} 条">↳ ${kidCount}</span>` : ''}
@@ -3984,12 +4123,11 @@ function seedHTML(it, info){
         ${src ? `<span class="chip srcchip" title="合并自这些想法">来自 ${esc(src)}</span>` : ''}
         ${tags}
       </div>
-      <!-- ★ v5.0：卡片上那 5 枚小按钮搬进**长按菜单**了（见 openSeedSheet）。
-           卡片只剩内容；长按是隐藏手势，所以留一行极淡的说明保证能被发现。
-           注意这里必须是 HTML 注释：模板字符串里的 /* */ 会被当成文字渲染出来 —— v3.6.0 就是这么错的。 -->
-      <div class="acts seed-acts">
-        <span class="seed-longhint">长按卡片：续写 / 生长 / 立项 / 编辑 / 合并 / 收起来 / 删除</span>
-      </div>
+      <!-- ★ v5.0：卡片上那 5 枚小按钮搬进**长按菜单**了（见 openSeedSheet），卡片只剩内容。
+           ★ 第 4 波（用户："每张卡片上字体到卡片上边缘、与到卡片下边缘的距离不相等"）：
+           原来这里留了一行极淡的"长按卡片：续写 / 生长 / …"做可发现性 —— 但它默认隐藏时
+           **仍然占 18px 高**，卡片下半身因此比上半身厚一截。整行删掉：长按的发现性由
+           长按时浮出的 .seed-hud（方向提示）与「?」手势说明承担，那两处本来就是"长按才出现"。 -->
     </div>
   </div>`;
 }
@@ -4385,6 +4523,19 @@ function reviewPicked(){
       && Array.isArray(i.suggest) && i.suggest.some(s => S.items.some(x => x.id === s.to)));
     take(withSug.sort((a, b) => ideaLastAt(b) - ideaLastAt(a))[0]);
   }
+  /* ★ 审查修复（2026-10-04）：`S.lastOpenedSeed` 之前**只写不读**，设计稿 §6.5 槽位 2 的
+     "与你最近点开的想法关联度最高"那半条规则是死状态。无 AI 时的本地近似：
+     先找与最近点开那条**有直接关系**的（父子 / 血缘 / 至少共享一个标签），
+     没有才回落到原来的「最近 7 天新增步数最多」。 */
+  const lastOpen = S.lastOpenedSeed ? S.items.find(x => x.id === S.lastOpenedSeed) : null;
+  const relatedScore = i => {
+    if (!lastOpen || !i || i.id === lastOpen.id) return -1;
+    if (i.parent === lastOpen.id || lastOpen.parent === i.id) return 3;
+    if ((i.bornFrom || []).includes(lastOpen.id) || (lastOpen.bornFrom || []).includes(i.id)) return 2;
+    return (i.tags || []).some(t => (lastOpen.tags || []).includes(t)) ? 1 : 0;
+  };
+  take(pool.filter(i => !seen.has(i.id) && relatedScore(i) > 0)
+    .slice().sort((a, b) => relatedScore(b) - relatedScore(a) || ideaLastAt(b) - ideaLastAt(a))[0]);
   const recentSteps = i => (Array.isArray(i.sparks) ? i.sparks : [])
     .filter(s => (Date.now() - Date.parse((s.at || '') + 'T00:00:00')) <= 7 * 86400000).length;
   take(pool.filter(i => !seen.has(i.id) && recentSteps(i) > 0)
@@ -4400,6 +4551,26 @@ function reviewPicked(){
     .forEach(i => { if (picked.length < 3) take(i); });
   return picked.slice(0, 3);
 }
+/* ★ 审查修复（2026-10-04）：§7.8 / §14 C-17 要求"三条各自被处理过 → 抽屉收起显示「今天就这样」"。
+   原来只有一颗手动按钮。这里记这一轮抽屉里的三条 id，逐个被处理完就自动收尾。
+   续写要"真的写入一条 spark"才算，所以那条由 seedAddSpark 调进来；
+   立项 / 收起来 点了就生效，在点击处记。 */
+function reviewMark(id){
+  if (!id) return;
+  /* 只认"这一会话里真的在抽屉里露过面"的条目（reviewShown），避免在列表里随手写三句
+     续写就把今天的回顾仪式判成完成。 */
+  if (!ideaUI.reviewShown || !ideaUI.reviewShown.has(id)) return;
+  if (!ideaUI.reviewHandled) ideaUI.reviewHandled = new Set();
+  if (ideaUI.reviewHandled.has(id)) return;
+  ideaUI.reviewHandled.add(id);
+  /* 记账必须是**会话级**的：每处理一条都会 refresh，池子的选片立刻换人，
+     按"这一轮那三条"记账会被重置，永远收不了尾。 */
+  if (ideaUI.reviewHandled.size >= 3){
+    S.ideaReviewDone = ymd(new Date()); save();
+    ideaUI.reviewOpen = null;
+    refresh(); toast('今天就这样');
+  }
+}
 function reviewWhy(it){
   const d = seedSleepDays(it);
   if (d > 30) return '沉了很久：' + d + ' 天没动';
@@ -4411,12 +4582,29 @@ function reviewDrawerHTML(){
   if (!S.ideaReview) return '';                       // 设置页总开关
   if (S.ideaReviewDone === ymd(new Date())) return ''; // 今天已经处理过，当天不再推
   const picked = reviewPicked();
-  if (!picked.length) return '';
+  /* ★ 审查修复（2026-10-04）：原来"没有可推的条目"就整块 return '' —— 于是池子空掉
+     之后（最典型：想法全被收起来了）底部那个**淘汰入口**也一起消失，再也点不到。
+     池子空时仍然渲染一条只有淘汰行的窄抽屉：它是唯一的清理出口，不该跟着内容一起走。 */
+  if (!picked.length){
+    const usedOnly = S.items.filter(i => isSeed(i) && i.done).length;
+    if (usedOnly < 5) return '';
+    return `<div class="review-drawer${rv()}"${rvd(20)}>
+      <div class="review-body">
+        <p class="review-note">没有需要回顾的了。收起来的已经攒了 <b class="mono">${usedOnly}</b> 条。</p>
+        <div class="review-foot">
+          <button type="button" class="btn ghost" data-act="reviewpurge">清掉收起来的 ${usedOnly} 条</button>
+        </div>
+      </div>
+    </div>`;
+  }
   const d = reviewDaysSinceUse();
   const open = ideaUI.reviewOpen === null ? (d > 7) : !!ideaUI.reviewOpen;
   /* 数量角标只在"隔了 2~7 天没看"时出现。≤2 天说明你这两天一直在用想法页，
      不需要被提醒 —— 带个数字反而变成催促，而设计稿的红线之一就是"不出现催促类字样"。 */
   const showN = !open && d > 2;
+  /* 这一会话里在抽屉里露过面的条目 —— 逐条处理完要据此自动收尾（reviewMark） */
+  if (!ideaUI.reviewShown) ideaUI.reviewShown = new Set();
+  picked.forEach(x => ideaUI.reviewShown.add(x.id));
   const items = picked.map(it => {
     const kids = S.items.filter(x => x.parent === it.id && isSeed(x)).length;
     return `<div class="review-item" data-id="${esc(it.id)}">
@@ -4460,6 +4648,7 @@ function reviewDrawerHTML(){
 const TREE_W = 220, TREE_H = 62, TREE_GX = 18, TREE_GY = 54;
 const TREE_ZONE_GAP = 64;          // 「独立的」和「有关系的」两片之间的距离
 const TREE_PERF = 80;              // 超过它就自动只画前 3 层，免得一屏几百个方块卡住
+const TREE_HARD = 200;             // §6.3 / §12：超过它就别画了，提示回列表看（画出来也没法用）
 /* 打开时的最小可读比例。**低于它就不要缩** —— 缩成 0.3 那种"全貌"字是读不出来的，
    用户还得先放大，那一段缩放纯属白花；宁可让他在 0.7 下横滑。 */
 const TREE_MIN_K = 0.7;
@@ -4544,7 +4733,19 @@ function treeMapLayout(list){
   const treeW = treeRoots.length ? Math.max(1, leaf) * pitchX - TREE_GX : 0;
   const nodes = vis.map(i => {
     const p = posPx.get(i.id) || { x: 0, area: 'lone', lvl: 0 };
-    return { it: i, x: p.x, area: p.area, lvl: p.lvl, kids: (rawKids.get(i.id) || []).length };
+    /* ★ 审查修复（2026-10-04）：折叠钮上的数字按**子孙**数（§14 H-39），不是直接子数 ——
+       "＋3"点开只多出一条会让人以为坏了。 */
+    const descN = id => {
+      let n = 0; const stack = [...(rawKids.get(id) || [])]; const seenD = new Set();
+      while (stack.length){
+        const x = stack.pop();
+        if (!x || seenD.has(x.id)) continue;
+        seenD.add(x.id); n++;
+        (rawKids.get(x.id) || []).forEach(k => stack.push(k));
+      }
+      return n;
+    };
+    return { it: i, x: p.x, area: p.area, lvl: p.lvl, kids: descN(i.id) };
   });
   /* ★ v5.0：连线只记"谁连谁" —— **坐标要等节点量完高度才知道**。
      节点里现在放全部续写，高矮不一，行高不能再按固定 TREE_H 推（见 mountTreeMap 的排版段）。 */
@@ -4594,16 +4795,44 @@ function treeMapHTML(list){
       </div>
     </div>`;
   }).join('');
-  return `<div class="tree-wrap" id="treeWrap">
-    <div class="tree-canvas" id="treeCanvas"
-         style="width:${Math.round(L.w)}px;height:${TREE_H}px">
-      <svg class="tree-edges" width="${Math.round(L.w)}" height="${TREE_H}" aria-hidden="true"></svg>
-      ${nodes}
+  /* ★ 审查修复（2026-10-04）：§6.3 / §12 的第三档兜底（>200 提示「想法太多了，先回列表看」）
+     原来完全没有。这一档不画节点 —— 200 个方块铺出来既卡又读不了。 */
+  if (list.length > TREE_HARD){
+    return `<div class="tree-frame${treeFull ? ' full' : ''}" id="treeFrame">
+      <div class="empty-soft">想法太多了（${list.length} 条），先回列表看吧 —— 这样画出来也读不了。</div>
+      <div class="tree-foot">
+        <span class="tree-hint">在想法页右上角切回卡片流，或者先收起 / 删掉一些。</span>
+        <button type="button" class="tree-fullbtn" data-act="layoutset" data-idealay="list" aria-label="切回卡片流">卡片流</button>
+      </div>
+    </div>`;
+  }
+  return `<div class="tree-frame${treeFull ? ' full' : ''}" id="treeFrame">
+    <div class="tree-wrap" id="treeWrap">
+      <div class="tree-canvas" id="treeCanvas"
+           style="width:${Math.round(L.w)}px;height:${TREE_H}px">
+        <svg class="tree-edges" width="${Math.round(L.w)}" height="${TREE_H}" aria-hidden="true"></svg>
+        ${nodes}
+      </div>
     </div>
-    <div class="tree-hint">${ideaUI.mergeMode
-      ? '点节点＝选中/取消（选两条以上，再用下面的「合并」）'
-      : '拖动平移 · 双指或滚轮缩放 · 点节点开菜单 · 长按拖到另一个节点上 = 挂到它下面'}${
-      L.clipped ? ` · 太挤了，先只画到第 3 层（还有 ${L.clipped} 条没画）` : ''}</div>
+    <div class="tree-foot">
+      <span class="tree-hint">${ideaUI.mergeMode
+        ? '点节点＝选中/取消（选两条以上，再用下面的「合并」）'
+        : '拖动平移 · 双指或滚轮缩放 · 点节点开菜单 · 长按拖到另一个节点上 = 挂到它下面'}${
+        L.clipped ? ` · 太挤了，先只画到第 3 层（还有 ${L.clipped} 条没画）` : ''}${
+        treeFull ? ' · 全屏中' : ''}</span>
+      <button type="button" class="tree-fullbtn" data-act="treefit" aria-label="把视图复位并适应屏幕">适应屏幕</button>
+      ${S.items.filter(i => isSeed(i) && i.done).length
+        ? `<button type="button" class="tree-fullbtn" data-act="treeused" aria-label="切到卡片流看收起来的想法">收起来的 ${S.items.filter(i => isSeed(i) && i.done).length} 条</button>`
+        : ''}
+      <button type="button" class="tree-fullbtn" data-act="treefull"
+              aria-label="${treeFull ? '退出全屏' : '全屏查看'}">
+        <svg class="np-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${
+          treeFull
+            ? '<path d="M9 3H3v6"/><path d="M15 21h6v-6"/><path d="M3 9l6-6"/><path d="M21 15l-6 6"/>'
+            : '<path d="M3 9V3h6"/><path d="M21 15v6h-6"/><path d="M9 3L3 9"/><path d="M15 21l6-6"/>'
+        }</svg>${treeFull ? '退出全屏' : '全屏'}</button>
+    </div>
   </div>`;
 }
 /* 挂载：排版（量高度 → 定 top → 画连线）/ 平移 / 缩放 / 打开节点。
@@ -4616,6 +4845,21 @@ function treeMapHTML(list){
       没到 400ms 就动只是取消拖拽、不平移 —— 于是节点铺满画布时看着就是"拖不动"。
       现在移动超过 8px 就转成平移（长按没满就动 = 你想拖画布，不是想挂靠）。 */
 let treeFitted = false;
+/* 树状图全屏态（本轮新增）。只活在当前会话里，不写存档 —— 位置类状态记下来，
+   换设备或换窗口尺寸后容易把内容甩到屏幕外（跟 treeView 同一个理由）。 */
+let treeFull = false;
+/* 进/出全屏。画布尺寸变了，但**不动**用户的平移与倍率 —— mountTreeMap 会用
+   treeFitted=true 那条分支只做 clamp + apply（同"折叠一下不要整块缩放"的理由）。 */
+function setTreeFull(on){
+  const v = !!on;
+  if (v === treeFull) return;
+  treeFull = v;
+  document.documentElement.classList.toggle('tree-full', v);
+  /* 进/出全屏的**视口尺寸差很多**：重算一次 fit，让整棵树落在新视口里居中。
+     只在这一刻重算 —— 之后在全屏里折叠/勾选触发的重渲染仍保持你的平移与倍率。 */
+  treeFitted = false;
+  refresh();
+}
 function mountTreeMap(){
   const wrap = document.getElementById('treeWrap');
   const cv = document.getElementById('treeCanvas');
@@ -4805,15 +5049,32 @@ function mountTreeMap(){
     if (dragEl && dragEl.classList.contains('dragging')){
       const me = it_byId(dragEl.dataset.id);
       const to = dropEl ? it_byId(dropEl.dataset.id) : null;
+      /* ★ 审查修复（2026-10-04）两处语义：
+         ① 撤销原来一律把 parent 置 null —— 从 B 改挂到 C 之后一撤销，B 原来的挂载关系
+            **静默丢失**（数据级）。现在记住 oldParent 再还原（连目标的折叠态一起）。
+         ② 松手在空白处 = 提升为根 —— 手势说明里承诺了这条，实现里没有。 */
+      const oldParent = me ? (me.parent || null) : null;
+      const oldCollapsed = to ? collapsed.has(to.id) : false;
       endDrag();
       if (me && to){
+        if (me.parent === to.id){ refresh(); return; }
         me.parent = to.id;
         collapsed.delete(to.id);            // 目标原先收着的话，展开才能看见接上去的那条
         save(); refresh();
-        toast('挂到「' + to.title + '」下面了', '撤销', () => { me.parent = null; save(); refresh(); });
+        if (navigator.vibrate){ try { navigator.vibrate([12, 40, 12]); } catch (_){} }   // §11 吸附成功
+        toast('挂到「' + to.title + '」下面了', '撤销', () => {
+          me.parent = oldParent;
+          if (oldCollapsed) collapsed.add(to.id); else collapsed.delete(to.id);
+          save(); refresh();
+        });
         return;
       }
-      refresh();                           // 没落到地方：把节点复位的 DOM 变化落定
+      if (me && !to && oldParent){
+        me.parent = null; save(); refresh();
+        toast('把「' + me.title + '」提到了顶层', '撤销', () => { me.parent = oldParent; save(); refresh(); });
+        return;
+      }
+      refresh();                           // 没动 / 原地：把节点复位的 DOM 变化落定
     }
     endDrag();
     pts.delete(e.pointerId);
@@ -4875,13 +5136,17 @@ function renderIdeas(){
   let h = `<div class="section-intro${rv()}">
       <p class="section-kicker">Idea</p>
       <h2>想法</h2>
-      <p class="intro-note">还没定型的念头放这儿。<b>续写</b>＝这条又长出了什么；<b>生长</b>＝从它分出去一条新的（会缩进在它下面）；<b>合并</b>＝勾两条以上，生出一条新的，原来两条都留着；<b>立项</b>＝把它变成一条待办。<br>它不是待办，不需要被"做完"。用过了在卡片上长按 → <b>收起来</b>，它就暗下去、沉到底部「用过了」；点「继续想」又亮回来 —— 毕竟想法是可以继续生长的。</p>
+      <p class="intro-note">还没定型的念头放这儿。<b>续写</b>＝这条又长出了什么；<b>生长</b>＝从它分出去一条新的（会缩进在它下面）；<b>合并</b>＝勾两条以上，生出一条新的，原来两条都留着；<b>立项</b>＝把它变成一条待办。<br>它不是待办，不需要被"做完"。不需要了就在卡片上长按 → <b>收起来</b>，它就暗下去、沉到底部；点「继续想」又亮回来 —— 毕竟想法是可以继续生长的。</p>
     </div>
     <div class="idea-toolbar${rv()}"${rvd(30)}>
-      <button class="btn primary idea-new" data-act="seednew">＋ 新想法</button>
+      <button class="btn primary key" data-act="seednew" aria-label="新想法" title="新想法">
+        <svg class="btn-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+      </button>
       ${ideaUI.mergeMode
         ? `<span class="len">已选 <b class="mono">${nSel}</b> 条</span>`
-        : `<button class="btn" data-act="mergestart"${all.length ? '' : ' disabled'}>☰ 多选</button>`}
+        : `<button class="btn key" data-act="mergestart" aria-label="多选" title="多选：勾几条一起处理"${all.length ? '' : ' disabled'}>
+             <svg class="btn-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+           </button>`}
       <!-- ★ v5.0：主视图切换用**清单页 / 统计页那套 .seg 分段开关**（用户要求"跟清单页还有统计页差不多"）：
            同一个 .seg glass-chip 外壳 + .segbtn.ico-seg 纯图标格，选中态由滑块承担。
            多选已挪到左边跟「＋ 新想法」并排，右边只留视图开关和手势说明。 -->
@@ -4942,11 +5207,16 @@ function renderIdeas(){
      位置必须在列表上方才有"撞见"的效果（放底部就没人滚到了）。 */
   h += reviewDrawerHTML();
   if (!all.length){
+    /* ★ 审查修复（2026-10-04）：搜索 / 标签筛出 0 条，原来复用"还没有想法"那句空态 ——
+       搜错一个字看到"还没有想法"，第一反应是数据丢了。两种处境给两种话。 */
+    const filtering = !!(ideaUI.q || (ideaUI.tags && ideaUI.tags.length));
     h += `<section class="glass zone zone-wide${rv()}" data-z="idea"${rvd(60)}>
-      <div class="empty">还没有想法。点上面的 <b>＋ 新想法</b> 记一条 —— 看到一句好词、一个不懂的术语、半截念头，都可以先扔进来。<br>它跟待办不是一回事：待办是试管，装一件定了型的事；想法是种子，会长、会岔、会跟别的念头合并。
-        <div class="empty-acts">
+      <div class="empty">${filtering
+        ? '没有匹配的想法 —— 换个词，或者把搜索框和标签筛选清掉。'
+        : '还没有想法。点上面的 <b>＋ 新想法</b> 记一条 —— 看到一句好词、一个不懂的术语、半截念头，都可以先扔进来。<br>它跟待办不是一回事：待办是试管，装一件定了型的事；想法是种子，会长、会岔、会跟别的念头合并。'}
+        ${filtering ? '' : `<div class="empty-acts">
           <button class="btn" data-act="demofill">先放一批示例进来看看</button>
-        </div>
+        </div>`}
       </div>
     </section>`;
     view.innerHTML = h;
@@ -4992,16 +5262,19 @@ function renderIdeas(){
   if (S.ideaLayout === 'tree'){
     h += live.length
       ? treeMapHTML(live)
-      : `<div class="empty-soft">没有在用的想法了，切回卡片流能看到用过的。</div>`;
+      : `<div class="empty-soft">没有在用的想法了，切回卡片流能看到收起来的。</div>`;
   } else {
     if (live.length){
       h += `<div class="idea-list">` + treeHTML(live) + `</div>`;
     } else {
-      h += `<div class="empty-soft">没有在用的想法了，下面是用过的。</div>`;
+      h += `<div class="empty-soft">没有在用的想法了，下面是收起来的。</div>`;
     }
     if (used.length){
-      h += `<div class="idea-used-head">用过了<span class="n mono">${used.length}</span></div>
-        <div class="idea-list used">` + treeHTML(used) + `</div>`;
+      /* ★ 第 2 波（用户："这个分割线还有这个二也不需要了"）：分组标题整块删掉 ——
+         原来它是一行"线 + 条数"的分隔行，现在连线和数字都不要了。
+         两组的边界改由**卡片本身的暗度**表达（收起来的卡 opacity:.45 + 灰度），
+         再给这组一个 26px 的上外边距作为呼吸。 */
+      h += `<div class="idea-list used">` + treeHTML(used) + `</div>`;
     }
   }
   /* ★ v5.0 多选批量（第 2 批第 1 块）。「合并」不再是右上角那颗孤零零的按钮 ——
@@ -5075,7 +5348,9 @@ function seedAddSpark(it, text){
   if (!tx) return false;
   if (!Array.isArray(it.sparks)) it.sparks = [];
   it.sparks.push({ at: ymd(new Date()), text: tx });
-  save(); return true;
+  save();
+  reviewMark(it.id);      // 回顾槽位的"续写并成功写入"才算处理过（§14 C-17）
+  return true;
 }
 /* 长出：从这条分出去一条新的。新种子保留原文作为"来自"的线索，但**不复制**时间轴 ——
    时间轴是这条种子自己的生长记录，复制过去会让两条看起来一模一样，反而看不出是从哪儿长出来的。 */
@@ -5101,6 +5376,10 @@ function seedGrow(it, title){
    否则一条有时间轴起点、一条是空轴，用户会以为是坏的。 */
 function taskToSeed(it, quiet){
   if (!it || isSeed(it)) return null;
+  /* ★ 审查修复（2026-10-04）：提示条上那颗「存入想法」能停留 6 秒。这 6 秒里如果这条
+     已经被删掉，原来照样会把字段写回去、save() 一遍 —— "删掉的东西又自己回来了"
+     （还带着种子标记）。先确认它还在库里。 */
+  if (S.items.indexOf(it) < 0) return null;
   it.kind = 'seed';
   it.zone = 'idea';
   it.date = null; it.dateEnd = null; it.monthOnly = false; it.time = null; it.repeat = null;
@@ -5132,7 +5411,15 @@ function taskToSeed(it, quiet){
    种子退化成一张空白待办 —— 正好毁掉"立项留痕不删原条"这条产品定位。 */
 function openSeedPromote(it, sparkText, sparkIdx){
   if (!isSeed(it)){ toast('这条不是想法'); return; }
-  if (it.promoted && S.items.some(x => x.id === it.promoted)){ toast('这条已经立过项了'); return; }
+  /* ★ 审查修复（2026-10-04）：守卫原来一律按整条 `promoted` 判 —— 但部分转化
+     （点时间轴上某一步的 →）也会写整条 promoted，于是同一条想法的**第二步永远立不了项**，
+     只弹「这条已经立过项了」。现在分两级：
+       · 整条立项：`promoted` 指向那条待办；
+       · 单步立项：那一步自己的 `promotedTo`（从某一步进来时只挡"这一步已经立过"）。 */
+  if (sparkIdx == null && it.promoted && S.items.some(x => x.id === it.promoted)){ toast('这条已经立过项了'); return; }
+  if (sparkIdx != null && it.sparks && it.sparks[sparkIdx] && it.sparks[sparkIdx].promotedTo){
+    toast('这一步已经立过项了'); return;
+  }
   /* 原文栏：只读，用来让用户"核对"这条想法长成什么样了 —— 原文 + 时间轴摘要。
      种子自己没有日期语义，但它可能是从待办改过来的，那种情况 date 还在，照实数预填。 */
   const sp = Array.isArray(it.sparks) ? it.sparks : [];
@@ -5148,7 +5435,7 @@ function openSeedPromote(it, sparkText, sparkIdx){
     repeat: null, pri: it.pri || 0, timeMode: 'once'
   };
   openItemEditor(draft, true, task => {
-    seedPromote(it, task);
+    seedPromote(it, task, { stepOnly: sparkIdx != null });
     /* 部分转化：只把被点的那一步标记成已立项，其余一步不动 */
     if (sparkIdx != null && it.sparks[sparkIdx]){ it.sparks[sparkIdx].promotedTo = task.id; save(); refresh(); }
   }, {
@@ -5157,6 +5444,11 @@ function openSeedPromote(it, sparkText, sparkIdx){
        批量立项时**不脉冲** —— 一次处理 4 条就闪 4 次，那不是回执是噪音。 */
     dir: 'right',
     ping: (typeof batchQ !== 'undefined' && batchQ.kind === 'promote') ? null : 'list'
+  }, {
+    /* ★ 审查修复（2026-10-04）：立项复用编辑器，但标题原来写「新建」、按钮写「确定」——
+       整个流程里没有一处告诉你"这是在给这条想法定型"。 */
+    title: '立项确认',
+    okLabel: sparkIdx != null ? '把这一步变成待办' : '确认立项'
   });
 }
 /* 「重新想」：待办做不下去 → 重新种下一条想法（1.11）。
@@ -5178,14 +5470,27 @@ function seedFromTask(it){
 }
 /* 立项后的双向活链（1.13）中的**读**这一半：谁是从这条待办立项出来的 */
 function seedOfTask(taskId){
-  return taskId ? S.items.find(x => isSeed(x) && x.promoted === taskId) : null;
+  if (!taskId) return null;
+  const byCard = S.items.find(x => isSeed(x) && x.promoted === taskId);
+  if (byCard) return byCard;
+  /* ★ 审查修复（2026-10-04）：部分转化（点某一步的 →）立项出来的待办，卡级 `promoted`
+     是空的（单步立项不该给整条打"已立项"），但"这条待办来自哪条想法"照样要说清楚 ——
+     所以再按 sparks 里的 `promotedTo` 找一遍。 */
+  return S.items.find(x => isSeed(x) && (x.sparks || []).some(s => s && s.promotedTo === taskId)) || null;
 }
 /* 立项的**落库后半段**：任务已经由编辑器推进 S.items 了，这里只补种子侧的留痕。
    把两者拆开，是为了让"确认页编辑的是临时对象"这件事在代码上就成立 ——
    种子永远是只读的被引用方，不会走进编辑器那条会清字段的保存分支。 */
-function seedPromote(it, task){
+function seedPromote(it, task, opts){
   if (!task){ return null; }
-  it.promoted = task.id;
+  /* ★ 审查修复（2026-10-04）：只有**整条立项**才写 `it.promoted`（卡片上那枚「已立项」
+     角标 = 整条已经定型）。从某一步进来的部分转化只写那一步的 `promotedTo`，
+     卡级状态不动 —— 否则第二步会被上面的守卫挡住，卡上也会出现"整条已立项"的误导角标。 */
+  if (!(opts && opts.stepOnly)) it.promoted = task.id;
+  /* 最近一次产生的待办（含单步）—— 专供时间轴上的 ↑「补到待办里」，
+     跟"整条已立项"是两个概念，不要混用一个字段。 */
+  it.lastPromoted = task.id;
+  if (navigator.vibrate){ try { navigator.vibrate(20); } catch (_){} }   // §11 立项成功：单中震
   save(); refresh();
   toast('已立项：' + task.title, '去看', () => {
     S.view = 'list'; ANIM = true; refresh();
@@ -5218,6 +5523,7 @@ function openGestureHelp(){
        <div class="gh-row"><b>长按后 ← 左滑</b><span>编辑这条</span></div>
        <div class="gh-row"><b>长按后 右滑 →</b><span>立项：把它变成待办、送去清单</span></div>
        <div class="gh-row"><b>长按后 ↓ 下滑</b><span>续写：现在多了什么信息</span></div>
+       <div class="gh-row"><b>长按后 ↑ 上滑</b><span>打开这条的动作菜单（跟"松手不动"同一个菜单）</span></div>
        <div class="gh-row"><b>长按后拖到另一条上</b><span>合并这两条（落到目标上会再震一下）</span></div>
        <div class="gh-row"><b>右上角 ☰ 多选</b><span>批量：合并 / 立项 / 编辑 / 续写 / 生长 / 收起来 / 删除</span></div>
      </div>${treeRows}
@@ -5296,7 +5602,10 @@ function seedMerge(ids){
     tags: [...new Set(live.flatMap(x => x.tags || []))].slice(0, TAG_PER_ITEM),
     bornFrom: live.map(x => x.id)
   });
-  if (nx) toast('合并成一条新想法，原来两条都留着');
+  if (nx){
+    /* ★ 审查修复：合并和"收起来/删除"同属一次性动作，设计稿要求配撤销。 */
+    toast('合并成一条新想法，原来两条都留着', '撤销', () => { remove(nx); });
+  }
   return nx;
 }
 /* ---------------- ★ v5.0 示例数据（只为试功能，不碰你自己的数据） ----------------
@@ -5400,6 +5709,8 @@ function seedUse(it){
      表现是**变暗**（不是打勾）；再点一次「继续想」就亮回来。整棵子树跟着一起沉底。 */
   it.done = !it.done;
   it.doneAt = it.done ? Date.now() : null;
+  /* §11：收起来是"轻"的动作，极短一震（不惩罚）；亮回来不震。 */
+  if (it.done && navigator.vibrate){ try { navigator.vibrate(8); } catch (_){} }
   save(); refresh();
   toast(it.done ? '收起来了，暗着但还在' : '又亮回来了', '撤销', () => {
     it.done = !it.done; it.doneAt = it.done ? Date.now() : null;
@@ -5802,7 +6113,11 @@ function seedOpenInline(it){
 }
 
 /* ---------- 3.4 找关联：产物是**挂载建议**，不是相关列表 ---------- */
+let aiScanBusy = false;
 async function aiScanLinks(manual){
+  /* ★ 审查修复（2026-10-04）：自动扫描与手动点击可以同时发，提示互相顶掉。
+     加一道会话级在途闸 —— 一次只跑一个。 */
+  if (aiScanBusy) return;
   if (!aiOn()){ if (manual) openAiNeedOn(); return; }
   if (aiQuotaLeft() <= 0){ if (manual) aiSay('今天先消化一下，明天再来'); return; }
   const pool = S.items.filter(i => isSeed(i) && !i.done)
@@ -5820,7 +6135,16 @@ async function aiScanLinks(manual){
         + '要求：from / to 都是上面的编号（整数）；why 是一句中文，必须引用这两条里出现过的词。'
         + '只输出这个形状：{"links":[{"from":1,"to":2,"why":"…"}]}。没有就输出 {"links":[]}。' }
     ], { json: true });
-  } catch (e){ if (manual) aiFail('AI 没接上'); return; }   // 失败不扣配额
+  } catch (e){
+    /* ★ 审查修复（2026-10-04）：失败不扣配额，但要**记下时间** ——
+       原来失败不写 S.lastScanAt，于是"距上次扫描 > 24h"永远成立，每次打开 App 都会重发一次，
+       与"每天 1 次"的口径不符。自动路径仍然不打扰用户（§12：不报错、不空转）。 */
+    aiScanBusy = false;
+    S.lastScanAt = Date.now(); save();
+    if (manual) aiFail('AI 没接上');
+    return;
+  }
+  aiScanBusy = false;
 
   let links = [];
   try { links = (aiParseJSON(out).links || []); } catch (e){ links = []; }
@@ -5835,6 +6159,13 @@ async function aiScanLinks(manual){
     a.suggest.push({ to: b.id, why: String((L && L.why) || '').slice(0, 120) });
     n++;
   });
+  /* ★ 审查修复（2026-10-04）：模型答了但**一条都用不了**（编号越界 / 全非法）= "没答好"，
+     按 §12 应当丢弃结果 + 配额退回，而不是算一次有效扫描把配额扣掉。 */
+  if (!n && links.length){
+    S.lastScanAt = Date.now(); save();
+    if (manual) aiFail('AI 没答好，再试一次');
+    return;
+  }
   S.lastScanAt = Date.now();
   aiQuotaSpend();
   save(); refresh();
@@ -5876,13 +6207,20 @@ function aiSuggestApply(it, idx){
   const to = S.items.find(x => x.id === s.to);
   if (!to || to.id === it.id || aiIsDescendant(to, it)){ it.suggest.splice(idx, 1); save(); refresh(); return; }
   const oldParent = it.parent || null;
+  const wasCollapsed = collapsed.has(to.id);
   it.parent = to.id;
   it.suggest.splice(idx, 1);
   collapsed.delete(to.id);
   save(); refresh();
   toast('已挂到「' + to.title + '」下面', '撤销', () => {
     it.parent = oldParent;
-    it.suggest.splice(idx, 0, s);
+    /* ★ 审查修复（2026-10-04）：撤销不能按旧下标硬插 —— 中间若又接受/拒绝过别的建议，
+       下标早就变了，会插错位置甚至重复。按 to 身份判重，落点夹在合法范围内。
+       同时把"强制展开目标节点"这件事也还回去，否则折叠态回不去。 */
+    if (!it.suggest.some(x => x && x.to === s.to)){
+      it.suggest.splice(Math.max(0, Math.min(idx, it.suggest.length)), 0, s);
+    }
+    if (wasCollapsed) collapsed.add(to.id); else collapsed.delete(to.id);
     save(); refresh();
   });
 }
@@ -6386,6 +6724,18 @@ function refresh(){
        发现上次勾了一半还开着）。 */
     if (S.view !== 'idea' && (ideaUI.mergeMode || ideaUI.mergeSel.size || ideaUI.sparkOpen)){
       ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); ideaUI.sparkOpen = null;
+    }
+    /* 回顾的进度也是"这一屏的临时状态"，跨天不该带着走 */
+    if (S.view !== 'idea' && S.ideaReviewDone !== ymd(new Date())){
+      ideaUI.reviewShown = new Set(); ideaUI.reviewHandled = new Set();
+    }
+    /* ★ 审查修复（2026-10-04）：全屏树状图是**全局副作用**（藏底栏 + 锁滚动），只在
+       "正在看树状图"时才有意义。它原来只在两处被清（切分段开关 / Escape），于是任何别的
+       换视图路径 —— 例如立项后 toast 的「去看」—— 都会把它留下：底栏永久 display:none、
+       页面永久锁滚动，安卓上没有 Escape，只能杀进程。在这里做一次校验兜底，不依赖调用点自觉。 */
+    if (treeFull && (S.view !== 'idea' || S.ideaLayout !== 'tree')){
+      treeFull = false;
+      document.documentElement.classList.remove('tree-full');
     }
     if (S.view === 'list') renderList();
     else if (S.view === 'entry'){ /* 录入界面由 hero + 录入条 + 标签/提示构成，#view 留空 */ view.innerHTML = ''; }
@@ -7329,7 +7679,11 @@ view.addEventListener('click', e => {
      记 reviewedAt（近 7 天不再浮出）+ 把今天标成用过想法页（影响抽屉的折叠档位）。
      放在这里而不是各动作内部：抽屉里的按钮复用的就是全站那几个动作，
      逐个改会漏；挂 data-rev 标记只在抽屉渲染时加，一处判断就够。 */
-  if (el.dataset.rev && it){ it.reviewedAt = ymd(new Date()); S.ideaUsedAt = ymd(new Date()); save(); }
+  if (el.dataset.rev && it){
+    it.reviewedAt = ymd(new Date()); S.ideaUsedAt = ymd(new Date()); save();
+    /* 续写（sparkadd）要等真正写入一条 spark 才算处理过 —— 那条由 seedAddSpark 记账。 */
+    if (el.dataset.act !== 'sparkadd') reviewMark(it.id);
+  }
 
   /* 统计页布局：横条 / 方块。只换视图内部，不走 refresh()，省得整页重排。
      同样走两段式过渡，跟「分区 ⇄ 时间轴」是同一套手感。 */
@@ -7485,15 +7839,31 @@ view.addEventListener('click', e => {
     ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); ideaUI.reviewOpen = false;
     treeView.tx = 0; treeView.ty = 0; treeView.k = 1;
     treeFitted = false;        // ★ v5.0：进树状图才 fit 一次；折叠/重渲染不再动你的视角
+    if (want !== 'tree') setTreeFull(false);   // 切回卡片流时退出全屏，免得屏幕一直锁着
     save();
+    /* ★ 审查修复（2026-10-04）：减弱动态效果时那 200ms 是纯空窗（什么都不会动），
+       等它只是卡手。 */
     setTimeout(() => {
       layoutBusy = false;
       refresh();
-      toast(want === 'tree' ? '树状图：拖动平移 · 点节点开菜单' : '卡片流：能缩进、能就地续写');
-    }, 200);
+      toast(want === 'tree' ? '树状图：拖动平移 · 双指缩放 · 底部可全屏' : '卡片流：能缩进、能就地续写');
+    }, reduceMotion() ? 0 : 200);
     return;
   }
   /* 树状图里折叠/展开一个节点的下面（复用会话级 collapsed，和卡片流的 ▾ 同一个状态） */
+  if (act === 'treefull'){ setTreeFull(!treeFull); return; }
+  /* ★ 审查修复（2026-10-04）：§6.3 的「适应屏幕」 —— 拖乱 / 缩没了之后原来没有任何复位入口；
+     以及树里收起一条之后，树只画在用的，同屏没有"继续想"的入口（两处语义不一致）。 */
+  if (act === 'treefit'){ treeView.tx = 0; treeView.ty = 0; treeView.k = 1; treeFitted = false; refresh(); return; }
+  if (act === 'treeused'){
+    S.ideaLayout = 'list'; ideaUI.mergeMode = false; ideaUI.mergeSel.clear();
+    setTreeFull(false); save(); refresh();
+    setTimeout(() => {
+      const grp = view.querySelector('.idea-list.used');
+      if (grp) grp.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+    return;
+  }
   if (act === 'tnfold'){
     const id = el.dataset.id;
     if (!id) return;
@@ -7547,6 +7917,7 @@ view.addEventListener('click', e => {
   }
   if (act === 'reviewdone'){
     S.ideaReviewDone = ymd(new Date()); save(); ideaUI.reviewOpen = null;
+    ideaUI.reviewHandled = new Set();
     refresh(); toast('今天就这样'); return;
   }
   if (act === 'reviewpurge'){
@@ -7566,8 +7937,10 @@ view.addEventListener('click', e => {
   /* ★ v5.0：折叠/展开一条有子想法的卡片。状态走会话级 collapsed Set（与会话同生命，
      和清单页复合目标那套是同一个 —— App 里"折叠"从来不持久化）。 */
   if (act === 'fold' && it){
-    if (collapsed.has(it.id)) collapsed.delete(it.id); else collapsed.add(it.id);
-    refresh(); return;
+    /* ★ 审查修复（2026-10-04）：这里原来 refresh() 硬切，而同一个 action 在下面还有一份
+       `foldWithMotion(el, it)` 分支（永远轮不到 = 死代码，已删）。现在统一走动画：
+       §10 要求「子树高度→0、卡片位移 220ms」，foldWithMotion 里就是这套。 */
+    foldWithMotion(el, it); return;
   }
   /* ★ v5.0：「考虑区」老数据一键搬进想法。搬完原待办删除（整批可撤销）。
      种子第一步 = 原条目的 raw，日期用它的创建日期 —— 这样时间轴从它被写下那天算起，
@@ -7596,18 +7969,41 @@ view.addEventListener('click', e => {
   }
   if (act === 'seeduse' && it){ seedUse(it); return; }
   if (act === 'sparkadd' && it){
+    /* ★ 审查修复（2026-10-04）：树状图里**没有卡片，也就没有那行就地输入框**。
+       长按菜单那条路早就补了树分支（openSeedSheet 里），但 #view 委托这条没跟上 ——
+       回顾抽屉的「＋ 续写」正走这条路，于是切到树状图之后点它"什么都不会发生"。
+       两条路现在按同一个判断走。 */
+    if (S.ideaLayout === 'tree'){
+      openSeedPrompt('续写', it.title, '现在多了什么信息？',
+        v => { if (seedAddSpark(it, v)) refresh(); });
+      return;
+    }
     /* 就地展开输入框，不弹窗 —— 续写是"顺手添一句"，打断越少越好。
        同一时刻只开一个：先把它记成当前打开的那条，再整页重渲染，renderIdeas 会把焦点还回来。 */
     ideaUI.sparkOpen = it.id;
     refresh(); return;
   }
   if (act === 'sparkcancel'){ ideaUI.sparkOpen = null; refresh(); return; }
-  if (act === 'fork' && it){ openSeedPrompt('从「' + it.title + '」生长', '新的想法第一句', '从这里分出去的那条', v => { if (seedGrow(it, v)) refresh(); }); return; }
+  if (act === 'fork' && it){ openSeedPrompt('从「' + it.title + '」生长', '新的想法第一句', '从这里分出去的那条', v => {
+      const nx = seedGrow(it, v);
+      if (nx){ refresh(); toast('长出一条新想法', '撤销', () => { remove(nx); }); }
+    }); return; }
   if (act === 'promote' && it){ openSeedPromote(it); return; }
   if (act === 'gototask' && it){
     const t = it.promoted && S.items.find(x => x.id === it.promoted);
     if (!t){ toast('那条待办已经删掉了，想法还在'); return; }
-    S.view = 'list'; ANIM = true; refresh(); return;
+    /* ★ 审查修复（2026-10-04）：跳过去还得**找得到**它 —— 清掉清单页的搜索词
+       （否则它可能正好被筛掉），滚到那一条并闪一下。 */
+    S.q = ''; S.view = 'list'; ANIM = true; refresh();
+    setTimeout(() => {
+      const node = view.querySelector('[data-fk="t:' + t.id + '"]');
+      const row = node && node.closest ? node.closest('.item') : null;
+      if (!row) return;
+      try { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e){}
+      row.classList.add('jump-hl');
+      setTimeout(() => row.classList.remove('jump-hl'), 1700);
+    }, 80);
+    return;
   }
   if (act === 'sparkok'){ const inp = document.getElementById('sp_in'); if (inp && it && seedAddSpark(it, inp.value)) refresh(); return; }
   if (act === 'sparkdel' && it){
@@ -7620,7 +8016,6 @@ view.addEventListener('click', e => {
     }
     return;
   }
-  if (act === 'fold' && it){ foldWithMotion(el, it); return; }
   /* ★ v5.0 部分转化（1.12）：把时间轴上的**某一句**变成一条待办。
      走的是同一个立项确认页，只是标题预填那一句 —— 种子留下，只有这一步被打标。 */
   if (act === 'sparkpromote' && it){
@@ -7635,7 +8030,8 @@ view.addEventListener('click', e => {
   if (act === 'sparkpush' && it){
     const i = +el.dataset.i;
     const sp = (Array.isArray(it.sparks) ? it.sparks : [])[i];
-    const task = it.promoted && S.items.find(x => x.id === it.promoted);
+    const pushTo = it.promoted || it.lastPromoted;
+    const task = pushTo && S.items.find(x => x.id === pushTo);
     if (!sp) return;
     if (!task){ toast('那条待办已经删掉了，想法还在'); return; }
     const oldRaw = task.raw;
@@ -7809,8 +8205,13 @@ function foldZoneWithMotion(el){
   }, FOLD_MS);
 }
 function foldWithMotion(chip, it){
-  const body = chip.closest('.body');
-  const box = body ? body.querySelector(':scope > .goal-kids') : null;
+  /* ★ 审查修复（2026-10-04）：同一个函数同时服务两种折叠容器 ——
+     清单页复合目标是卡内的 .goal-kids，想法卡是卡片**外面**的 .seed-kids（挂在 .seed-node 下）。
+     两者的"收起"标记不同：前者是 `.folded` 类，后者是 `hidden` 属性，所以统一走 markFolded()。 */
+  const host = chip.closest('.seed-node') || chip.closest('.body');
+  const box = host ? host.querySelector(':scope > .goal-kids, :scope > .seed-kids') : null;
+  const isSeedBox = !!(box && box.classList.contains('seed-kids'));
+  const markFolded = on => { if (isSeedBox) box.hidden = !!on; else box.classList.toggle('folded', !!on); };
   if (!box){                                  // 没有可折叠的子树（正常到不了）：退回整页重渲染
     collapsed.has(it.id) ? collapsed.delete(it.id) : collapsed.add(it.id);
     refresh(); return;
@@ -7819,7 +8220,7 @@ function foldWithMotion(chip, it){
 
   if (box._foldTimer){                        // ③ 上一次的收尾先立刻补上
     clearTimeout(box._foldTimer); box._foldTimer = 0;
-    box.classList.toggle('folded', wasFolded);
+    markFolded(wasFolded);
     resetFold(box);
   }
 
@@ -7829,14 +8230,16 @@ function foldWithMotion(chip, it){
 
   if (reduceMotion()){                        // ⑤
     resetFold(box);
-    box.classList.toggle('folded', !wasFolded);
+    markFolded(!wasFolded);
     return;
   }
 
   if (wasFolded){                             // ⑥ 展开：先把 height:0;overflow:hidden 写上再摘 folded，
     box.style.overflow = 'hidden';            //    摘掉那一帧被兜住，所以不会闪一下完整高度
     box.style.height = '0px';
-    box.classList.remove('folded');
+    /* ⚠️ 必须先取消 hidden 再量高度：display:none 的元素 scrollHeight 是 0，
+       量出来 0 就会"展开成一条缝"。 */
+    if (isSeedBox) box.hidden = false; else box.classList.remove('folded');
   }
   const FULL = box.scrollHeight;              // 内容真实高度（height:0 + overflow:hidden 也量得准）
 
@@ -7856,7 +8259,7 @@ function foldWithMotion(chip, it){
   box._foldTimer = setTimeout(() => {
     box._foldTimer = 0;
     if (!box.isConnected) return;             // ④ 整页已被换掉，别去写孤儿节点
-    box.classList.toggle('folded', !wasFolded);   // 收起：动画走完才真正 display:none
+    markFolded(!wasFolded);                   // 收起：动画走完才真正 display:none / hidden
     resetFold(box);                           // ①② 清掉 inline，高度交还给内容
   }, FOLD_MS);
 }
@@ -7885,6 +8288,25 @@ function toggleDone(it){
           ? '，' + teDateLabelFromStr(nx.date) + '–' + teDateLabelFromStr(nx.dateEnd) + '再来一轮'
           : '，' + teDateLabelFromStr(nx.date) + '再来一轮';
         cycle.label = label;
+      }
+    }
+  }
+  /* ★ 审查修复（2026-10-04）：`每天都做` 的"全勾完才排下一轮"从来没有出口 ——
+     子条目被置成 repeat:null（勾它不排轮），父条目再勾又会被 spawnDailyKids 的 have 集合挡光。
+     现在在"勾完一个子条目"时判断同组是否全部完成，全完才排下一轮。 */
+  if (it.done && it.cycleOf && !cycle.ids.length){
+    const parent = S.items.find(x => x.id === it.cycleOf);
+    const grp = S.items.filter(x => x.cycleOf === it.cycleOf);
+    if (parent && parent.repeat && grp.length && grp.every(x => x.done)){
+      const st = parent.date || ymd(today0());
+      const en = parent.dateEnd && parent.dateEnd > st ? parent.dateEnd : st;
+      const nx = spawnNextCycle(parent, st, en);
+      if (nx){
+        save(); refreshAfterChange(320);
+        toast('这一轮做完了 · ' + teDateLabelFromStr(nx.date) + '再来一轮', '撤销', () => {
+          S.items = S.items.filter(x => x.id !== nx.id); save(); refreshAfterChange(320);
+        });
+        return;
       }
     }
   }
@@ -8087,7 +8509,13 @@ function closeModal(){
 mask.addEventListener('click', e => { if (e.target === mask) closeModal(); });
 /* 没开着就别走一遍关闭流程 —— 否则 closeModalNow() 会去清空 #modal、还会解开滚动锁，
    让"弹层是否打开"和"页面是否上锁"有机会不同步。 */
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && mask.classList.contains('on')) closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  /* ★ 审查修复（2026-10-04）：**最内层先关**。原来先判 treeFull，于是弹层开着时按 Esc
+     退的是全屏、弹层还留着 —— 用户看到的是"整页在背后重渲染、弹层还杵在那儿"。 */
+  if (mask.classList.contains('on')){ closeModal(); return; }
+  if (treeFull){ setTreeFull(false); return; }     // 没有弹层时才退全屏（桌面/带键盘设备）
+});
 
 /* ---------------- ★ v5.0 想法卡：长按 → 手势 / 动作菜单 ----------------
    阈值取 400ms（底栏圆钮那个语音长按是 350ms）：卡片属于滚动内容，太短会和
@@ -8119,6 +8547,7 @@ function seedHud(){
     el.setAttribute('aria-hidden', 'true');
     el.innerHTML = `<span class="sg" data-dir="left">← 编辑</span>` +
       `<span class="sg" data-dir="down">↓ 续写</span>` +
+      `<span class="sg" data-dir="up">↑ 菜单</span>` +
       `<span class="sg" data-dir="right">立项 →</span>` +
       `<span class="sg sg-tip">拖到另一条上 = 合并</span>`;
     document.body.appendChild(el);
@@ -8137,7 +8566,10 @@ function seedHudMark(dir, targetId){
 }
 function seedPressCancel(){
   if (seedPressTimer){ clearTimeout(seedPressTimer); seedPressTimer = 0; }
-  if (seedPressCard){ seedPressCard.classList.remove('pressing'); seedPressCard = null; }
+  if (seedPressCard){
+    seedPressCard.classList.remove('pressing');
+    seedPressCard = null;
+  }
   if (seedG){
     if (seedG.targetEl) seedG.targetEl.classList.remove('drop-target');
     seedHudShow(false);
@@ -8189,6 +8621,10 @@ view.addEventListener('pointermove', e => {
   if (!target){
     if (Math.abs(dx) > SEED_SWIPE_PX && Math.abs(dx) > Math.abs(dy)) dir = dx > 0 ? 'right' : 'left';
     else if (dy > SEED_SWIPE_PX) dir = 'down';
+    /* ★ 本轮（用户："长按时上滑没有反应"）：上滑原来**没有分支** —— 手势成了，但没有任何
+       方向被认定，松手就落到"打开菜单"那条兜底上，看着像"没反应"。现在把它定义成
+       「上滑 → 打开动作菜单」，四个方向都有回应（菜单跟松手不动打开的是同一个）。 */
+    else if (dy < -SEED_SWIPE_PX) dir = 'up';
   }
   /* 目标卡片给一圈强调色描边 —— 光靠震动看不见是哪一张 */
   const tEl = target ? tCard : null;
@@ -8219,10 +8655,25 @@ view.addEventListener('pointerup', () => {
     S.lastOpenedSeed = g.it.id; S.ideaUsedAt = ymd(new Date());
     ideaUI.sparkOpen = g.it.id; save(); refresh(); return;
   }
+  if (g.dir === 'up'){ openSeedSheet(g.it); return; }        // 上滑 → 动作菜单
   openSeedSheet(g.it);                                       // 没动 → 菜单（兜底 + 可发现）
 });
 view.addEventListener('pointercancel', seedPressCancel);
 view.addEventListener('scroll', seedPressCancel, true);   // 捕获阶段：内部任何一层滚动都要取消
+/* ★ 审查修复（2026-10-04）：`pointerup` 只挂在 #view 上 —— 长按后在 #view 外面松手
+   （例如落在底栏）就收不到，`seedG` 会一直留着；而手势态下 #view 的 touchmove 是
+   preventDefault 的，于是**页面再也滚不动**，直到下一次按到卡片才复位。挂 window 兜底。 */
+window.addEventListener('pointerup', () => { if (seedG) seedPressCancel(); });
+window.addEventListener('pointercancel', () => { if (seedG) seedPressCancel(); });
+/* ★ 本轮真 bug（用户实测："长按时上滑或下滑没有反应；上滑时整个页面就跟着滑动了"）：
+   根因不是方向没写，而是**没拦住页面滚动**。卡片长在可滚动内容里，手指一动，浏览器就把
+   这一串指针事件判成"滚动"，立刻派发 pointercancel 把手势掐掉 —— 屏幕上只剩页面在滚。
+   长按成立的前提正是"400ms 内几乎没动"，也就是说这一刻浏览器还没开始滚，此时在 touchmove
+   上 preventDefault 才真正拦得住；手势没成立时不拦（日常上下滑页面照旧，滚动优先）。
+   ⚠️ 必须 passive:false，默认 passive 下 preventDefault 无效。 */
+view.addEventListener('touchmove', e => {
+  if (seedG && e.cancelable) e.preventDefault();
+}, { passive: false });
 
 /* 长按菜单里的动作：**先收菜单再执行** —— 否则菜单会盖在结果上面
    （"续写"要展开行内输入框、"立项"要弹编辑器、"编辑"要弹整页编辑器，都不能被挡着）。
@@ -8264,7 +8715,11 @@ modal.addEventListener('click', e => {
   }
   if (act === 'fork'){
     openSeedPrompt('从「' + it.title + '」生长', '新的想法第一句', '从这里分出去的那条',
-      v => { if (seedGrow(it, v)) refresh(); });
+      v => {
+        const nx = seedGrow(it, v);
+        /* ★ 审查修复：§10 要求长出有撤销出口 —— 误触之后不用手动去删那条新想法 */
+        if (nx){ refresh(); toast('长出一条新想法', '撤销', () => { remove(nx); }); }
+      });
     return;
   }
   if (act === 'promote'){ openSeedPromote(it); return; }
@@ -8741,12 +9196,12 @@ function teRead(){
 
 /* 编辑弹层：既有条目编辑（isNew=false）与"语音 / 快捷录入"新建（isNew=true）共用同一套。
    复用现有的 .mask/.modal/.sel/makeSel，焦点陷阱 / 滚动锁 / Escape 关闭都靠 openMask 那套，不新造。 */
-function openItemEditor(it, isNew, onSaved, exitOnSave){
+function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
   /* ★ v5.0：「考虑」并入想法，下拉里不再有它 */
   const zoneOpts = [['short','短期'], ['long','长期'], ['idea','想法']];
   const stOpts = [['todo','未开始'], ['doing','在做'], ['submitted','已交']];
   modal.innerHTML = `
-    <h3 id="modalTitle">${isNew ? '新建' : '编辑'}</h3>
+    <h3 id="modalTitle">${(opts && opts.title) || (isNew ? '新建' : '编辑')}</h3>
     <div class="row">
       <div class="field"><label>分区</label><div class="sel" id="m_zone"></div></div>
       <div class="field"><label>标题</label><input type="text" id="m_title" value="${esc(it.title)}"></div>
@@ -8814,7 +9269,7 @@ function openItemEditor(it, isNew, onSaved, exitOnSave){
       ${(!isNew && !isSeed(it)) ? '<button class="btn" id="m_rethink" title="做不下去了？把这条重新种成一条想法（原待办不动）">重新想</button>' : ''}
       <div class="spacer"></div>
       <button class="btn" id="m_cancel">取消</button>
-      <button class="btn primary" id="m_save">${isNew ? '确定' : '保存'}</button>
+      <button class="btn primary" id="m_save">${(opts && opts.okLabel) || (isNew ? '确定' : '保存')}</button>
     </div>`;
   openMask();
 
@@ -9106,6 +9561,16 @@ window.addEventListener('drop', e => {
           if (o.captureZone === 'idea' || o.captureZone === 'long') S.captureZone = o.captureZone;
           if (typeof o.ideaGestureSeen === 'boolean') S.ideaGestureSeen = o.ideaGestureSeen;
           if (o.ideaLayout === 'tree' || o.ideaLayout === 'list') S.ideaLayout = o.ideaLayout;
+          /* ★ 审查修复（2026-10-04）：snapshot() 里写了 setOpen / aiMode / aiBase / aiModel /
+             aiUse，恢复分支却不认它们 —— 于是"恢复备份"之后 AI 隐私档悄悄回到「关闭」、
+             设置页折叠态回到全收起。备份恢复必须幂等：同一份备份再恢复一次，结果不能变。 */
+          if (Array.isArray(o.setOpen)) S.setOpen = o.setOpen.filter(x => typeof x === 'string');
+          if (o.aiMode === 'off' || o.aiMode === 'title' || o.aiMode === 'full') S.aiMode = o.aiMode;
+          if (typeof o.aiBase === 'string') S.aiBase = o.aiBase;
+          if (typeof o.aiModel === 'string') S.aiModel = o.aiModel;
+          if (o.aiUse && typeof o.aiUse === 'object' && typeof o.aiUse.d === 'string' && Number.isFinite(o.aiUse.n)){
+            S.aiUse = { d: o.aiUse.d, n: o.aiUse.n };
+          }
           save(); applyHelp(); refresh();
           toast('已从备份恢复 ' + S.items.length + ' 条');
         });
@@ -9356,7 +9821,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.0.1';
+const APP_VERSION = '5.1.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
