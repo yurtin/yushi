@@ -11,12 +11,17 @@
 老版本对非 ASCII 路径有过翻车记录，这一步保险是白送的。
 
 跑法：
+    python _android\\build.py --ai     # ★ 发版只走这条：联网版（鱼事-ai-vX.Y.Z.apk）
     python _android\\build.py          # 纯净版：不声明 INTERNET（鱼事-pure-vX.Y.Z.apk）
-    python _android\\build.py --ai     # 联网版：加 INTERNET，AI 那一栏可用（鱼事-ai-vX.Y.Z.apk）
+
+★ 2026-10-04 用户定：**不再出双包**，AI 是必不可少的功能 —— 发版只出联网版。
+   原话："以后打包就不用分这个双包了，直接就是 AI 联网这个就行了，因为我觉得 AI 是一个必不可少的功能。"
+   纯净版那条路保留（不删代码：零联网仍是一条可验证的能力），但不再作为交付物；
+   核验也改用 `python _android\\_tools\\verify_apk.py --ai`（不加 --ai 会按纯净版口径断言，必红）。
 
 两个包同源同签名，只有"有没有 INTERNET"一条之差：
-    · 纯净版 = 「零联网」这个卖点的实物证据，权限核验会**硬性**断言不含 INTERNET；
-    · 联网版 = 给要用 AI 的人，权限核验会硬性断言含 INTERNET。
+    · 联网版 = 唯一的交付包，权限核验会硬性断言含 INTERNET；
+    · 纯净版 = 历史路线，权限核验会**硬性**断言不含 INTERNET。
 `AndroidManifest.xml` 里**不写** INTERNET —— 它保持纯净版的真相源，
 联网版的那一行由本脚本在构建目录的副本上注入（见 main() 第 1 步）。
 """

@@ -5,13 +5,14 @@
 
 同时打包成两个平台：
 
-- **安卓** —— **两个 APK**（最新版见 [Releases](https://github.com/yurtin/yushi/releases)）：
-  - `鱼事-pure-vX.Y.Z.apk` —— 权限只有 `RECORD_AUDIO`（危险权限，运行时申请）+ `VIBRATE`（普通）；
-    **不声明 `INTERNET`**，所以是零联网的（AI 那一栏用不了，停在"关闭"）
-  - `鱼事-ai-vX.Y.Z.apk` —— 多一条 `INTERNET`，AI 那一栏可用；**默认仍然是关闭**，
-    要在设置里自己打开，关着的时候一个字都不出手机
-  两个包同源同签名，只差这一条权限。`python _android\build.py` 出纯净版，加 `--ai` 出联网版；
-  构建日志与 `_tools/verify_apk.py` 都会**硬性断言**权限集合与包名对得上（纯净版里出现 INTERNET 直接构建失败）
+- **安卓** —— **一个 APK**（最新版见 [Releases](https://github.com/yurtin/yushi/releases)）：
+  `鱼事-ai-vX.Y.Z.apk` —— 权限 `RECORD_AUDIO`（危险权限，运行时申请）+ `VIBRATE`（普通）
+  + `INTERNET`（只给 AI 那一栏用）。**AI 默认仍然是关闭**，要在设置里自己打开；
+  关着的时候一个字都不出手机。
+  > ★ 2026-10-04 用户定：**不再出双包**（原 `鱼事-pure-*` 那个不含 `INTERNET` 的纯净包停用）——
+  > 理由原话："直接就是 AI 联网这个就行了，因为我觉得 AI 是一个必不可少的功能"。
+  > 所以 `python _android\build.py` 仍可出纯净版，但**发版只走 `--ai`**；
+  > 核验用 `python _android\_tools\verify_apk.py --ai`（不认 `--ai` 的老口径会按纯净版的权限集合断言，必红）。
 - **iOS** —— 一个 PWA（渐进式 Web 应用），Safari 打开后「添加到主屏幕」即成为全屏独立 App
 
 ![分享卡](鱼事-分享图-v3.5.5.png)
@@ -57,8 +58,7 @@
 ## 直接用
 
 **安卓**：到 [Releases](https://github.com/yurtin/yushi/releases/latest) 下载最新的
-`yushi-v*.apk` 安装（Releases 上是 ASCII 名，本机构建产物叫 `鱼事-pure-v*.apk` /
-`鱼事-ai-v*.apk`，同一个文件）。
+`yushi-v*.apk` 安装（Releases 上是 ASCII 名，本机构建产物叫 `鱼事-ai-v*.apk`，同一个文件）。
 装之前不用做任何事；第一次长按圆钮说话时会申请一次麦克风权限，不给也能用键盘输入。
 
 **iOS**：用 **Safari** 打开 <https://daibanji.app.workbuddy.host/> →
