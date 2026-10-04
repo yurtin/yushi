@@ -2606,18 +2606,29 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
    上下内边距改成对称的 14px。 */
 .item.seed{padding:14px 12px 14px;align-items:flex-start}
 .item.seed .lead{flex-direction:column;gap:8px;padding-top:1px}
+/* ★ v5.1.2（用户："关于下一级想法的展开和收起，这个标就不要放在左边了，
+   把它放在左边灰色的指示线上吧"）：折角键不再是左边那一列里的方钮，改成**竖线上的小圆珠**
+   —— 绝对定位在 .spine 上（left:2px 让 18px 的圆珠中心正压在那条 11px 的线上），
+   实底背景把线断开，看起来就是线的端点，也是"下面还挂着 N 条"的开关。
+   收起态显示 ▸、展开态 ▾（和原来同一个字形，只是换了位置）。 */
+.item.seed .spine .fold{
+  position:absolute;left:2px;bottom:-2px;z-index:1;
+  width:18px;height:18px;padding:0;border-radius:50%;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;line-height:1;font-size:10px;
+  background:var(--panel-solid,var(--bg));border:1px solid var(--line,var(--pill));
+  color:var(--faint);transition:color var(--mo-fast) ease,border-color var(--mo-fast) ease;
+}
+.item.seed .spine .fold:hover{border-color:var(--fg);color:var(--fg)}
+.item.seed .spine .fold[aria-expanded="true"]{color:var(--accent);border-color:var(--accent)}
+/* 圆珠占的下半截空间：不然它压住最后一步的正文 */
+.item.seed .spine.has-kids{padding-bottom:16px}
 .seed-tick{color:var(--faint)}
 /* ★ v5.0：勾选框删了 —— 原来就是上面这条 .seed-tick（按钮式勾）。
    想法不打勾，"用完了"从长按菜单走「收起来」（卡片变暗、沉底，可"继续想"恢复）。
    这里换成：折叠三角 + 等宽占位 + 缩进树 + 沉睡变淡。 */
-.fold{
-  width:22px;height:22px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
-  border:0;background:none;padding:0;cursor:pointer;
-  color:var(--faint);font-size:12px;line-height:1;
-  border-radius:8px;transition:background var(--mo-base) ease,color var(--mo-base) ease;
-}
-.fold:hover{background:var(--pill-hover,var(--pill));color:var(--fg)}
-.fold[aria-expanded="true"]{color:var(--accent)}
+/* ★ v5.1.2：原来 `.fold` 是左边那一列里的 22×22 方钮（含着 hover 底色）。
+   现在它长在竖线上（见下面 `.item.seed .spine .fold` 那条），这里的老规则整块删掉，
+   免得两条同选择器的规则互相盖（本项目在 .cmenu 上吃过这个亏）。 */
 /* ★ v5.1.2：`.lead-blank`（没有子想法时的等宽占位）已删除 —— 它白占 22px + 11px 间隔，
    把日期和那个蓝点推到离卡边 45px 外（用户真机截图："这个蓝色的点，左边不还有那么多空间吗"）。
    现在 seedHTML 里**没有可放的东西就整列不渲染**，对齐让位给"贴着左边距"。 */
@@ -2683,9 +2694,13 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
 .chip.depthchip{color:var(--faint)}
 .item.seed .body{min-width:0;flex:1;gap:8px}
 /* 时间轴：一条 1px 竖脊 + 每步一颗点。第一步（种子本身）的点用强调色实心，
-   后面长出来的用空心 —— 一眼能分出"种子"和"长出来的"。 */
-.spine{position:relative;padding-left:12px}
-.spine::before{content:'';position:absolute;left:4px;top:6px;bottom:6px;width:1px;
+   后面长出来的用空心 —— 一眼能分出"种子"和"长出来的"。
+   ★ v5.1.2（用户："这个点距离左边感觉有些太近了，让它稍微往右移一点，大概移一个点的宽度"）：
+   内边距 12 → 19px，蓝点跟着从离卡边 13px 挪到 20px（正好一个点的宽度）。
+   那条竖线是绝对定位在 .spine 上的，**不随 padding 走**，所以 left 要同步 4 → 11px
+   （dot 的中心 = 8 + 3.5 = 11.5，线压在 11 上）—— 这一对数字必须一起改。 */
+.spine{position:relative;padding-left:19px}
+.spine::before{content:'';position:absolute;left:11px;top:6px;bottom:6px;width:1px;
   background:var(--line,var(--pill))}
 .sp-step{position:relative;display:flex;align-items:baseline;gap:8px;padding:3px 0;min-width:0}
 .sp-dot{position:absolute;left:-11px;top:8px;width:7px;height:7px;border-radius:50%;
@@ -4111,7 +4126,7 @@ function seedHTML(it, info){
      后面的都是它长出来的。日期用 createdAt 兜底 —— 老数据没有 at 也不会露出空标签。 */
   const first = it.createdAt ? ymd(new Date(it.createdAt)) : '';
   const spine =
-    `<div class="spine">` +
+    `<div class="spine${(kidCount && !ideaUI.mergeMode) ? ' has-kids' : ''}">` +
       `<div class="sp-step seed-first"><span class="sp-dot"></span>` +
         `<span class="sp-at">${esc(first)}</span><span class="sp-tx">${esc(it.title)}</span></div>` +
       /* ★ v5.0：每一步都带一个 `→`（**不是 ✓**）—— 点它就把这一句变成一条待办。
@@ -4131,17 +4146,22 @@ function seedHTML(it, info){
       (ideaUI.sparkOpen === it.id
         ? `<div class="sp-add"><input type="text" class="sp-in" id="sp_in" data-id="${esc(it.id)}" placeholder="现在多了什么信息？" aria-label="续写"><button type="button" class="sp-ok" data-act="sparkok" data-id="${esc(it.id)}">记下</button><button type="button" class="sp-cancel" data-act="sparkcancel" data-id="${esc(it.id)}" aria-label="收起">✕</button></div>`
         : '') +
+      /* ★ v5.1.2（用户："关于下一级想法的展开和收起，这个标就不要放在左边了，
+         把它放在左边灰色的指示线上吧"）：折角键从左边那一列搬进 .spine、绝对定位到竖线上，
+         做成线上的一个小圆珠（见 CSS）。它不再占一列宽度，于是有子想法/没子想法的卡
+         日期与蓝点都在同一个 x 上 —— 上一版"有子想法的卡正文右移 33px"的取舍也不用再做了。 */
+      ((kidCount && !ideaUI.mergeMode)
+        ? `<button type="button" class="fold${folded ? ' on' : ''}" data-act="fold" data-id="${esc(it.id)}" aria-expanded="${folded ? 'false' : 'true'}" title="${folded ? '展开这 ' + kidCount + ' 条' : '收起这 ' + kidCount + ' 条'}">${folded ? '▸' : '▾'}</button>`
+        : '') +
     `</div>`;
   /* ★ v5.0：不再有勾选框。用完了从长按菜单走「收起来」，卡片只是变暗。
      ★ v5.1.2（用户真机截图："这个蓝色的点，左边不还有那么多空间吗？你把它往左移一些呀"）：
      以前没有折角键/勾选键时这里补一个等宽空位（.lead-blank），好让同级卡片标题对齐 ——
      但想法卡默认既没有勾选框、多数也没有子想法，于是每张卡左边都白留 22px + 11px 间隔，
      日期和那个蓝点被推到离边框 45px 外。现在**没有可放的东西就整列不渲染**：
-     左边留给正文，日期/蓝点贴到 12px 内边距上。真要放折角键、勾选键时列自然还在。 */
-  const lead = (ideaUI.mergeMode || kidCount)
-    ? `<div class="lead">${ideaUI.mergeMode
-        ? `<button type="button" class="pick${ideaUI.mergeSel.has(it.id) ? ' on' : ''}" data-act="pick" data-id="${esc(it.id)}" role="checkbox" aria-checked="${ideaUI.mergeSel.has(it.id) ? 'true' : 'false'}" title="选中以合并">✓</button>`
-        : `<button type="button" class="fold${folded ? ' on' : ''}" data-act="fold" data-id="${esc(it.id)}" aria-expanded="${folded ? 'false' : 'true'}" title="${folded ? '展开这 ' + kidCount + ' 条' : '收起'}">${folded ? '▸' : '▾'}</button>`}</div>`
+     左边留给正文。折角键搬去线上之后，.lead 只剩"多选勾选键"这一种用途。 */
+  const lead = ideaUI.mergeMode
+    ? `<div class="lead"><button type="button" class="pick${ideaUI.mergeSel.has(it.id) ? ' on' : ''}" data-act="pick" data-id="${esc(it.id)}" role="checkbox" aria-checked="${ideaUI.mergeSel.has(it.id) ? 'true' : 'false'}" title="选中以合并">✓</button></div>`
     : '';
   return `<div class="${cls}" data-id="${esc(it.id)}" data-fk="i:${esc(it.id)}" data-u="0">
     ${lead}
