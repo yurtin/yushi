@@ -2835,6 +2835,14 @@ html.soft-render .mask.sheet-mode .modal{
 .ai-input:focus{border-color:var(--accent)}
 .ai-row{display:flex;flex-direction:column;gap:6px;margin-top:12px}
 .ai-row>label{font-size:12px;color:var(--faint)}
+/* ★ v5.0 API key 那一行：输入框 + 粘贴 + 显示 三件并排。
+   遮字用 -webkit-text-security 而不是 type=password —— 后者会触发安卓的**安全键盘**，
+   而安全键盘禁用粘贴，key 根本贴不进去（真机实测）。 */
+.ai-keyline{display:flex;gap:6px;align-items:center}
+.ai-keyline .ai-input{flex:1 1 auto;min-width:0}
+.ai-keyline .btn{flex:0 0 auto;padding:7px 12px;font-size:13px}
+.ai-input[data-mask="1"]{-webkit-text-security:disc}
+.ai-input[data-mask="1"]::placeholder{-webkit-text-security:none;font-size:12px}
 .ai-note{font-size:11.5px;line-height:1.65;color:var(--faint);margin:10px 0 0}
 .ai-quote{font-size:11.5px;line-height:1.65;color:var(--faint);margin:10px 0 0;
   padding-left:10px;border-left:2px solid var(--accent);opacity:.9}
@@ -5692,6 +5700,50 @@ function aiFail(msg){ hideToast(); toast(msg || 'AI 没接上'); }
    （「问我一问」成功那条带「怎么回」，它自己就是被保护的那一条，不走这里。） */
 function aiSay(msg){ hideToast(); toast(msg); }
 
+/* ★ v5.0 真机反馈：key 输入框原来用 type=password —— 安卓一看到密码框就切**安全键盘**，
+   而安全键盘（以及部分输入法的密码模式）**禁用粘贴**，于是 key 根本填不进去。
+   现在改成 type=text + CSS 遮字（看起来还是圆点，但走普通键盘，长按能粘贴），
+   再配一个「粘贴」按钮兜底。三档降级：
+     ① native 桥（Android 剪贴板，最稳）→ ② navigator.clipboard → ③ 提示长按输入框。 */
+function aiPasteKey(){
+  const inp = document.getElementById('aiKeyInput');
+  if (!inp) return;
+  const fill = txt => {
+    const s = String(txt == null ? '' : txt).trim();
+    if (!s){ aiSay('剪贴板里没有文字'); return; }
+    inp.value = s;
+    aiSetKey(s);              // 点完「粘贴」就生效，不用等失焦
+    refresh();                // 重渲染：label 上的掩码、按钮状态一起更新
+    aiSay('填好了：' + (s.length > 8 ? '••••••' + s.slice(-4) : '••••'));
+  };
+  try {
+    const N = window.YuShiNative;
+    if (N && typeof N.readClipboard === 'function'){
+      const t = N.readClipboard();
+      if (t && String(t).trim()) fill(t);
+      else aiSay('剪贴板是空的，或系统不让读');
+      return;
+    }
+  } catch (e){}
+  if (navigator.clipboard && navigator.clipboard.readText){
+    navigator.clipboard.readText().then(fill).catch(() => {
+      inp.focus(); aiSay('浏览器不让自动读，长按输入框选「粘贴」');
+    });
+    return;
+  }
+  inp.focus();
+  aiSay('长按输入框，用系统的「粘贴」');
+}
+/* 显示 / 隐藏：贴完核对一下后四位，或者确认没贴错时用 */
+function aiToggleKeyShow(){
+  const inp = document.getElementById('aiKeyInput');
+  const btn = document.querySelector('[data-act="aishowkey"]');
+  if (!inp || !btn) return;
+  const masked = inp.getAttribute('data-mask') !== '0';
+  inp.setAttribute('data-mask', masked ? '0' : '1');
+  btn.setAttribute('aria-pressed', masked ? 'true' : 'false');
+  btn.textContent = masked ? '隐藏' : '显示';
+}
 /* 未开启 / 没 key 时的引导页。**不替用户打开开关** —— 隐私开关必须由他本人点。 */
 function openAiNeedOn(){
   modal.innerHTML =
@@ -6045,8 +6097,21 @@ function renderSettings(){
         </div>
         <div class="ai-row">
           <label for="aiKeyInput">API key（只存在这台手机上，不进备份文件）${aiKey() ? '  · 现在是 ' + esc(aiKeyMask()) : ''}</label>
-          <input class="ai-input" id="aiKeyInput" type="password" autocomplete="off" spellcheck="false"
-                 placeholder="粘贴 DeepSeek 的 key（sk-…）" value="">
+          <!-- ★ v5.0 真机反馈（用户："api key 怎么不能粘贴，安全键盘也不能粘贴"）：
+               原来这里是 input[type=password] —— 安卓一看到密码框就切**安全键盘**，
+               而安全键盘（还有部分输入法的密码模式）**禁用粘贴**，于是 key 根本填不进去。
+               改成 type=text + CSS 的 -webkit-text-security:disc 来遮字：
+               看起来还是圆点，但系统走的是普通键盘，长按能粘贴。
+               另外配一颗「粘贴」：优先走 native 桥（Android 剪贴板），
+               退化到 navigator.clipboard，再不行就提示长按输入框。
+               还有「显示」：贴完想核对一下后四位、或者确认没贴错时用。 -->
+          <div class="ai-keyline">
+            <input class="ai-input" id="aiKeyInput" type="text" autocomplete="off" spellcheck="false"
+                   autocapitalize="off" autocorrect="off" data-mask="1"
+                   placeholder="粘贴 DeepSeek 的 key（sk-…）" value="">
+            <button type="button" class="btn" data-act="aipaste" title="从剪贴板粘贴">粘贴</button>
+            <button type="button" class="btn" data-act="aishowkey" aria-pressed="false" title="显示 / 隐藏">显示</button>
+          </div>
         </div>
         <div class="ai-row">
           <label for="aiBaseInput">接口地址（任意 OpenAI 兼容端点）</label>
@@ -7443,6 +7508,8 @@ view.addEventListener('click', e => {
   if (act === 'aitest'){ aiTestSelf(); return; }
   if (act === 'aiscan'){ aiScanLinks(true); return; }
   if (act === 'aiprune'){ aiPrune(); return; }
+  if (act === 'aipaste'){ aiPasteKey(); return; }
+  if (act === 'aishowkey'){ aiToggleKeyShow(); return; }
   /* ---- ★ v5.0 想法页自己的标签筛选（不碰清单页的 S.filterTags）---- */
   if (act === 'ideatag'){
     const tg = el.dataset.tag;
@@ -9289,7 +9356,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.0.0';
+const APP_VERSION = '5.0.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：

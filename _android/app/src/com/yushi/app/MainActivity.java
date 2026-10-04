@@ -621,10 +621,13 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * 页面侧访问的全局对象。三个方法签名固定：
-     *   startVoice()    开始识别
-     *   stopVoice()     结束识别
-     *   isAvailable()   是否支持设备端离线识别（返回字符串 "true" / "false"）
+     * 页面侧访问的全局对象（window.YuShiNative）。方法签名固定：
+     *   startVoice()      开始识别
+     *   stopVoice()       结束识别
+     *   isAvailable()     是否支持设备端离线识别（返回字符串 "true" / "false"）
+     *   insets()          系统安全区内边距（纯全面屏用）
+     *   startVoiceSystem() / startVoicePanel() / startVoiceOffline() / stopVoiceOffline()
+     *   readClipboard()   ★ 5.0：读一次剪贴板（设置页「粘贴」按钮用，用户点击触发）
      */
     private class YuShiBridge {
 
@@ -641,6 +644,47 @@ public class MainActivity extends Activity {
                 return "true";
             }
             return "false";
+        }
+
+        /**
+         * ★ 5.0：读一次系统剪贴板，返回第一段文字（没有就返回空串）。
+         *
+         * 为什么需要它：设置页那颗「粘贴」按钮要往 API key 输入框里填值。
+         * 网页侧 navigator.clipboard.readText() 在 Android WebView 里默认会被拒
+         * （要应用自己实现 onPermissionRequest），所以走 native 桥最稳。
+         * 输入框本身也从 type=password 改成了 text + CSS 遮字 —— 后者会触发安卓安全键盘，
+         * 而安全键盘**禁用粘贴**，key 根本贴不进去（用户真机反馈）。
+         *
+         * 这是**用户点击触发**的读取（不是后台偷看），Android 10+ 也只在应用前台可用。
+         */
+        @android.webkit.JavascriptInterface
+        public String readClipboard() {
+            final String[] out = new String[]{ "" };
+            final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+            runOnUiThread(() -> {
+                try {
+                    android.content.ClipboardManager cm = (android.content.ClipboardManager)
+                            getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                    if (cm != null && cm.hasPrimaryClip()) {
+                        android.content.ClipData clip = cm.getPrimaryClip();
+                        if (clip != null && clip.getItemCount() > 0) {
+                            // 注意这里是 MainActivity.this —— 本方法在内部类里，this 是桥对象不是 Activity
+                            CharSequence cs = clip.getItemAt(0).coerceToText(MainActivity.this);
+                            if (cs != null) out[0] = cs.toString();
+                        }
+                    }
+                } catch (Throwable t) {
+                    out[0] = "";
+                } finally {
+                    latch.countDown();
+                }
+            });
+            try {
+                latch.await(1, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return out[0];
         }
 
         /** 开始识别。JS 线程调用，所有 UI / 识别操作都 post 回主线程。 */
