@@ -106,8 +106,29 @@ public class MainActivity extends Activity {
         web.setLongClickable(false);
         web.setOnLongClickListener(v -> true);
         web.setHapticFeedbackEnabled(false);
-        setContentView(web, new ViewGroup.LayoutParams(
+        /* ★ v5.1.2（真机反馈："你看这个为什么底下的那个框没有弄到输入框的上面、键盘的上面？
+           那我调出键盘的时候，就看不到输入的内容了"）：
+           这个 Activity 在 API 30+ 是 edge-to-edge（见上面 setDecorFitsSystemWindows(false)），
+           **manifest 里的 adjustResize 因此彻底失效** —— 键盘只是盖在窗口上，
+           页面里 `.mask{position:fixed;inset:0}` 仍是整窗高，贴底那张 sheet 的输入框
+           正好落在键盘下面。
+           修法：WebView 放进一个根容器，键盘弹出时给根加"等于键盘高"的底部内边距 ——
+           WebView 变小 → 布局视口变小 → 页面那套 fixed 弹层自然升到键盘之上。
+           这对所有输入框、所有贴底弹层一起生效，页面侧不用逐个改。
+           API < 30 取不到 WindowInsets.Type.ime()，但那条路上 adjustResize 本来就是有效的。 */
+        android.widget.FrameLayout host = new android.widget.FrameLayout(this);
+        host.addView(web, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (Build.VERSION.SDK_INT >= 30) {
+            host.setOnApplyWindowInsetsListener((v, insets) -> {
+                int ime = insets.getInsets(android.view.WindowInsets.Type.ime()).bottom;
+                if (v.getPaddingBottom() != ime) {
+                    v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), ime);
+                }
+                return insets;
+            });
+        }
+        setContentView(host);
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);

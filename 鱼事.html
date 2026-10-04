@@ -2780,6 +2780,17 @@ html.soft-render .mask.sheet-mode .modal{
   animation:sheetUp .3s var(--mo-soft) both;
 }
 @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+/* ★ v5.1.2（真机："调出键盘的时候就看不到输入的内容了"）：键盘浮起时把弹层抬到它上面。
+   --kb = 被键盘吃掉的高度（由 applyKeyboardInset 写，没有键盘时这个变量不存在，
+   所以用 var(--kb,0px) 兜底）。贴底 sheet 靠"遮罩的底部内边距"整体上移，
+   非贴底的居中弹窗也跟着上移一点（不然同样会被键盘压住下半截）。
+   sheet 的 82vh 必须一起减：vh 是按布局视口算的，键盘盖着窗口时它不会自动变小。 */
+.mask{padding-bottom:calc(20px + var(--kb,0px))}
+.mask .modal{max-height:calc(88vh - var(--kb,0px))}
+.mask.sheet-mode{padding-bottom:var(--kb,0px)}
+.mask.sheet-mode .modal,
+html.gpu-render .mask.sheet-mode .modal,
+html.soft-render .mask.sheet-mode .modal{max-height:calc(82vh - var(--kb,0px))}
 .sheet-head{padding:2px 6px 12px;border-bottom:1px solid var(--line,var(--pill));margin-bottom:8px}
 .sheet-head b{font-size:15px;font-weight:700;color:var(--fg);
   display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -7308,7 +7319,33 @@ function observeReveals(){
   }, 1400);
 }
 
-/* ---------------- toast ---------------- */
+/* ★ v5.1.2（真机反馈："调出键盘的时候，就看不到输入的内容了"）：弹层是
+   `position:fixed;inset:0`，键盘若只是**盖在窗口上**（安卓 API 30+ 的 edge-to-edge 就是这样），
+   贴底 sheet 的输入框正好落在键盘下面。
+   主线是原生壳那条：MainActivity 按 IME inset 把 WebView 直接缩小（布局视口变小，弹层自然升上去）。
+   这里兜底浏览器 / PWA / 老壳：用 visualViewport 量出"被键盘吃掉的高度"写进 --kb，
+   CSS 拿它当弹层的底部内边距（并同步收窄 sheet 的 max-height）。
+   两条同时生效不会叠：壳那条把 innerHeight 也一起缩小了，这里量出来就是 0。
+   ⚠️ 留 60px 死区：地址栏伸缩、四舍五入都会产生几十 px 的差，不该让弹层跟着抖。 */
+function applyKeyboardInset(kb){
+  const root = document.documentElement;
+  const v = Math.max(0, Math.round(kb || 0));
+  if (v >= 60) root.style.setProperty('--kb', v + 'px');
+  else root.style.removeProperty('--kb');
+}
+function syncKeyboardInset(){
+  const vv = window.visualViewport;
+  applyKeyboardInset(vv ? window.innerHeight - (vv.height + vv.offsetTop) : 0);
+}
+function initKeyboardInset(){
+  if (window.visualViewport){
+    window.visualViewport.addEventListener('resize', syncKeyboardInset);
+    window.visualViewport.addEventListener('scroll', syncKeyboardInset);   // iOS 会把可视框整体上移
+  }
+  window.addEventListener('resize', syncKeyboardInset);
+}
+
+/* ---------- toast ---------------- */
 let toastTimer = null;
 function toast(msg, actionLabel, action, dur){
   const el = document.getElementById('toast');
@@ -10747,6 +10784,8 @@ applyTheme(S.theme, false);
 /* 「页面说明文字」的开关在首帧之前就要落到位 —— refresh() 是 rAF 延迟的，
    等它同步会先闪一下那段说明文字。 */
 applyHelp();
+/* 键盘浮起的兜底（--kb）：只在浏览器 / PWA / 老壳里量得到值，安卓新壳那条走原生 insets。 */
+initKeyboardInset();
 /* 备份提醒：必须排在 load() 之后 —— 它要读 S.lastBackup，见函数定义处的说明。 */
 backupNudge();
 /* 写法提示：chip 条数由脚本数一遍填上去；开合状态记进 localStorage。
