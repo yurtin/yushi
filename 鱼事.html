@@ -413,7 +413,7 @@ body[data-view="stat"] .pdaim-section,
 body[data-view="idea"] .pdaim-section,
 body[data-view="settings"] .pdaim-section{padding-top:clamp(18px,3vh,36px)}
 
-/* 「外观 → 页面说明文字」关掉时，各页标题下面那段解释文案整段收起。
+/* 「外观与体感 → 页面说明文字」关掉时，各页标题下面那段解释文案整段收起。
    开关状态只写在 body 的一个属性上（applyHelp 同步），不在三个视图里各写一份，
    所以切换时不需要重渲染、页面也不会跳一下。
    ★ v5.2（用户："打开页面说明文字时，这个字体的弹出太过于生硬了，让它像隐藏或折叠的部分
@@ -1540,6 +1540,26 @@ body[data-help="off"] .set-row .set-txt > span:not([data-keephelp]){
    就可以了"）—— 不学统计页那种"标签 / 大数字 / 单位"三行块。
    只作用于设置页：统计页那个三行块是刻意突出的，不受影响。 */
 .set-card .mono{margin:0 .18em}
+/* ★ v5.1.2（用户："在标题后面放 3 个圆形的按钮…如果开启，UI 就变白；不按（关闭）就是灰色的。
+   3 个按钮并排不太好看，但换成方形会跟上下方的元素冲突，所以还是要圆形"）：
+   想法卡日期显示的三颗圆键。视觉**沿用 .segbtn.on / 未选中那一套**（白底浮起 + 灰字无底），
+   不新造一套"选中"语言 —— 全站只有这一种选中长相。 */
+.rbtns{display:flex;gap:8px;align-items:center}
+.rbtn{
+  width:36px;height:36px;padding:0;border-radius:50%;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--line2);background:transparent;color:var(--muted);
+  font:inherit;font-size:13px;font-weight:800;line-height:1;
+  transition:background var(--mo-base) var(--mo-soft),color var(--mo-base) var(--mo-soft),
+             border-color var(--mo-base) var(--mo-soft),box-shadow var(--mo-base) var(--mo-soft),
+             transform var(--mo-quick) ease;
+}
+.rbtn:hover{color:var(--fg);border-color:var(--fg)}
+.rbtn:active{transform:scale(.94)}
+.rbtn.on{
+  background:var(--bg);color:var(--fg);border-color:var(--bg);
+  box-shadow:0 2px 10px color-mix(in srgb,var(--glass-edge) 45%,transparent);
+}
 /* ★ v5.0：设置页的两选一（没写时间的条目默认去哪）。两颗 pill 并排，
    选中态沿用全站 `.pill.on`，不新造一套"选中"语言。 */
 .seg-cap{display:flex;gap:6px;flex:0 0 auto;align-self:center}
@@ -1557,20 +1577,24 @@ body[data-help="off"] .set-row .set-txt > span:not([data-keephelp]){
    行高从 5~6 行压到 1~2 行，控件也不再和文字抢横向空间。
    `display:contents` 让 .set-txt 这层壳从布局里消失，它的 b / span 直接变成 grid item。 */
 .set-row .set-txt{display:contents}
-.set-row .set-txt b{grid-column:1;grid-row:1;min-width:0}
+/* ★ v5.1.2：这三条一律用**直接子元素** `> b` —— 说明文字里也会有行内 `<b>`（例如
+   "三颗圆键分别是<b>年 / 月 / 日</b>，现在显示的是 <b class="mono">2026-10-04</b>"），
+   用后代选择器会把那些行内加粗也变成 `display:block` 的标题行：一句话被拆成好几行，
+   用户截图里就是"分别是 / 年 / 月 / 日 / ，亮着 = ……"这样断开的。 */
+.set-row .set-txt > b{grid-column:1;grid-row:1;min-width:0}
 /* ⚠️ 必须是**直接子元素** `> span`：`<b>今天还剩 <span class="mono">3</span> 次</b>` 里的
    .mono 也是 span，用后代选择器会给它套上 display:block —— 于是"今天还剩 3 次"被拆成
    三行（用户："你看像这种分明就是一行的，你就不要把它分成三行去表述"）。 */
 .set-row .set-txt > span{grid-column:1 / -1;grid-row:2}
 .set-row > *:not(.set-txt){grid-column:2;grid-row:1}
-.set-row .set-txt b{display:block;font-size:14.5px;font-weight:800}
+.set-row .set-txt > b{display:block;font-size:14.5px;font-weight:800}
 .set-row .set-txt > span{display:block;margin-top:6px;font-size:12.5px;line-height:1.7;color:var(--muted);font-weight:600}
 /* ★ v5.0：右边放两枚按钮的那种行，左边那行字会被挤成两三行 ——
    用户："你看像这种分明就是一行的，你就不要把它分成三行去表述……这个数字跟左右两边的
    字体稍微空出一些距离，就可以了"。这类行（示例数据、AI 的配额）加 .stack：
    文字占满整行，控件落到下一行、左对齐。 */
 .set-row.stack{grid-template-columns:1fr}
-.set-row.stack .set-txt b{grid-row:1}
+.set-row.stack .set-txt > b{grid-row:1}
 .set-row.stack .set-txt > span{grid-row:3}
 .set-row.stack > *:not(.set-txt){grid-column:1;grid-row:2;justify-self:start;margin-top:10px}
 /* 开关：和顶栏那个主题开关同一套观感（凹槽 + 白色球），但语义是 role="switch"，
@@ -3343,6 +3367,19 @@ function ymd(d){ return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + p
    把空位收掉（见 seedHTML 里 .lead 只在有折角键/勾选键时才渲染）比省年份更划算，
    于是日期恢复写全年 `2026-10-04`，正文可用宽度反而没变窄。 */
 function dateFrom(s){ const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
+/* ★ v5.1.2（用户："在（设置）里自己调节要不要显示时间，以及具体怎么显示。就给他 3 个按钮：
+   要不要显示年 / 月 / 日"）：想法卡时间轴上的日期按 S.dateShow 拼。
+   只认 `YYYY-MM-DD`，别的格式（老数据）原样返回，不做猜测；
+   三段全关 → 返回空串，调用点据此**整段不渲染**（不是渲染一个空标签）。 */
+function dateText(v){
+  const s = String(v == null ? '' : v);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const p = [];
+  if (S.dateShow.y) p.push(s.slice(0, 4));
+  if (S.dateShow.m) p.push(s.slice(5, 7));
+  if (S.dateShow.d) p.push(s.slice(8, 10));
+  return p.join('-');
+}
 
 /* 导入历史笔记时，相对日期（今天/周四/17号）按「基准日」算，而不是按今天 */
 let BASEDAY = null;
@@ -3736,9 +3773,16 @@ const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', t
         （见 AI_KEY_LS），这样导出的备份 JSON 永远不可能带上 key。 */
   aiMode: 'off', aiBase: 'https://api.deepseek.com', aiModel: 'deepseek-flash',
   aiUse: { d: null, n: 0 },
-  /* ★ v5.0：设置页展开了哪几栏（存的是栏目名，如 '外观' / 'AI'）。
+  /* ★ v5.0：设置页展开了哪几栏（存的是栏目名，如 '外观与体感' / 'AI'）。
      默认**空数组 = 全部收起** —— 用户："设置栏目有点太长了"。 */
-  setOpen: [] };
+  setOpen: [],
+  /* ★ v5.1.2（用户："让他在功能页面或者外观页面里，自己调节要不要显示时间" /
+     "加一个震动档位"）：两个新设置。
+       dateShow  想法卡时间轴日期的显示口径 {y,m,d}；默认**三段全开**（2026-10-04），
+                 三个都关＝不显示日期（调用点就不渲染 .sp-at）。
+       haptic    震动档位 'off' | 'low' | 'std' | 'high'，默认 'std'。全 App 的震动
+                 统一走 buzz()，档位只在那里乘系数（见 buzz 的说明）。 */
+  dateShow: { y: true, m: true, d: true }, haptic: 'std' };
 /* 清单页的四个分区（渲染顺序见 renderList）。折叠状态存的就是这几个键，
    load() 拿它当白名单过滤 —— 不让数据里的任意字符串混进 class 名。 */
 /* ★ v5.0：「考虑」已并入想法（行尾 ? 直接建种子），分区里不再有 consider。
@@ -3865,6 +3909,18 @@ function load(){
       /* ★ v5.0 设置页折叠：老存档没有这个字段 → 全收起（默认）；只收字符串，别的丢掉 */
       S.setOpen = Array.isArray(o.setOpen)
         ? o.setOpen.filter(k => typeof k === 'string' && k).slice(0, 12) : [];
+      /* ★ v5.1.2：日期显示口径与震动档位。
+         日期：老存档没有 → 三段全开（就是现在的行为）；显式存过 false 才算关
+         —— 写成 `ds.y !== false` 而不是 `!!ds.y`，否则"用户把三段全关掉"这个状态
+         会在下次启动被静默改回全开（跟 showHelp 那条同一个坑）。 */
+      const ds = (o.dateShow && typeof o.dateShow === 'object') ? o.dateShow : null;
+      S.dateShow = {
+        y: ds ? ds.y !== false : true,
+        m: ds ? ds.m !== false : true,
+        d: ds ? ds.d !== false : true,
+      };
+      /* 震动：读坏了退回 'std'（宁可正常震，也别因为一个脏值变成"完全不震"让人以为坏了） */
+      S.haptic = ['off', 'low', 'std', 'high'].includes(o.haptic) ? o.haptic : 'std';
     }
   } catch (e){}
   syncTags();
@@ -3887,6 +3943,8 @@ function save(){
       /* ★ v5.0 第 3 批（AI）：只有"设置"，**没有 key**（key 在 AI_KEY_LS 上单独存） */
       aiMode: S.aiMode, aiBase: S.aiBase, aiModel: S.aiModel, aiUse: S.aiUse,
       setOpen: S.setOpen,
+      /* ★ v5.1.2：日期显示口径 + 震动档位 */
+      dateShow: S.dateShow, haptic: S.haptic,
       voiceVersion: 2   /* 语音默认值只迁移一次，之后用户自己的开关说了算（见 load 的说明） */
     }));
     saveFailed = false;
@@ -3912,7 +3970,9 @@ function snapshot(){
     /* ★ v5.0 第 3 批（AI）：**刻意不写 key** —— 设计稿 §14 I-50 的验收：
        备份导出的 JSON 里不含 API key 字段。key 存在 AI_KEY_LS，永不进快照。 */
     aiMode: S.aiMode, aiBase: S.aiBase, aiModel: S.aiModel, aiUse: S.aiUse,
-    setOpen: S.setOpen
+    setOpen: S.setOpen,
+    /* ★ v5.1.2：日期显示口径 + 震动档位也进备份 —— 换手机/换电脑后不用再调一遍 */
+    dateShow: S.dateShow, haptic: S.haptic
   };
 }
 /* 去空白、去空串、去重（保留先后顺序） */
@@ -4125,17 +4185,20 @@ function seedHTML(it, info){
   /* 时间轴：一条竖脊 + 每步一个点。第一步是"种子本身"（记进来的那天），
      后面的都是它长出来的。日期用 createdAt 兜底 —— 老数据没有 at 也不会露出空标签。 */
   const first = it.createdAt ? ymd(new Date(it.createdAt)) : '';
+  /* ★ v5.1.2：日期段按设置里的年/月/日拼（见 dateText）；**三段全关就不渲染这一格** ——
+     不是渲染一个空的 span，那样正文前面会白留一段间隙。 */
+  const atSpan = v => { const t = dateText(v); return t ? `<span class="sp-at">${esc(t)}</span>` : ''; };
   const spine =
     `<div class="spine${(kidCount && !ideaUI.mergeMode) ? ' has-kids' : ''}">` +
       `<div class="sp-step seed-first"><span class="sp-dot"></span>` +
-        `<span class="sp-at">${esc(first)}</span><span class="sp-tx">${esc(it.title)}</span></div>` +
+        atSpan(first) + `<span class="sp-tx">${esc(it.title)}</span></div>` +
       /* ★ v5.0：每一步都带一个 `→`（**不是 ✓**）—— 点它就把这一句变成一条待办。
          设计稿的红线：**只有 →，没有勾选框，卡片上不显示「3/5 已完成」这类进度**，
          否则种子会退化成第二个清单（调研 01 §6 做法 9 明确这么说）。
          已立项的种子，每步再多一个 `↑`：把这一步补到那条待办里去（双向活链的写这一半）。 */
       sparks.map((s, i) =>
         `<div class="sp-step"><span class="sp-dot"></span>` +
-        `<span class="sp-at">${esc(s.at || '')}</span>` +
+        atSpan(s.at || '') +
         (s.by === 'ai' ? `<span class="sp-ai" title="AI 以「${esc(s.role || '')}」的身份问的">✦${esc(s.role || 'AI')}</span>` : '') +
         `<span class="sp-tx">${esc(s.text)}</span>` +
         (s.promotedTo ? `<span class="sp-done" title="这一步已经立项">↗</span>` : '') +
@@ -5055,7 +5118,7 @@ function mountTreeMap(){
            而 elementFromPoint 返回的是最上层那个元素 —— 不关掉就永远命中它自己，
            于是"怎么拖都找不到目标"（这个 bug 就是这样来的）。 */
         dragEl.style.pointerEvents = 'none';
-        if (navigator.vibrate){ try { navigator.vibrate(10); } catch (_){} }
+        buzz(30);                                   // 长按成立：原来 10ms，真机上几乎摸不到（用户实测）
       }, 400);
       return;
     }
@@ -5133,7 +5196,7 @@ function mountTreeMap(){
         me.parent = to.id;
         collapsed.delete(to.id);            // 目标原先收着的话，展开才能看见接上去的那条
         save(); refresh();
-        if (navigator.vibrate){ try { navigator.vibrate([12, 40, 12]); } catch (_){} }   // §11 吸附成功
+        buzz([14, 36, 14]);   // §11 吸附成功（长度不变，只跟着震动档位缩放）
         toast('挂到「' + to.title + '」下面了', '撤销', () => {
           me.parent = oldParent;
           if (oldCollapsed) collapsed.add(to.id); else collapsed.delete(to.id);
@@ -5562,7 +5625,7 @@ function seedPromote(it, task, opts){
   /* 最近一次产生的待办（含单步）—— 专供时间轴上的 ↑「补到待办里」，
      跟"整条已立项"是两个概念，不要混用一个字段。 */
   it.lastPromoted = task.id;
-  if (navigator.vibrate){ try { navigator.vibrate(20); } catch (_){} }   // §11 立项成功：单中震
+  buzz(24);   // §11 立项成功：单中震
   save(); refresh();
   toast('已立项：' + task.title, '去看', () => {
     S.view = 'list'; ANIM = true; refresh();
@@ -5785,7 +5848,7 @@ function seedUse(it){
   it.done = !it.done;
   it.doneAt = it.done ? Date.now() : null;
   /* §11：收起来是"轻"的动作，极短一震（不惩罚）；亮回来不震。 */
-  if (it.done && navigator.vibrate){ try { navigator.vibrate(8); } catch (_){} }
+  if (it.done) buzz(10);
   save(); refresh();
   toast(it.done ? '收起来了，暗着但还在' : '又亮回来了', '撤销', () => {
     it.done = !it.done; it.doneAt = it.done ? Date.now() : null;
@@ -6344,7 +6407,7 @@ function aiMaybeAutoScan(){
 
 /* ---------- 设置页 ---------- */
 
-/* 「外观 → 页面说明文字」的总开关。
+/* 「外观与体感 → 页面说明文字」的总开关。
    实现成一个 body 属性 + 两条 CSS（见 body[data-help="off"] .intro-note / .set-card .set-sub），
    不在清单/时间轴/统计三个视图里各写一份判断 —— 所以切换时不需要重渲染，
    当前页和之后切过去的每一页都会自动跟上。
@@ -6428,12 +6491,12 @@ function renderSettings(){
       <!-- ★ v5.0：设置页改成默认收起的栏目列表，得有一句话告诉你怎么打开 ——
            折叠本身没有别的视觉提示（就一个 ▸）。这段字归「页面说明文字」开关管。 -->
       <p class="intro-note">每一栏都能点开：点<b>栏目名</b>展开，再点一下收起。
-        嫌每项下面那行解释碍事，就去「外观」里把<b>页面说明文字</b>关掉。</p>
+        嫌每项下面那行解释碍事，就去「外观与体感」里把<b>页面说明文字</b>关掉。</p>
     </div>
     <div class="set-wrap">
       <section class="glass set-card${rv()}"${rvd(60)}>
-        <h3>外观</h3>
-        <p class="set-sub">只改"屏幕上看到什么"，不碰你的数据。改完立刻生效，存在这台手机上。</p>
+        <h3>外观与体感</h3>
+        <p class="set-sub">只改"看到什么、摸起来什么感觉"，不碰你的数据。改完立刻生效，存在这台手机上。</p>
         <!-- 主题开关从顶栏那颗圆点搬来，并新增第三档「跟随系统」：
              选 auto 时由系统深浅色决定，且实时监听变化（见 applyTheme 与 mqDark 的 change 监听）。
              三档互斥、结果持久化进 S.theme。 -->
@@ -6471,6 +6534,49 @@ function renderSettings(){
           </div>
           <button class="switch" data-set="lite" role="switch" aria-label="流畅模式"
                   aria-checked="${document.documentElement.classList.contains('soft-render') ? 'true' : 'false'}"></button>
+        </div>
+        <!-- ★ v5.1.2（用户："在设置里自己调节要不要显示时间，以及具体怎么显示。就给他 3 个按钮：
+             要不要显示年 / 要不要显示月 / 要不要显示日" + "在标题后面放 3 个圆形的按钮…
+             如果用户选择开启，UI 就变白；如果不按（关闭），就是灰色的"）：
+             只作用于**想法卡左侧时间轴上的日期**（清单页/时间轴页的日期不动，用户口径）。
+             三颗圆键各自独立开关，开＝白底浮起（.segbtn.on 那套语言），关＝灰字无底。
+             全部关掉 = 不显示日期（标题会往左顶上来），这是允许的、也是多出来的一种用法。
+             下面那行灰字里带一个**实时预览**：拨一下就能看到结果，不用切回想法页看。 -->
+        <div class="set-row">
+          <div class="set-txt">
+            <b>想法卡片时间显示</b>
+            <span>想法卡左侧时间轴上那个日期，显示哪几段：三颗圆键分别是<b>年 / 月 / 日</b>，
+              亮着＝显示、灰着＝不显示；三个都关掉就不显示日期。现在显示的是
+              <b class="mono" id="datePrev">${dateText('2026-10-04') || '（不显示）'}</b>。</span>
+          </div>
+          <div class="rbtns" role="group" aria-label="想法卡时间显示哪几段">
+            <button type="button" class="rbtn${S.dateShow.y ? ' on' : ''}" data-datepart="y"
+                    aria-pressed="${S.dateShow.y ? 'true' : 'false'}" title="显示年份">年</button>
+            <button type="button" class="rbtn${S.dateShow.m ? ' on' : ''}" data-datepart="m"
+                    aria-pressed="${S.dateShow.m ? 'true' : 'false'}" title="显示月份">月</button>
+            <button type="button" class="rbtn${S.dateShow.d ? ' on' : ''}" data-datepart="d"
+                    aria-pressed="${S.dateShow.d ? 'true' : 'false'}" title="显示日">日</button>
+          </div>
+        </div>
+        <!-- ★ v5.1.2（用户："这个长按的拖动，感觉震感不太明显呀" + "加一个震动档位"）：
+             档位只改"震多久"，不改"哪些动作会震"（那些是固定的反馈语言）。
+             选完立刻震一下当前档位，手能直接比较强弱。 -->
+        <div class="set-row">
+          <div class="set-txt">
+            <b>震动</b>
+            <span>长按卡片进入手势、拖到目标上挂靠、拖到边界外的越界提示 —— 这些动作会震一下。
+              「关」就完全不振；「弱 / 标准 / 强」只改每一下的长短，不改哪些动作会震。</span>
+          </div>
+          <span class="seg" role="group" aria-label="震动档位">
+            <button class="segbtn${S.haptic === 'off' ? ' on' : ''}" data-haptic="off"
+                    aria-pressed="${S.haptic === 'off'}">关</button>
+            <button class="segbtn${S.haptic === 'low' ? ' on' : ''}" data-haptic="low"
+                    aria-pressed="${S.haptic === 'low'}">弱</button>
+            <button class="segbtn${S.haptic === 'std' ? ' on' : ''}" data-haptic="std"
+                    aria-pressed="${S.haptic === 'std'}">标准</button>
+            <button class="segbtn${S.haptic === 'high' ? ' on' : ''}" data-haptic="high"
+                    aria-pressed="${S.haptic === 'high'}">强</button>
+          </span>
         </div>
       </section>
 
@@ -7787,7 +7893,7 @@ view.addEventListener('keydown', e => {
 });
 
 view.addEventListener('click', e => {
-  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone],[data-aipriv]');
+  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart]');
   if (!el) return;
 
   /* 分区折叠（长期 / 短期 / 循环 / 考虑）：复用 .zone 高度过渡（foldZoneWithMotion），
@@ -7818,6 +7924,39 @@ view.addEventListener('click', e => {
     save(); refresh();
     toast(S.aiMode === 'off' ? 'AI 已关闭：以后一个字都不出这台手机'
       : (S.aiMode === 'title' ? 'AI 已打开：只把标题发出去' : 'AI 已打开：标题、原文和时间轴都会发出去'));
+    return;
+  }
+
+  /* ★ v5.1.2：想法卡日期显示哪几段（年/月/日 三颗圆键，各自独立）。
+     **不整页 refresh** —— 设置页一重建，刚拨的那颗就换了节点、手感会断；
+     就地改类名/aria-pressed，再把那行灰字里的实时预览换掉就够了。
+     想法页的卡片下次渲染时自然按新口径出日期。 */
+  if (el.dataset.datepart !== undefined){
+    const p = el.dataset.datepart;
+    if (p === 'y' || p === 'm' || p === 'd'){
+      S.dateShow[p] = !S.dateShow[p];
+      save();
+      el.classList.toggle('on', S.dateShow[p]);
+      el.setAttribute('aria-pressed', S.dateShow[p] ? 'true' : 'false');
+      const pv = document.getElementById('datePrev');
+      if (pv) pv.textContent = dateText('2026-10-04') || '（不显示）';
+    }
+    return;
+  }
+  /* ★ v5.1.2：震动档位。跟主题同款的分段控件 —— 就地换挡 + 让滑块滑过去，
+     并且**立刻按新档位震一下**：选「强」当场就知道强在哪，不用去别处试。 */
+  if (el.dataset.haptic !== undefined){
+    const v = el.dataset.haptic;
+    S.haptic = ['off', 'low', 'std', 'high'].includes(v) ? v : 'std';
+    save();
+    const seg = el.closest('.seg');
+    if (seg) seg.querySelectorAll('.segbtn').forEach(b => {
+      const on = b.dataset.haptic === S.haptic;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    syncSegPills(true);
+    buzz(45);                    // 试震：选「关」时 buzz 自己会返回，不会有动静
     return;
   }
 
@@ -8595,6 +8734,19 @@ function pulseTab(view){
 function reduceMotion(){
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e){ return false; }
 }
+/* ★ v5.1.2（用户："这个长按的拖动，感觉震感不太明显呀" + "加一个震动档位"）：
+   全 App 的震动只走这一个入口，档位只在这里乘系数 —— 以后再添震点不用挨个改。
+   原话口径：长按成立那一下从 10ms 提到 30ms（10ms 在真机上几乎摸不到），
+   拖动/吸附那几下保持原长度，只跟着档位缩放（用户："这两个拖动倒不用加重"）。
+   档位：关＝一次都不震（有人就是不喜欢手机震）/ 弱 0.6 / 标准 1 / 强 1.8。
+   单次至少 6ms —— 再短等于没震，缩到 0 也别指望摸得到。 */
+const HAPTIC_K = { off: 0, low: 0.6, std: 1, high: 1.8 };
+function buzz(pat){
+  if (!navigator.vibrate || S.haptic === 'off') return;
+  const k = HAPTIC_K[S.haptic] || 1;
+  const one = v => Math.max(6, Math.round(v * k));
+  try { navigator.vibrate(Array.isArray(pat) ? pat.map(one) : one(pat)); } catch (e){}
+}
 /* 锁 / 解锁底下页面的滚动。和 .mask.on 同进同出 —— 三个弹层（编辑、导入、标签管理）
    都是 openMask() 打开、closeModalNow() 收尾，所以挂在两头上就全覆盖了，不必逐个调用点去加。 */
 function lockPage(){ document.documentElement.classList.add('locked'); }
@@ -8772,7 +8924,7 @@ view.addEventListener('pointerdown', e => {
     seedPressTimer = 0;
     const it = S.items.find(x => x.id === seed.dataset.id);
     if (!it){ seedPressCancel(); return; }
-    if (navigator.vibrate){ try { navigator.vibrate(10); } catch (_){} }   // 第一下：进入了
+    buzz(30);   // 第一下：进入了（原来 10ms，真机上太弱）
     seedG = { card, it, dir: '', target: '', buzzed: false };
     seedHudShow(true); seedHudMark('', '');
   }, SEED_LONG_MS);
@@ -8795,7 +8947,7 @@ view.addEventListener('pointermove', e => {
     seedG.target = target;
     if (target && !seedG.buzzed){
       seedG.buzzed = true;
-      if (navigator.vibrate){ try { navigator.vibrate(12); } catch (_){} }
+      buzz(16);   // 抓到目标的那一下（跟着震动档位缩放）
     }
     if (!target) seedG.buzzed = false;
   }
@@ -9753,6 +9905,11 @@ window.addEventListener('drop', e => {
           if (o.aiUse && typeof o.aiUse === 'object' && typeof o.aiUse.d === 'string' && Number.isFinite(o.aiUse.n)){
             S.aiUse = { d: o.aiUse.d, n: o.aiUse.n };
           }
+          /* ★ v5.1.2：日期显示口径 + 震动档位也要跟着备份回来（否则同一份备份恢复两次结果不同） */
+          if (o.dateShow && typeof o.dateShow === 'object'){
+            S.dateShow = { y: o.dateShow.y !== false, m: o.dateShow.m !== false, d: o.dateShow.d !== false };
+          }
+          if (['off', 'low', 'std', 'high'].includes(o.haptic)) S.haptic = o.haptic;
           save(); applyHelp(); refresh();
           toast('已从备份恢复 ' + S.items.length + ' 条');
         });
@@ -10386,7 +10543,7 @@ fab.addEventListener('pointerdown', e => {
   try { fab.setPointerCapture(e.pointerId); voiceCapId = e.pointerId; } catch (_){}
   fab.classList.add('fab-press');                 // 起手即给"按下去了"的反馈
   fab.classList.add('fab-pulse');                 // "波动一下"（scale 1→1.14→1）
-  if (navigator.vibrate) { try { navigator.vibrate(12); } catch (_){} }   // 起手轻震
+  buzz(14);   // 起手轻震
   voiceStartX = e.clientX; voiceLastX = 0; voiceSide = 0;
   voiceStartY = e.clientY; voiceLastY = 0; cancelArmed = false;
   fabTimer = setTimeout(() => { fabTimer = 0; enterVoiceLong(); }, LONG_PRESS_MS);
@@ -10412,7 +10569,7 @@ fab.addEventListener('pointermove', e => {
         capsuleEl.style.setProperty('--flow-r', '0');
       }
       if (vlive) vlive.textContent = '松开：取消本次录入';
-      if (navigator.vibrate){ try { navigator.vibrate([18,60,18]); } catch(_){} }
+      buzz([18, 54, 18]);
     } else if (vlive){ vlive.textContent = '继续滑动选择'; }
   }
   if (armed){ setFabVoice(0); return; }           // 待取消态：栏体归中，只留红光提醒
@@ -10438,8 +10595,8 @@ fab.addEventListener('pointermove', e => {
       capsuleEl.classList.toggle('side-l', side === -1);
       capsuleEl.classList.toggle('side-r', side === 1);
     }
-    if (side === -1 && navigator.vibrate){ try { navigator.vibrate(18); } catch(_){} }       // 越界进左侧：单次短震
-    else if (side === 1 && navigator.vibrate){ try { navigator.vibrate([12,40,12]); } catch(_){} } // 越界进右侧：双次短震
+    if (side === -1) buzz(20);                 // 越界进左侧：单次短震
+    else if (side === 1) buzz([14, 36, 14]);   // 越界进右侧：双次短震
     if (vlive) vlive.textContent = side === -1 ? '松开：直接录入' : side === 1 ? '松开：进入编辑' : '继续滑动选择';
   }
 });
