@@ -2618,8 +2618,9 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
 }
 .fold:hover{background:var(--pill-hover,var(--pill));color:var(--fg)}
 .fold[aria-expanded="true"]{color:var(--accent)}
-/* 没有子想法时的等宽占位 —— 保证同级卡片标题左边缘对齐 */
-.lead-blank{display:block;width:22px;height:22px;flex:0 0 auto}
+/* ★ v5.1.2：`.lead-blank`（没有子想法时的等宽占位）已删除 —— 它白占 22px + 11px 间隔，
+   把日期和那个蓝点推到离卡边 45px 外（用户真机截图："这个蓝色的点，左边不还有那么多空间吗"）。
+   现在 seedHTML 里**没有可放的东西就整列不渲染**，对齐让位给"贴着左边距"。 */
 
 /* 缩进树：.seed-node 是 .idea-list 网格的直接子项；子想法在 .seed-kids 里再排一层网格。
    16px 一步；第 5 层起加 .flat（不再位移），层级改由卡上的「第 N 层」小标表达。 */
@@ -3320,15 +3321,12 @@ function guessTags(text){
 /* ---------------- 日期工具 ---------------- */
 function pad2(n){ return String(n).padStart(2, '0'); }
 function ymd(d){ return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
-/* ★ 本轮（用户："时间太长了，把想法的正文都挤得太靠右"）：想法卡的时间轴日期原来一律
-   写全 `2026-10-04`，在 11px 字号下占 ~61px，手机上一行正文只剩 165px。
-   当年日期省掉年份（`10-04`），跨年的仍写全年 —— 少一截，信息不丢。
-   非 `YYYY-MM-DD` 的值（老数据、别的格式）原样返回，不做猜测。 */
-function shortDay(s){
-  const v = String(s == null ? '' : s);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-  return v.slice(0, 4) === String(new Date().getFullYear()) ? v.slice(5) : v;
-}
+/* ★ v5.1.2（用户真机截图："前面你把它简化为了月-日式，但是这个点的前面还是有比较宽阔的空间。
+   你把这个再往左移一些呀，然后再加上那个'年'不就可以了"）：
+   原来这里有个 shortDay()，当年日期省年份（`10-04`）—— 理由是"正文被挤得太靠右"。
+   现在**取消了省年份**：省下的那 55px 本来也没给正文，全被左边那一格空位吃掉了；
+   把空位收掉（见 seedHTML 里 .lead 只在有折角键/勾选键时才渲染）比省年份更划算，
+   于是日期恢复写全年 `2026-10-04`，正文可用宽度反而没变窄。 */
 function dateFrom(s){ const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
 
 /* 导入历史笔记时，相对日期（今天/周四/17号）按「基准日」算，而不是按今天 */
@@ -4115,14 +4113,14 @@ function seedHTML(it, info){
   const spine =
     `<div class="spine">` +
       `<div class="sp-step seed-first"><span class="sp-dot"></span>` +
-        `<span class="sp-at">${esc(shortDay(first))}</span><span class="sp-tx">${esc(it.title)}</span></div>` +
+        `<span class="sp-at">${esc(first)}</span><span class="sp-tx">${esc(it.title)}</span></div>` +
       /* ★ v5.0：每一步都带一个 `→`（**不是 ✓**）—— 点它就把这一句变成一条待办。
          设计稿的红线：**只有 →，没有勾选框，卡片上不显示「3/5 已完成」这类进度**，
          否则种子会退化成第二个清单（调研 01 §6 做法 9 明确这么说）。
          已立项的种子，每步再多一个 `↑`：把这一步补到那条待办里去（双向活链的写这一半）。 */
       sparks.map((s, i) =>
         `<div class="sp-step"><span class="sp-dot"></span>` +
-        `<span class="sp-at">${esc(shortDay(s.at || ''))}</span>` +
+        `<span class="sp-at">${esc(s.at || '')}</span>` +
         (s.by === 'ai' ? `<span class="sp-ai" title="AI 以「${esc(s.role || '')}」的身份问的">✦${esc(s.role || 'AI')}</span>` : '') +
         `<span class="sp-tx">${esc(s.text)}</span>` +
         (s.promotedTo ? `<span class="sp-done" title="这一步已经立项">↗</span>` : '') +
@@ -4134,16 +4132,19 @@ function seedHTML(it, info){
         ? `<div class="sp-add"><input type="text" class="sp-in" id="sp_in" data-id="${esc(it.id)}" placeholder="现在多了什么信息？" aria-label="续写"><button type="button" class="sp-ok" data-act="sparkok" data-id="${esc(it.id)}">记下</button><button type="button" class="sp-cancel" data-act="sparkcancel" data-id="${esc(it.id)}" aria-label="收起">✕</button></div>`
         : '') +
     `</div>`;
-  return `<div class="${cls}" data-id="${esc(it.id)}" data-fk="i:${esc(it.id)}" data-u="0">
-    <div class="lead">
-      ${ideaUI.mergeMode
+  /* ★ v5.0：不再有勾选框。用完了从长按菜单走「收起来」，卡片只是变暗。
+     ★ v5.1.2（用户真机截图："这个蓝色的点，左边不还有那么多空间吗？你把它往左移一些呀"）：
+     以前没有折角键/勾选键时这里补一个等宽空位（.lead-blank），好让同级卡片标题对齐 ——
+     但想法卡默认既没有勾选框、多数也没有子想法，于是每张卡左边都白留 22px + 11px 间隔，
+     日期和那个蓝点被推到离边框 45px 外。现在**没有可放的东西就整列不渲染**：
+     左边留给正文，日期/蓝点贴到 12px 内边距上。真要放折角键、勾选键时列自然还在。 */
+  const lead = (ideaUI.mergeMode || kidCount)
+    ? `<div class="lead">${ideaUI.mergeMode
         ? `<button type="button" class="pick${ideaUI.mergeSel.has(it.id) ? ' on' : ''}" data-act="pick" data-id="${esc(it.id)}" role="checkbox" aria-checked="${ideaUI.mergeSel.has(it.id) ? 'true' : 'false'}" title="选中以合并">✓</button>`
-        : (kidCount
-            ? `<button type="button" class="fold${folded ? ' on' : ''}" data-act="fold" data-id="${esc(it.id)}" aria-expanded="${folded ? 'false' : 'true'}" title="${folded ? '展开这 ' + kidCount + ' 条' : '收起'}">${folded ? '▸' : '▾'}</button>`
-            /* ★ v5.0：不再有勾选框。用完了从长按菜单走「收起来」，卡片只是变暗。
-               没有子想法时这里留一个等宽空位，免得同级卡片的标题左右不对齐。 */
-            : `<span class="lead-blank" aria-hidden="true"></span>`)}
-    </div>
+        : `<button type="button" class="fold${folded ? ' on' : ''}" data-act="fold" data-id="${esc(it.id)}" aria-expanded="${folded ? 'false' : 'true'}" title="${folded ? '展开这 ' + kidCount + ' 条' : '收起'}">${folded ? '▸' : '▾'}</button>`}</div>`
+    : '';
+  return `<div class="${cls}" data-id="${esc(it.id)}" data-fk="i:${esc(it.id)}" data-u="0">
+    ${lead}
     <div class="body">
       ${spine}
       <div class="meta">
