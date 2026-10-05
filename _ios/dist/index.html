@@ -1544,18 +1544,34 @@ body[data-help="off"] .set-row .set-txt > span:not([data-keephelp]){
    3 个按钮并排不太好看，但换成方形会跟上下方的元素冲突，所以还是要圆形"）：
    想法卡日期显示的三颗圆键。视觉**沿用 .segbtn.on / 未选中那一套**（白底浮起 + 灰字无底），
    不新造一套"选中"语言 —— 全站只有这一种选中长相。 */
-.rbtns{display:flex;gap:8px;align-items:center}
+/* 圆键的投影要留出地方：外层是 `.glass.set-card{overflow:hidden}`（圆角裁切 + 收起动画要用它），
+   `.set-body` 也是 overflow:hidden；三颗键原来**贴着内容盒的右边**（实测圆键右沿 362 / 卡片右沿 382、
+   卡片 padding-right 只有 20px，而投影是 `0 2px 10px` ≈ 十来个像素），于是最右那颗的右侧投影
+   被卡片边界切掉 —— 用户看到的就是"这个字的阴影右边被挡着了"。
+   这里只给这一组补出上下右三个方向的呼吸位（16px）：三颗键整体左移 16px，
+   同时也不再和卡片右边界贴在一起。左边不加 —— 但要用负外边距把那 16px 抵掉，
+   否则这一组会连带左边距一起缩进，跟上面几行说明文字的左沿对不齐。 */
+.rbtns{display:flex;gap:8px;align-items:center;padding:16px 16px 16px 0;margin-left:-16px}
+/* ★ v5.2.1（用户实测两个点：①"点完它没有变灰，外圈还被黑色的描边了一下；再点另一个，刚才那颗才变灰"
+   ②"开是正常的"）：
+   ①**那圈黑描边是全站默认聚焦环**（`*:focus-visible{outline:2px solid var(--ring)!important}`，
+     --ring 在浅色下是 rgba(7,7,7,.42)）。它在第一次点击时冒出来、再点别处才消失 ——
+     正好就是用户描述的那个"一直留着的黑圈"。这里换成和 .tab 同一种做法的**中性 box-shadow 环**
+     （不用 outline，免得 `!important` 继续压着它）：键盘/辅助设备仍看得见焦点，手指点不再冒黑圈。
+   ②**状态切换原来是 240ms 的染色过渡**。用户在手机上先看到的是聚焦环，颜色要 0.24s 才走完，
+     于是"第一次点没变灰、点下一颗时上一颗才灰" —— 关掉底色/文字/描边的过渡，状态切换**瞬时生效**
+     （只保留按下缩放那一下，否则整颗键按下去没有触感）。 */
 .rbtn{
   width:36px;height:36px;padding:0;border-radius:50%;cursor:pointer;
   display:inline-flex;align-items:center;justify-content:center;
   border:1px solid var(--line2);background:transparent;color:var(--muted);
   font:inherit;font-size:13px;font-weight:800;line-height:1;
-  transition:background var(--mo-base) var(--mo-soft),color var(--mo-base) var(--mo-soft),
-             border-color var(--mo-base) var(--mo-soft),box-shadow var(--mo-base) var(--mo-soft),
-             transform var(--mo-quick) ease;
+  transition:transform var(--mo-quick) var(--mo-soft);
 }
 .rbtn:hover{color:var(--fg);border-color:var(--fg)}
 .rbtn:active{transform:scale(.94)}
+/* 焦点环：和 .tab 同一套中性描边，不用 outline */
+.rbtn:focus-visible{outline:none!important;box-shadow:0 0 0 2px var(--ring)}
 .rbtn.on{
   background:var(--bg);color:var(--fg);border-color:var(--bg);
   box-shadow:0 2px 10px color-mix(in srgb,var(--glass-edge) 45%,transparent);
@@ -5750,15 +5766,46 @@ function batchFinish(){
 }
 /* 合并：勾两条以上 → 生出一条新种子。**原种子不被吃掉**（用户定稿），只挂一行"来自 A ＋ B"。
    新种子的标题默认是各条标题用 ＋ 连起来，用户可以在编辑器里改。 */
-function seedMerge(ids){
+/* ★ 真 bug（用户实测："长按一条拖到下一条上，它直接加入到那个里面了。
+   我希望的是它先进入编辑页面，等我编辑完并点击保存之后，再加入到那个里面；
+   如果我点击取消，就不加入"）：
+   原实现是"先落库、再编辑"—— seedMerge() 里 newSeed() 立刻把合并结果推进 S.items 并 save()，
+   之后才 openEdit(nx)。于是取消只是关掉弹层，那条已经躺在列表里了。
+   修法：合并只**备好草稿**（不落库），把草稿当"新建"送进编辑器 —— 编辑器那条 isNew 分支
+   正是"点保存才 S.items.push"。点取消什么都不发生，两条原想法一个字不动。
+   附带的结果正好合用户意：isNew 时那颗「删除」键本来就不显示（模板里 m_del 带 display:none），
+   所以合并编辑页上只有「取消 / 保存」。 */
+function seedMergeDraft(ids){
   const list = (ids || []).map(id => S.items.find(x => x.id === id)).filter(Boolean);
   /* 只收未用完的种子 —— 已归档的不该参与合并，否则会凭空"复活"一条老想法 */
   const live = list.filter(isSeed).filter(x => !x.done);
   if (live.length < 2){ toast('至少勾两条还在用的想法'); return null; }
-  const title = live.map(x => x.title).join(' ＋ ').slice(0, 60);
-  const nx = newSeed(title, {
+  return {
+    id: uid(), raw: live.map(x => x.title).join(' ＋ '), title: live.map(x => x.title).join(' ＋ ').slice(0, 60),
+    kind: 'seed', zone: 'idea',
+    date: null, dateEnd: null, monthOnly: false, time: null, repeat: null,
     tags: [...new Set(live.flatMap(x => x.tags || []))].slice(0, TAG_PER_ITEM),
-    bornFrom: live.map(x => x.id)
+    done: false, doneAt: null, createdAt: Date.now(), hw: null, pri: 0,
+    sparks: [], bornFrom: live.map(x => x.id),
+    promoted: null, suggest: [], reviewedAt: null, aiUse: null
+  };
+}
+/* 拖到另一条上 / 批量合并，走的是同一条路：草稿 → 编辑页 → 保存才真正生成。
+   合并是根节点，不继承任何一方的 parent 与层级。
+   不给 toast（编辑器自己就有「取消 / 保存」两个键，再加一层提示只是噪音，
+   而且弹层开着时页面被锁，提示条既点不到也容易被压住）。 */
+function seedMergeBegin(ids){
+  const draft = seedMergeDraft(ids);
+  if (!draft) return null;
+  openItemEditor(draft, true, null, null, { title: '合并成一条新想法', okLabel: '保存' });
+  return draft;
+}
+/* 旧的直接落库版保留给脚本/其他调用点用（现在全 App 已无调用点，走 seedMergeBegin）。 */
+function seedMerge(ids){
+  const draft = seedMergeDraft(ids);
+  if (!draft) return null;
+  const nx = newSeed(draft.title, {
+    tags: [...draft.tags], bornFrom: [...draft.bornFrom], pri: draft.pri
   });
   if (nx){
     /* ★ 审查修复：合并和"收起来/删除"同属一次性动作，设计稿要求配撤销。 */
@@ -8106,9 +8153,9 @@ view.addEventListener('click', e => {
      为什么收起来 / 删除不进队列：它们没有"每条要填什么"的中间步骤，
      逐条反而慢；一次性做完 + 一个撤销就够。 */
   if (act === 'batchmerge'){
-    const nx = seedMerge([...ideaUI.mergeSel]);
+    const ids = [...ideaUI.mergeSel];
     ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); refresh();
-    if (nx) openEdit(nx);
+    seedMergeBegin(ids);
     return;
   }
   if (act === 'batchuse'){
@@ -8423,7 +8470,12 @@ function tickWithFeedback(el, it){
    动画当场断掉。这里同步渲染 + 立刻 FLIP；计数、aria、reveal 这些在这一屏都不变，
    不需要再跑一遍 refresh()。 */
 function refreshAfterChange(dur){
-  if (reduceMotion()){ refresh(); return; }
+  /* ★ 只有**清单页**才该走这条路：它同步调 renderList() 把清单塞进 #view，而 #view 是
+     清单与想法共用的容器。别的视图下（S.view === 'idea' / 'stat' / 'settings'）继续用它，
+     就会变成"内容换成了清单页、S.view 却原地不动"——底栏停在原页、
+     body[data-view] 与 aria-current 也没变（真 bug：想法页删一条 → 内容变清单、底栏还亮想法）。
+     非清单页一律退回 refresh()，由它按 S.view 分派渲染。 */
+  if (S.view !== 'list' || reduceMotion()){ refresh(); return; }
   const before = flipCapture(view);
   renderList();
   renderFilters();
@@ -8708,9 +8760,15 @@ function remove(it, el){
   if (idx < 0) return;
   if (exitPending.has(it.id)) return;
   const row = el && el.closest ? el.closest('.item, .hwcard') : null;
+  /* ★ 真 bug（用户实测："长按删除后跳到清单页，底栏却还亮着想法"）：
+     原来自这里调 refreshAfterChange() —— 它内部走的是 renderList()，而 #view 是
+     清单与想法**共用的那个容器**（renderList / renderIdeas 都写 view.innerHTML）。
+     于是在想法页点删除，塞进去的是一屏清单内容，而 S.view 仍是 'idea'、
+     aria-current / body[data-view] 也还是想法 → 页面变成清单、底栏停在想法。
+     删除不该换页：refresh() 按 S.view 分派渲染，删完停在原来的页。 */
   const commit = () => {
-    S.items.splice(idx, 1); save(); refreshAfterChange(320);
-    toast('已删除「' + it.title + '」', '撤销', () => { S.items.splice(idx, 0, it); save(); refreshAfterChange(320); });
+    S.items.splice(idx, 1); save(); refresh();
+    toast('已删除「' + it.title + '」', '撤销', () => { S.items.splice(idx, 0, it); save(); refresh(); });
   };
   if (!row || reduceMotion()){ commit(); return; }
   exitPending.add(it.id);
@@ -8997,9 +9055,8 @@ view.addEventListener('pointerup', () => {
   if (g.target){                                          // 落到另一条上 → 合并这两条
     const b = S.items.find(x => x.id === g.target);
     if (b && isSeed(b)){
-      const nx = seedMerge([g.it.id, b.id]);
+      seedMergeBegin([g.it.id, b.id]);
       refresh();
-      if (nx) openEdit(nx);
     }
     return;
   }
@@ -10180,7 +10237,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.2.0';
+const APP_VERSION = '5.2.2';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
