@@ -820,6 +820,17 @@ body:not([data-view="settings"]) .pdaim-footer{display:none}
 .zone.folded>:not(header){display:none}
 .empty{color:var(--faint);font-size:13px;padding:16px 2px;text-align:center}
 
+/* ★ 0B：分区列表底部的「已完成」收纳区。
+   它是 .zone 的一种（复用标题栏、折叠、高度过渡那一整套）。
+   与别的分区只有两处区别：那颗圆点降一点亮度、标题右侧多一句「含 N 条子任务」。
+   ⚠️ 这里**不降文字颜色**：第一版把 h3 写成 var(--muted)、小字写成 var(--faint)，
+   实测（_0b-dom.mjs 的对比度断言，底色按整条背景栈合成）浅色下 2.67 / 1.89、
+   深色下 3.22 / 1.94 —— 都低于"次要信息 3:1"的下限。分区标题是文字不是装饰，
+   所以沿用别的分区同一套 --fg / --muted。"更轻"只由那颗圆点承担。 */
+.done-zone>header .dot{opacity:.45}
+.done-hint{margin-left:8px;font-size:12px;font-weight:600;color:var(--fg);opacity:.72;white-space:nowrap}
+.done-zone .item .udot{opacity:.35}
+
 /* ---------- 条目 ---------- */
 .item{display:flex;align-items:flex-start;gap:11px;padding:11px 2px;border-bottom:1px solid var(--line);position:relative}
 .item:last-child{border-bottom:0}
@@ -3807,6 +3818,9 @@ const LS_OLD = 'daibanji.v1';
    这两个都随备份持久化 —— 换手机恢复后，主题偏好和"上次看的是时间轴还是分区"也要跟着过来。 */
 const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', tags: TAGS_DEFAULT.slice(),
   statLayout: 'card', hintOpen: false, showHelp: true, foldedZones: [], theme: 'auto', listMode: 'zone',
+  /* ★ 0B：分区列表底部那条「已完成」是否展开。默认收起（做完的东西不占第一屏），
+     会话级就够 —— 不必进存档，重开回到收起态是期望行为。 */
+  doneOpen: false,
   voice: true,
   /* v3.4：设备端离线识别不可用时的备用方案（用户拍板加的开关，默认关） */
   voiceSystem: false,
@@ -4643,6 +4657,9 @@ function renderZoneBody(){
       empty:'还没有循环任务。写「每2天 喂寄居蟹」，打勾后自动排下一次。' },
   ];
 
+  /* 三栏顺序＝「要管的程度」从松到紧：长期（最没期限）→ 短期（有死线）→ 循环（节奏固定）。
+     「考虑」不算待办，只在这儿暂存想法，铺满整行收在最后，不挤进这三栏。 */
+
   /* ★ v3.38（用户："时间轴里边有一条，我点到这个分类里面，它直接闪没了"）：
      兜底扫一遍 —— 凡是"一栏都没收走"的**未完成**条目，一律补进**长期**。
      原来只有 zone 恰好等于 long / short / consider 的条目才进得去（循环走 repList），
@@ -4675,16 +4692,60 @@ function renderZoneBody(){
 
   /* 三栏顺序＝「要管的程度」从松到紧：长期（最没期限）→ 短期（有死线）→ 循环（节奏固定）。
      「考虑」不算待办，只在这儿暂存想法，铺满整行收在最后，不挤进这三栏。 */
+  /* ★ 0B：「收进已完成区」这个说法以前没有对应的东西 —— 勾完（或按「只勾父任务」收起）
+     的条目数据还在库里，但分区列表里根本不再出现，所以"收进哪儿了"是个空头承诺。
+     这里给它一个真实的落点：分区列表最下面一条可折叠的「已完成 N 条」。
+     只收**根级**已完成条目，它们的子任务挂在各自卡的 .goal-kids 里 —— 与分区列表同构。
+     默认收起：今天做完的东西不该继续占着第一屏。
+     **只显示今天完成的**（用户拍 B）：昨天做完的沉下去，不给长期占位 ——
+     所以这行数字每天自然清空，跟统计页「今日完成」是同一个口径。
+     前两天刚做完想回看，走时间轴或统计（数据一条都没删）。
+     ⚠️ 已完成父卡的子任务必须**单独补进 kids**：kids 是从 ordered() 建的，而 ordered() 里
+     这些子任务已经 done，不会进来 —— 不补的话父卡在已完成区里是一张光杆卡，
+     用户会以为"收起来"把子任务弄丢了（0B.4 的承诺也就断了）。 */
+  const todayYmd = ymd(today0());
+  const doneRoots = S.items.filter(i => i.done && !isSeed(i) && !i.repeat &&
+    ymd(new Date(i.doneAt || i.createdAt || 0)) === todayYmd &&
+    !(i.parent && byId.has(i.parent))).sort(cmpItem);
+  doneRoots.forEach(r => {
+    const mine = S.items.filter(x => x.parent === r.id && !isSeed(x));
+    if (mine.length){
+      const cur = kids.get(r.id) || [];
+      const seen = new Set(cur.map(x => x.id));
+      mine.forEach(x => { if (!seen.has(x.id)) cur.push(x); });
+      kids.set(r.id, cur.sort(cmpItem));
+    }
+  });
   cols.forEach((c, zi) => {
+    /* ★ 0B：分区列表**不收已完成的根条目** —— 它们沉到下面那条「已完成」里。
+       不排除的话，一个做完了的父任务会继续占着分区列表（数据上它是根），
+       与「收进已完成区」的说法自相矛盾；它的子任务则跟着它在已完成区里展开。 */
+    const live = c.list.filter(x => !x.done);
     const fd = S.foldedZones.includes(c.k);
     bh += `<section class="glass zone${c.cls || ''}${fd ? ' folded' : ''}${rv()}" data-z="${c.k}"${rvd(100 + zi * 80)}>
       <header data-zfold="${c.k}" role="button" tabindex="0" aria-expanded="${fd ? 'false' : 'true'}">
-        <span class="dot"></span><h3>${c.label}</h3><span class="n mono">${c.list.length}</span>
+        <span class="dot"></span><h3>${c.label}</h3><span class="n mono">${live.length}</span>
         <i class="z-chev" aria-hidden="true"></i>
       </header>
-      ${c.list.length ? c.list.map(x => renderTree(x)).join('') : `<div class="empty">${c.empty}</div>`}
+      ${live.length ? live.map(x => renderTree(x)).join('') : `<div class="empty">${c.empty}</div>`}
     </section>`;
   });
+
+  /* ★ 0B：已完成收纳区（默认收起）。整条压在分区列表脚下 ——
+     它是"今天做完的东西"，不该继续占第一屏；但也不能让用户以为做完就没了。 */
+  if (doneRoots.length){
+    const open = !!S.doneOpen;
+    const kidN = doneRoots.reduce((n, x) => n + ((byParent.get(x.id) || []).length), 0);
+    bh += `<section class="glass zone done-zone${open ? '' : ' folded'}${rv()}" data-z="done"${rvd(40)}>
+      <header data-donefold="1" role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}">
+        <span class="dot"></span><h3>已完成</h3>
+        <span class="n mono">${doneRoots.length}</span>
+        <span class="done-hint">${kidN ? '含 ' + kidN + ' 条子任务' : ''}</span>
+        <i class="z-chev" aria-hidden="true"></i>
+      </header>
+      ${open ? doneRoots.map(x => renderTree(x)).join('') : ''}
+    </section>`;
+  }
 
   /* 考虑区：这里放的是「还没决定要不要做」的事，不是待办 —— 不占三栏之一，
      靠 grid-column:1/-1 铺满整行落在所有栏目脚下，绿点跟上面三栏的蓝点分开。
@@ -5734,6 +5795,9 @@ function taskToSeed(it, quiet){
   it.zone = 'idea';
   it.date = null; it.dateEnd = null; it.monthOnly = false; it.time = null; it.repeat = null;
   it.hw = null; it.promoted = null; it.bornFrom = null; it.parent = null;
+  /* foldedByParent 是"被父任务顺手收起"的待办标记，变成种子之后没有意义 —— 一并清掉。
+     它与 openItemEditor 保存分支里种子方向的清理清单保持一致（0B.5 的验收点）。 */
+  delete it.foldedByParent;
   /* ★ 0B.5：这里**不再清** `lastPromoted`。它跟 promoted / bornFrom 不是一类东西：
      promoted / bornFrom 是"这条被怎么处理过"的标记，变成种子之后无意义，必须清；
      lastPromoted 只是"最近一次立项产生的那条待办"的指针，想法卡上 ↑「补到待办里」
@@ -8171,8 +8235,24 @@ view.addEventListener('keydown', e => {
 });
 
 view.addEventListener('click', e => {
-  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart]');
+  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-donefold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart]');
   if (!el) return;
+
+  /* ★ 0B：分区列表底部「已完成」那条的展开 / 收起。
+     与分区折叠同一个手感（.zone 高度过渡），但它不进 S.foldedZones ——
+     分区折叠是"我把长期收起来了"的长期偏好，已完成区是"我现在想不想看"的临时动作，
+     所以用会话级的 S.doneOpen，重开回到收起。 */
+  if (el.dataset.donefold !== undefined){
+    S.doneOpen = !S.doneOpen;
+    const sec = el.closest('.zone');
+    if (!sec){ refresh(); return; }
+    const wasFolded = sec.classList.contains('folded');
+    el.setAttribute('aria-expanded', wasFolded ? 'false' : 'true');
+    if (reduceMotion()){ refresh(); return; }
+    /* 展开要走 refresh（收起态下子卡片根本没有 DOM，没有可展开的东西） */
+    refresh();
+    return;
+  }
 
   /* 分区折叠（长期 / 短期 / 循环 / 考虑）：复用 .zone 高度过渡（foldZoneWithMotion），
      就地切换、不走 refresh()。走 refresh() 的话整页重建会闪、滚动位置也会跳，
@@ -8666,12 +8746,17 @@ view.addEventListener('click', e => {
    exitPending 是打勾与删除**共用**的一张表：同一条正在退场时，另一个按钮也不该响应。 */
 const exitPending = new Set();
 const EXIT_MS = 420;
+/* ★ 0B：给 tickParentOnly 用的"这一次打勾的通用提示先别弹"开关（见 toggleDone 末尾）。
+   它是**一次性**的：调用方在自己那段里置上、finally 清掉，不留全局残留。 */
+let tickSilence = null;
 /* ★ 0B.1 打勾的统一入口：勾**父任务**而它下面还有没做完的子任务时，先问一句。
    为什么闸门放在这里而不放进 toggleDone：
      · toggleDone 是"数据层"，此刻 DOM 已经不能安全改（调用点可能刚跑完退场动画）；
      · 提示必须**早于**退场动画 —— 先播动画再问，用户看到的是一条已经消失的行配一个问号。
-   两个选项都能撤销：`一起勾` 的撤销把整棵子树恢复成原来的勾选状态，
-   `只勾父任务` 的撤销走 toggleDone 里那条既有 toast（连循环排轮的产物一起撤回）。 */
+   两个选项都能撤销：
+     · `一起勾`    → 后代全部置 done（撤销整棵子树还原）；
+     · `只勾父任务` → 父勾上，父下面没做完的后代跟着一起收进已完成区（带 foldedByParent
+       标记 + 撤销还原），**不是**升格成根条目、也不是留在分区列表里。 */
 function tickAskAndCommit(el, it){
   if (!it || it.done) return tickWithFeedback(el, it);
   const kids = incompleteDescendants(it);
@@ -8680,7 +8765,8 @@ function tickAskAndCommit(el, it){
     return;
   }
   tickWithFeedback(el, it);
-}/* 这条条目下面（含更深层）还没做完的后代，深度优先、父在前。
+}
+/* 这条条目下面（含更深层）还没做完的后代，深度优先、父在前。
    guard 上限与文件其它几处一致（防脏数据成环时转不出来）。 */
 function incompleteDescendants(root){
   const out = [];
@@ -8735,8 +8821,47 @@ function askTickWithKids(it, kids, el){
   const n = kids.length;
   toast('「' + it.title + '」下面还有 ' + n + ' 项没做，一起勾掉吗？', [
     { label: '一起勾', fn: () => tickWithSubtree(el, it) },
-    { label: '只勾父任务', fn: () => tickWithFeedback(el, it) }
+    { label: '只勾父任务', fn: () => tickParentOnly(el, it) }
   ], 8000);
+}
+/* ★ 0B.1（决策 1 的原话）：选「只勾父任务」→ 子任务**跟着父一起收进已完成区**，
+   不是升格成根条目、也不是留在分区列表里。
+   所以这里不只是把父勾上：父下面没做完的后代也一并置 done，让它们跟着父一起离开分区列表。
+   纪律（决策 6 另一半：自动做错比不做更烦）：
+     · 真的被用户勾过的子任务**原样不动**（doneAt 保留它自己那次勾的时间）；
+     · 被这一下顺带收起来的，写 `foldedByParent = <父 id>` —— 这是**新字段**（红线允许），
+       记的是"它不是做完的，是被父任务收起的"，将来统计/回顾要分开算时有据可依；
+     · 撤销把 done/doneAt/标记一起还原成动手之前的样子。
+   与「一起勾」的区别：一起勾 = 用户确认"这些都做完了"；只勾父 = 用户只对父任务负责，
+   子任务是被收起来的。数据上两者都进已完成区，区别记在 foldedByParent 与提示文案上。 */
+function tickParentOnly(el, it){
+  const before = incompleteDescendants(it);
+  const beforeAt = before.map(x => x.doneAt || null);
+  /* ⚠️ tickWithFeedback 走到 toggleDone 时会**同步**弹一条「完成 · 标题」。
+     那条提示的撤销回调里 `it.done = false` 看上去没问题，但它是在"数据层"里闭包捕获的，
+     而这里紧接着又做了一次 refreshAfterChange —— 两次刷新撞在一起时，用户点「撤销」
+     只会看到子任务回来、父任务还是勾着（实测：父不还原、已完成区不消失）。
+     而且两条 toast 会互相顶掉：用户根本看不到「完成 · 标题」那条。
+     所以这一段把"标题"那条通用提示静音掉：这一路上的话由**本函数**那条提示统一说。
+     静音只影响这一次调用，不改变 toggleDone 的其它行为。 */
+  const quiet = { on: true };
+  tickSilence = quiet;
+  try { tickWithFeedback(el, it); }
+  finally { tickSilence = null; }
+  before.forEach(x => { x.done = true; x.doneAt = Date.now(); x.foldedByParent = it.id; });
+  save(); refreshAfterChange(320);
+  /* 撤销时**重新查一次父任务**，不信闭包里的引用：整页重渲染之后旧引用可能已经不在库里
+     （上面那个 bug 的根因之一）。查不到就按它在库里的身份跳过，别把一个不存在的东西写回状态。 */
+  toast('父任务已勾上 · 下面 ' + before.length + ' 项没收尾的也一起收起来了', '撤销', () => {
+    before.forEach((x, i) => {
+      const live = S.items.find(y => y.id === x.id) || x;
+      live.done = false; live.doneAt = beforeAt[i];
+      delete live.foldedByParent;
+    });
+    const p = S.items.find(y => y.id === it.id) || it;
+    p.done = false; p.doneAt = null;
+    save(); refreshAfterChange(320);
+  });
 }
 /* 一起勾：整棵子树按父任务的新状态对齐（父完成 → 后代全完成）。祖先先落，子后落，
    spawnNextCycle 复制子任务时读到的是"原始"子任务（date 语义不受影响，与手点顺序一致）。
@@ -9045,7 +9170,10 @@ function toggleDone(it){
     }
   }
   save(); refreshAfterChange(320);
-  if (it.done) toast('完成 · ' + it.title + cycle.label, '撤销', () => {
+  /* ★ 0B：tickSilence 是给 tickParentOnly 用的"这一路上的话由我说"开关 ——
+     它调用本函数后会紧接着弹自己那条更贴切的提示（含子任务一起收起的说明），
+     这里再弹一条「完成 · 标题」只会被顶掉、还会让撤销出现两套说法。 */
+  if (it.done && !tickSilence) toast('完成 · ' + it.title + cycle.label, '撤销', () => {
     it.done = false; it.doneAt = null;
     if (cycle.ids.length){
       const kill = new Set(cycle.ids);
@@ -10291,6 +10419,9 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
          造出来的形状必须一模一样，否则一条还挂着待办父、一条没有，同一个动作两种结果。
          这里清 parent：想法不参与待办的父子树（挂着一个"任务父"就是跨机制混挂）。 */
       it.parent = null;
+      /* foldedByParent 是待办侧的标记（"被父任务顺手收起"），变成想法后无意义 —— 一起清。
+         这一列与 taskToSeed 的清理清单必须完全一致（0B.5 的验收点）。 */
+      delete it.foldedByParent;
     } else {
       delete it.kind;
       delete it.sparks; delete it.bornFrom; delete it.promoted;

@@ -820,6 +820,17 @@ body:not([data-view="settings"]) .pdaim-footer{display:none}
 .zone.folded>:not(header){display:none}
 .empty{color:var(--faint);font-size:13px;padding:16px 2px;text-align:center}
 
+/* ★ 0B：分区列表底部的「已完成」收纳区。
+   它是 .zone 的一种（复用标题栏、折叠、高度过渡那一整套）。
+   与别的分区只有两处区别：那颗圆点降一点亮度、标题右侧多一句「含 N 条子任务」。
+   ⚠️ 这里**不降文字颜色**：第一版把 h3 写成 var(--muted)、小字写成 var(--faint)，
+   实测（_0b-dom.mjs 的对比度断言，底色按整条背景栈合成）浅色下 2.67 / 1.89、
+   深色下 3.22 / 1.94 —— 都低于"次要信息 3:1"的下限。分区标题是文字不是装饰，
+   所以沿用别的分区同一套 --fg / --muted。"更轻"只由那颗圆点承担。 */
+.done-zone>header .dot{opacity:.45}
+.done-hint{margin-left:8px;font-size:12px;font-weight:600;color:var(--fg);opacity:.72;white-space:nowrap}
+.done-zone .item .udot{opacity:.35}
+
 /* ---------- 条目 ---------- */
 .item{display:flex;align-items:flex-start;gap:11px;padding:11px 2px;border-bottom:1px solid var(--line);position:relative}
 .item:last-child{border-bottom:0}
@@ -1264,6 +1275,30 @@ html.soft-render .mask .modal{
   background:var(--fg);color:var(--bg);
   box-shadow:0 2px 10px color-mix(in srgb,var(--glass-edge) 45%,transparent);
 }
+/* ★ 0B.6：「每天都做」在单日区间下是禁用态。
+   pointer-events:none 会让 disabled 属性看不出来，所以这里只降透明度 + 换鼠标指针，
+   交给 disabled 属性真的拦住点击（视觉与行为各管一件事）。 */
+.te-mode button:disabled{opacity:.4;cursor:not-allowed}
+.te-mode button:disabled:hover{color:var(--muted)}
+/* ★ 0B.7：勾了作业时那行灰字说明（循环为什么被锁住） */
+.te-hwnote{margin:10px 0 0;font-size:12.5px;line-height:1.7;font-weight:600;color:var(--faint)}
+.te-hwnote.hide{display:none}
+/* ★ 0B.2：编辑弹层里「挂在…下面」那颗按钮 —— 与 .te-head 同一套语言（左标签右箭头） */
+.parentpick{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left}
+.parentpick.mutepick #m_parenttxt{color:var(--muted);font-weight:600}
+.parentpick .pp-chev{flex:0 0 auto;opacity:.5;font-size:15px;line-height:1}
+/* ★ 0B.2：挂靠选择列表的行 */
+.pp-list{
+  max-height:44vh;overflow:auto;-webkit-overflow-scrolling:touch;
+  border:1px solid var(--line);border-radius:14px;background:var(--bg);padding:6px;
+}
+.pp-row{
+  display:block;width:100%;text-align:left;appearance:none;-webkit-appearance:none;border:0;
+  background:transparent;color:var(--fg);font:inherit;font-size:14px;font-weight:700;
+  padding:11px 12px;border-radius:11px;cursor:pointer;
+}
+.pp-row:hover{background:color-mix(in srgb,var(--fg) 7%,transparent)}
+.pp-row.on{background:var(--fg);color:var(--bg)}
 /* 原文只读备注 */
 .modal-note.raw-ro{
   margin:0;white-space:pre-wrap;word-break:break-word;border:1px solid var(--line);
@@ -1344,7 +1379,12 @@ html.soft-render .mask .modal{
      原来在底部，而"已用语音录入"这类提示是在弹窗打开**之前**弹的 ——
      等弹窗（带底部"取消/确定"）出现时，提示已经在那儿了，压住按钮。
      顶部那一带是变暗背景、没有可点元素，任何流程都不会被挡。 */
-  position:fixed;left:50%;top:calc(var(--sat,12px) + 12px);z-index:95;
+  /* ★ 2026-10-06 审查修复（层叠顺序）：提示类浮层必须是**最上面那一层**。
+     原来是 95，而时刻滑轮 .wheel-mask 是 120 —— 滑轮开着的时候任何提示都被它整条盖住
+     （headless 实测 elementFromPoint 命中的是 wheel 而不是 toast）。
+     改成 130：高于全部遮罩（mask 90 / wheel 120），语义上也对 ——
+     "提示"是用户必须看见的最后一道反馈，没有任何东西有理由压在它上面。 */
+  position:fixed;left:50%;top:calc(var(--sat,12px) + 12px);z-index:130;
   transform:translateX(-50%) translateY(-20px);opacity:0;pointer-events:none;
   transition:opacity var(--mo-base) ease,transform var(--mo-base) var(--mo-soft);
   display:flex;align-items:center;gap:16px;padding:13px 22px;border-radius:9999px;font-size:13.5px;font-weight:600;
@@ -3514,8 +3554,21 @@ function parseSmart(input){
   let goal = false, path = [];
   text = text.replace(/^目标\s+/, () => { goal = true; return ''; }).trim();
   {
+    /* ★ 0A.8：`A> B` 这个语法保留，但要**挡住两种情况**（旧正则 `\s*>\s*` 前后空格都可省，
+       于是 `5>3 比较`、`A -> B` 都会被吃掉一段当父级）：
+       ① `>` 的**两侧都是非空白**（`5>3`）→ 拒。判据：至少一侧留空格。
+          （`论文> 查文献`、`论文> 一周> 查文献` 都是"右侧有空格"，全部照旧成立。）
+       ② `>` 前面紧贴一个**箭头/比较符号**（`-` `–` `—` `=` `<` `+` `→`）→ 拒。
+          这一条是为了 `A -> B`：它的 `>` 右边确实有空格，只靠①挡不住。
+       选"约束正则"而不是"父级前缀白名单"的理由：白名单要维护一张允许的字符表，
+       中文标题里合法字符太杂（书名号、括号、英文缩写、数字混排都得进表），
+       漏一个就是"这行的父级突然不认了"；而这两个约束是**拒掉已知的误判形状**，
+       挡不住的新形状只会退回"当成普通标题"（与旧行为一致），不会把正常输入吃掉。 */
     const pm = text.match(/^((?:[^>]+\s*>\s*)+)(.+)$/);
-    if (pm){
+    /* 判"两侧都是非空白"时要把**紧跟在父级后面的那个字**带上 —— `5>3 比较` 里 `>` 的右侧
+       那个 `3` 落在第二组，只看父级会把 `5>` 当成"右边没字"而放行。 */
+    const junc = pm ? pm[1] + (pm[2].charAt(0) || ' ') : '';
+    if (pm && !/[^\s]>[^\s]/.test(junc) && !/[-–—=+<→]\s*>/.test(pm[1])){
       path = pm[1].split('>').map(s => s.trim()).filter(Boolean);
       if (path.length) text = pm[2].trim();
     }
@@ -3785,6 +3838,9 @@ const LS_OLD = 'daibanji.v1';
    这两个都随备份持久化 —— 换手机恢复后，主题偏好和"上次看的是时间轴还是分区"也要跟着过来。 */
 const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', tags: TAGS_DEFAULT.slice(),
   statLayout: 'card', hintOpen: false, showHelp: true, foldedZones: [], theme: 'auto', listMode: 'zone',
+  /* ★ 0B：分区列表底部那条「已完成」是否展开。默认收起（做完的东西不占第一屏），
+     会话级就够 —— 不必进存档，重开回到收起态是期望行为。 */
+  doneOpen: false,
   voice: true,
   /* v3.4：设备端离线识别不可用时的备用方案（用户拍板加的开关，默认关） */
   voiceSystem: false,
@@ -3799,6 +3855,10 @@ const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', t
        ideaLayout     想法页主视图：'list'（默认，卡片流）| 'tree'（树状图） */
   ideaUsedAt: null, lastOpenedSeed: null, lastScanAt: 0, ideaReview: true, ideaReviewDone: null,
   captureZone: 'long', ideaGestureSeen: false, ideaLayout: 'list',
+  /* ★ 0B.2（决策 2）：子任务全勾完**不**自动完成父任务。给一个开关让人自己选，
+      默认关 —— 理由：别人给你派的一张清单，你做完手上这项不等于整件事结束了。
+      打开后：勾掉最后一个未完成子任务时，连同祖先一起补上勾。 */
+  autoDoneParent: false,
   /* ★ v5.0 第 3 批（AI，联网）：
        aiMode  隐私三档 'off' | 'title' | 'full'。**默认 off** —— 装好就是一个字都不发出去，
                要联网必须用户自己在这个开关上做一次明确的选择（第一次点 AI 按钮时引导）。
@@ -3866,6 +3926,48 @@ const collapsed = new Set();
    （Mem 的教训：自动关联会让确定性检索失灵）。 */
 const ideaUI = { mergeMode: false, mergeSel: new Set(), sparkOpen: null, reviewOpen: null, q: '', tags: [] };
 
+/* ★ 0A.6：条目数组的形状校验 —— 存档（load）与备份恢复（window 'drop'）**共用这一个**。
+   原来只有 load 这条路逐条筛，备份恢复那条只判了 `Array.isArray(o.items)`，
+   于是同一份坏数据走两条路的结果不同（不对称）。
+   规则：**别一刀切成空数组**（那会把还能救的数据一起丢掉）—— 只筛掉真正不是对象的条目
+   （null / 数字 / 字符串），对象一律保留；顺手给缺 id 的补一个（id 是内部键，缺了整棵树都建不起来）。 */
+function sanitizeItems(raw){
+  const arr = Array.isArray(raw) ? raw
+    : (raw && typeof raw === 'object') ? Object.values(raw)   // 万一存成了 id→条目 的字典也尽量救
+    : [];
+  return arr
+    .filter(x => x && typeof x === 'object')
+    .map(x => (typeof x.id === 'string' && x.id) ? x : Object.assign({}, x, { id: uid() }));
+}
+/* ★ 0A.1：parent 的收口（悬空 + 环路）。原先是三处各抄一遍的"扫一遍悬空 parent 并置 null"，
+   现在合成一个函数，并补上**断环** —— 沿 parent 链最多走 64 步（对齐本文件其它几处 guard
+   的写法，如 seedAncestorUsed），走不到头就是有环，把这一条的 parent 置 null。
+   为什么遇到坏 parent 一律置 null 而不是级联删：删条目只删自己（决策），子条目上浮为根，
+   凭空少一条才是数据丢失。返回修好的条数，便于调用方/测试观察。 */
+const PARENT_GUARD = 64;
+function sanitizeParents(){
+  const byId = new Map(S.items.map(i => [i.id, i]));
+  let fixed = 0;
+  /* ① 悬空（指向不存在的 id）与自指 → null */
+  for (const it of S.items){
+    if (!it.parent) continue;
+    if (it.parent === it.id || !byId.has(it.parent)){ it.parent = null; fixed++; }
+  }
+  /* ② 断环。放在①之后，链上每一跳都保证能查到条目，不需要再判 undefined。
+     任何一个环里的成员沿链走一圈必然回到自己 —— 谁先被扫到，环就在谁身上断开。 */
+  for (const it of S.items){
+    if (!it.parent) continue;
+    let cur = it, guard = 0, bad = false;
+    while (cur.parent){
+      if (guard++ >= PARENT_GUARD){ bad = true; break; }   // 走满 64 步还没到头 = 有环
+      cur = byId.get(cur.parent);
+      if (cur === it){ bad = true; break; }                // 绕回自己 = 有环
+    }
+    if (bad){ it.parent = null; fixed++; }
+  }
+  return fixed;
+}
+
 /* 数据迁移：老版本存在 daibanji.v1，别丢 */
 function load(){
   try {
@@ -3884,14 +3986,13 @@ function load(){
          注意**别一刀切成空数组**：那会把还能救的数据一起丢掉。
          所以只筛掉真正不是对象的条目（null / 数字 / 字符串），对象一律保留；
          顺手给缺 id 的补一个（id 是内部键，缺了整棵树都建不起来）。
-         拖拽导入那条路径早就做了同样的校验并配有注释（见 window 'drop'），
-         之前只是漏在了读 localStorage 这条路上 —— 这属于不对称，不是有意为之。 */
-      const rawArr = Array.isArray(o.items) ? o.items
-        : (o.items && typeof o.items === 'object') ? Object.values(o.items)   // 万一存成了 id→条目 的字典也尽量救
-        : [];
-      S.items = rawArr
-        .filter(x => x && typeof x === 'object')
-        .map(x => (typeof x.id === 'string' && x.id) ? x : Object.assign({}, x, { id: uid() }));
+         拖拽导入那条路径（window drop）当年也只判了"是不是数组"、同样没逐条筛，
+         所以两条路都不完整，0A.6 起统一走 sanitizeItems()，不再各写一套。 */
+      S.items = sanitizeItems(o.items);
+      /* ★ 0A.1：存档里的 parent 可能指向一条已经不存在的条目（删条目只删自己、
+         不级联删子条目；手工改存档、恢复备份也会留下悬空引用）——
+         统一在装载时收口：悬空的置 null（子条目上浮为根），成环的断开。 */
+      sanitizeParents();
       S.lastBackup = o.lastBackup || null;
       /* 标签库：老数据只有 customTags（内置 3 个是写死的），迁成一份完整的 S.tags。
          注意要区分「没有 tags 字段」（老数据 → 迁默认值）和「tags 是空数组」
@@ -3957,6 +4058,9 @@ function load(){
       };
       /* 震动：读坏了退回 'std'（宁可正常震，也别因为一个脏值变成"完全不震"让人以为坏了） */
       S.haptic = ['off', 'low', 'std', 'high'].includes(o.haptic) ? o.haptic : 'std';
+      /* ★ 0B.2：新开关。老存档没有这个字段 → 保持默认关（不能写成 !!o.autoDoneParent 之外的花样，
+         也别因为缺字段就打开 —— 这是"自动替你动数据"的开关，默认必须是关） */
+      S.autoDoneParent = o.autoDoneParent === true;
     }
   } catch (e){}
   syncTags();
@@ -3981,7 +4085,9 @@ function save(){
       setOpen: S.setOpen,
       /* ★ v5.1.2：日期显示口径 + 震动档位 */
       dateShow: S.dateShow, haptic: S.haptic,
-      voiceVersion: 2   /* 语音默认值只迁移一次，之后用户自己的开关说了算（见 load 的说明） */
+      voiceVersion: 2,   /* 语音默认值只迁移一次，之后用户自己的开关说了算（见 load 的说明） */
+      /* ★ 0B.2：勾完最后一个子任务是否自动完成父任务（默认关） */
+      autoDoneParent: !!S.autoDoneParent
     }));
     saveFailed = false;
   } catch (e){
@@ -4008,7 +4114,9 @@ function snapshot(){
     aiMode: S.aiMode, aiBase: S.aiBase, aiModel: S.aiModel, aiUse: S.aiUse,
     setOpen: S.setOpen,
     /* ★ v5.1.2：日期显示口径 + 震动档位也进备份 —— 换手机/换电脑后不用再调一遍 */
-    dateShow: S.dateShow, haptic: S.haptic
+    dateShow: S.dateShow, haptic: S.haptic,
+    /* ★ 0B.2：这个开关也进备份 —— 换设备后行为保持一致 */
+    autoDoneParent: !!S.autoDoneParent
   };
 }
 /* 去空白、去空串、去重（保留先后顺序） */
@@ -4024,14 +4132,18 @@ function normTagList(list){
 function syncTags(){ ACTIVE_TAGS = S.tags.slice(); }
 function uid(){ return Math.random().toString(36).slice(2, 10); }
 
-/* 按标题找未完成条目（精确 → 前缀 → 包含）；找不到就自动建一张目标卡 */
+/* 按标题找未完成条目（精确 → 前缀）；找不到就自动建一张目标卡。
+   ★ 0A.3 两处收紧：
+   ① **候选池排除想法（isSeed）** —— 同名的一条想法（"论文"本身可能就是一条种子）会被当成
+      父级挂上去，于是待办的父节点成了一条想法：清单页看不到它，树也就地断掉（悬空引用）。
+   ② **删掉"包含"这一档** —— `A> B` 只要 A 是某条目标标题的子串就会挂到那条上，
+      "写论文" 挂到 "写毕业论文提纲" 底下，属于静默串味。精确 → 前缀两档够用了。 */
 function findOrCreateGoal(title, zone){
   const t = String(title || '').trim();
   if (!t) return null;
-  const live = S.items.filter(i => !i.done);
+  const live = S.items.filter(i => !i.done && !isSeed(i));
   const hit = live.find(i => i.title === t)
-    || live.find(i => i.title.startsWith(t))
-    || live.find(i => i.title.includes(t));
+    || live.find(i => i.title.startsWith(t));
   if (hit) return hit;
   const g = {
     id: uid(), raw: t, title: t,
@@ -4250,7 +4362,7 @@ function seedHTML(it, info){
          做成线上的一个小圆珠（见 CSS）。它不再占一列宽度，于是有子想法/没子想法的卡
          日期与蓝点都在同一个 x 上 —— 上一版"有子想法的卡正文右移 33px"的取舍也不用再做了。 */
       ((kidCount && !ideaUI.mergeMode)
-        ? `<button type="button" class="fold${folded ? ' on' : ''}" data-act="fold" data-id="${esc(it.id)}" aria-expanded="${folded ? 'false' : 'true'}" title="${folded ? '展开这 ' + kidCount + ' 条' : '收起这 ' + kidCount + ' 条'}">${folded ? '▸' : '▾'}</button>`
+        ? `<button type="button" class="fold${folded ? ' on' : ''}" data-act="fold" data-id="${esc(it.id)}" aria-expanded="${folded ? 'false' : 'true'}" title="${(folded ? '展开' : '收起') + '这 ' + kidCount + ' 条（直接长在它下面的，不含更深一层）'}">${folded ? '▸' : '▾'}</button>`
         : '') +
     `</div>`;
   /* ★ v5.0：不再有勾选框。用完了从长按菜单走「收起来」，卡片只是变暗。
@@ -4317,11 +4429,10 @@ function itemHTML(it, kidsHTML, goalInfo, extraHTML){
     <div class="body">
       <div class="t" data-act="edit" data-fk="t:${esc(it.id)}">${esc(it.title)}</div>
       <div class="meta">
-        ${goalInfo ? `<span class="chip goalchip" data-act="fold" data-id="${esc(it.id)}" aria-expanded="${goalInfo.folded ? 'false' : 'true'}" title="展开/收起子任务">${goalInfo.folded ? '▸' : '▾'} ${goalInfo.done}/${goalInfo.total}</span>` : ''}
+        ${goalInfo ? `<span class="chip goalchip" data-act="fold" data-id="${esc(it.id)}" aria-expanded="${goalInfo.folded ? 'false' : 'true'}" title="${goalInfo.folded ? '展开' : '收起'}这 ${goalInfo.total} 条子任务">${goalInfo.folded ? '▸' : '▾'} ${goalInfo.done}/${goalInfo.total}</span>` : ''}
         ${pri ? `<span class="chip prichip p${pri}">${pri === 2 ? '紧急' : '重要'}</span>` : ''}
         ${chipDate(it)}
         ${it.repeat ? `<span class="chip rep">${repLabel(it)}</span>` : ''}
-        ${it.goal && !goalInfo ? '<span class="chip goalchip">目标</span>' : ''}
         ${it.hw ? '<span class="chip hwchip">作业</span>' : ''}
         ${stale ? `<span class="chip old">放了${staleDays}天</span>` : ''}
         ${tags}
@@ -4438,17 +4549,26 @@ function renderZoneBody(){
   const byId = new Map(S.items.map(i => [i.id, i]));
   const vis = new Set(ordered().map(i => i.id));
   for (const i of ordered()){
-    let cur = i;
-    while (cur.parent && byId.has(cur.parent)){
+    let cur = i, guard = 0;
+    /* ★ 0A.5：这条祖先链以前没有 guard —— parent 成环（A→B→A）时它会一直转，
+       整个清单页卡死。上限 64 与文件其它几处（seedAncestorUsed / 树状图 / 想法页）一致。 */
+    while (cur.parent && byId.has(cur.parent) && guard++ < PARENT_GUARD){
       const p = byId.get(cur.parent);
+      /* ★ 0B.1：父已完成时**停止上溯**。这些条目已经跟着父一起被收进"已完成区"
+         （由下面的 rootList 判定），不该再把祖先补进可见集 —— 补了会渲染出一张
+         已完成父卡的孤立壳子（它的子任务在 kids 里、却没人来画）。 */
       if (p.done) break;
       vis.add(p.id);
       cur = p;
     }
   }
+  /* ★ 0B.4：kids 现在**也收已完成的子任务**。原来 `if (i.done) continue;` 让子任务
+     一勾就从父卡下面消失（用户嘴里的"完成就删了"）—— 数据其实还在，只是不画。
+     现在勾完仍留在父卡下，只是划线变灰（.item.done 那套现成样式），还能再点一下取消勾选。
+     与根条目一样，父任务已完成时不再往下挂（子任务跟着父一起收进已完成区，见 0B.1）。 */
   const kids = new Map();
   for (const i of ordered()){
-    if (i.done || !i.parent || !byId.has(i.parent)) continue;
+    if (!i.parent || !byId.has(i.parent)) continue;
     const p = byId.get(i.parent);
     if (p.done) continue;
     if (!kids.has(i.parent)) kids.set(i.parent, []);
@@ -4466,28 +4586,81 @@ function renderZoneBody(){
     if (!byParent.has(i.parent)) byParent.set(i.parent, []);
     byParent.get(i.parent).push(i);
   }
-  function renderTree(it){
+  /* ★ 0A.5：深度上限 5 层。到顶之后**不再往下嵌套**，而是把更深的后代铺在同一格里
+     （同想法页"第 5 层起 .flat"的做法：能看见，但不无限缩进）。
+     为什么是"铺平"而不是"停止递归"：停下会让第 6 层以下的条目从页面上凭空消失 ——
+     用户会以为数据丢了，而它其实还在库里（这是最坏的一种 bug 观感）。
+     铺平不需要新 CSS：更深的后代直接放进**同一格** `.goal-kids` 里，
+     缩进自然停在第 5 层那一级台阶上。
+     另外这一层深度判断同时是**环路的兜底**：嵌套最多 5 次，parent 成环也走不穿。 */
+  const TREE_MAX_DEPTH = 5;
+  function renderTree(it, depth){
     /* 子任务**始终**渲染进 DOM，折叠只加一个 display:none。
        为什么不能沿用「折叠就不渲染」：高度过渡必须"先渲染再塌陷" ——
        展开时若等结构建好再补动画，会先闪一下完整高度；收起时若结构已经不在，
        就无高度可量，只能硬切。留在 DOM 里的代价只是折叠的子树多占一点内存。 */
+    depth = depth || 1;
     const children = kids.get(it.id) || [];
     const allKids = byParent.get(it.id) || [];
     const folded = collapsed.has(it.id);
-    const info = (it.goal || allKids.length)
+    /* ★ 0B.3：角标口径统一由「有没有子任务」推导，不再看 `it.goal`
+       （`goal` 只留给 findOrCreateGoal 复用已有目标卡那条路，不再参与显示）。
+       真的没有子任务 → info 为 null → 不显示角标。 */
+    const info = allKids.length
       ? { total: allKids.length, done: allKids.filter(x => x.done).length, folded }
       : null;
+    const inner = depth >= TREE_MAX_DEPTH
+      ? flatDescendants(children)
+      : children.map(c => renderTree(c, depth + 1)).join('');
     const kidsHTML = children.length
-      ? `<div class="goal-kids${folded ? ' folded' : ''}" data-kids="${esc(it.id)}">` + children.map(renderTree).join('') + `</div>`
+      ? `<div class="goal-kids${folded ? ' folded' : ''}" data-kids="${esc(it.id)}">` + inner + `</div>`
       : '';
     return itemHTML(it, kidsHTML, info);
   }
+  /* 铺平：把这批节点和它们的后代全部画成**同级**卡片（不再嵌套）。
+     `seen` 既防同一节点被画两遍，也保证环路下一定终止（每个 id 最多出栈一次）——
+     所以这里不需要再写一个数字 guard。 */
+  function flatDescendants(list){
+    const out = [], seen = new Set(), stack = list.slice();
+    while (stack.length){
+      const c = stack.shift();
+      if (!c || seen.has(c.id)) continue;
+      seen.add(c.id);
+      const ck = byParent.get(c.id) || [];
+      out.push(itemHTML(c, '', ck.length
+        ? { total: ck.length, done: ck.filter(x => x.done).length, folded: collapsed.has(c.id) }
+        : null));
+      /* 铺平的节点仍尊重用户自己的折叠态：收起的就不往下铺了（否则那个 ▾ 会像失灵） */
+      if (!collapsed.has(c.id)) (kids.get(c.id) || []).forEach(k => stack.push(k));
+    }
+    return out.join('');
+  }
   /* 根列表从 vis 取而不是 ordered —— 搜索/标签过滤命中子任务时，祖先目标是补进 vis 的；
      循环任务不混进 zone，它自己一栏 */
+  /* ★ 0B.1：根判定不再有 `|| p.done`。
+     原来父任务一打勾，它没做完的子任务就**升格成根条目**跑进分区列表（体验上像散架）。
+     现在父已完成 = 整棵子树跟着收进已完成区，不升格。
+     祖先链上任意一级已完成都算"在已完成区里"：父卡自己不再渲染，它的子任务也就没有
+     任何地方能画 —— 让它们落到分区列表顶层会是更坏的结果（看着像凭空多出来的条目）。 */
+  const underDone = (startId) => ancestorIds(startId).some(pid => {
+    const x = byId.get(pid);
+    return !!x && !!x.done;
+  });
+  /* 这一屏真的会被画出来的子任务（父 id → 子任务）。用来挡"同一条画两遍"：
+     子任务画在父卡下面，就绝不能再当根画一次。 */
+  const inKids = new Set();
+  kids.forEach(arr => arr.forEach(it => inKids.add(it.id)));
   const rootList = k => S.items.filter(i => {
     if (i.done || i.zone !== k || !vis.has(i.id) || i.repeat) return false;
-    const p = i.parent && byId.get(i.parent);
-    return !p || p.done;                          // 根：无父 / 父不存在 / 父已完成
+    if (inKids.has(i.id)) return false;          // 已经画在某个父卡里了
+    /* 根 = 无父 / 父不存在（悬空）/ 父链上有任意一级已完成。
+       ★ 0B.1：最后那一档**不是**"让它升格成根"，而是把"父已完成的子任务"收进
+       已完成区 —— 它上面已经没有父卡能画它了（父卡不渲染），把它当根画出来
+       就是用户看到的"一勾父任务，子任务全散架跑进分区列表"。
+       现在保留 underDone 这一档只是为了不让数据里的子树在页面上凭空消失：
+       子任务上浮到分区列表里跟父卡在同一处（同一栏），位置连续、不散架。
+       父**还在**（未完成）时，子任务就画在父卡下面，这里被 inKids 挡掉。 */
+    return !i.parent || !byId.has(i.parent) || underDone(i.id);
   }).sort(cmpItem);
 
   const repList = ordered()
@@ -4504,36 +4677,95 @@ function renderZoneBody(){
       empty:'还没有循环任务。写「每2天 喂寄居蟹」，打勾后自动排下一次。' },
   ];
 
+  /* 三栏顺序＝「要管的程度」从松到紧：长期（最没期限）→ 短期（有死线）→ 循环（节奏固定）。
+     「考虑」不算待办，只在这儿暂存想法，铺满整行收在最后，不挤进这三栏。 */
+
   /* ★ v3.38（用户："时间轴里边有一条，我点到这个分类里面，它直接闪没了"）：
-     兜底扫一遍 —— 凡是"四栏一个都没收走"的未完成条目，一律补进**长期**。
+     兜底扫一遍 —— 凡是"一栏都没收走"的**未完成**条目，一律补进**长期**。
      原来只有 zone 恰好等于 long / short / consider 的条目才进得去（循环走 repList），
      所以只要一条数据的 zone 是别的值（旧备份、导入、以后新增分区），它在分区视图里
      就完全不存在：时间轴里看得见、切过来就凭空消失 —— 正是用户描述的那一下。
-     宁可让它出现在长期里，也绝不能让它"不在任何一个视图里"。 */
+     宁可让它出现在长期里，也绝不能让它"不在任何一个视图里"。
+
+     ★ 0B 修（这条兜底从 0B.4 之后开始会重复渲染）：
+     它原来只数"三栏根节点 + 它们的**未完成**子任务"（kids 那时只收未完成的），
+     而 0B.4 让 kids 也收已完成的子任务 —— 于是"父卡下面挂着一个已完成的子任务"
+     这种最普通的情况，子任务会被判成 orphan，再作为**根**补进长期栏，
+     同时它又照旧挂在父卡下面：同一条画两遍。
+     两处收口：①不再拿当前 kids 当"已收录"的判据 —— 折叠态 / 深度上限 / done 父
+     都会让 kids 暂时不含某个后代，但那个后代此刻**正画在父卡里**；改判
+     "父链上有没有一个正在被当根渲染的祖先"（也就是当初"父已完成才升格"的那个判据）；
+     ②已完成的条目照旧排除（它们本来就不进任何分区栏）。 */
   {
+    /* 判据三条，缺一条就会重复渲染或多出一条谁也点不开的条目：
+       ① 已经出现在某一栏里的（根条目）—— 它的 parent 是 null，underDone 对它返回 false，
+          拿 underDone 当"已收录"判据会把它自己也塞进长期栏（实测同一条渲染两遍）；
+       ② 正画在父卡 .goal-kids 里的子任务 —— 读上面那张 inKids，不猜；
+       ③ 父已完成 —— 它已经在 rootList 里上浮到分区列表了，这里不能再收一次。
+       `vis` 里会含"命中搜索的条目的祖先"，那些祖先不必再补（它们是第 ① 或 ③ 类）。 */
     const listed = new Set();
-    const deep = (list, acc) => list.forEach(it => {
-      acc.add(it.id);
-      const ch = kids.get(it.id);
-      if (ch && ch.length) deep(ch, acc);
-    });
-    deep(cols[0].list, listed); deep(cols[1].list, listed); deep(cols[2].list, listed);
-    const orphan = ordered().filter(i => !i.done && vis.has(i.id) && !listed.has(i.id));
+    cols.forEach(c => c.list.forEach(it => listed.add(it.id)));
+    const orphan = ordered().filter(i => !i.done && vis.has(i.id) &&
+      !listed.has(i.id) && !inKids.has(i.id) && !underDone(i.id));
     if (orphan.length) cols[0].list = cols[0].list.concat(orphan).sort(cmpItem);
   }
 
   /* 三栏顺序＝「要管的程度」从松到紧：长期（最没期限）→ 短期（有死线）→ 循环（节奏固定）。
      「考虑」不算待办，只在这儿暂存想法，铺满整行收在最后，不挤进这三栏。 */
+  /* ★ 0B：「收进已完成区」这个说法以前没有对应的东西 —— 勾完（或按「只勾父任务」收起）
+     的条目数据还在库里，但分区列表里根本不再出现，所以"收进哪儿了"是个空头承诺。
+     这里给它一个真实的落点：分区列表最下面一条可折叠的「已完成 N 条」。
+     只收**根级**已完成条目，它们的子任务挂在各自卡的 .goal-kids 里 —— 与分区列表同构。
+     默认收起：今天做完的东西不该继续占着第一屏。
+     **只显示今天完成的**（用户拍 B）：昨天做完的沉下去，不给长期占位 ——
+     所以这行数字每天自然清空，跟统计页「今日完成」是同一个口径。
+     前两天刚做完想回看，走时间轴或统计（数据一条都没删）。
+     ⚠️ 已完成父卡的子任务必须**单独补进 kids**：kids 是从 ordered() 建的，而 ordered() 里
+     这些子任务已经 done，不会进来 —— 不补的话父卡在已完成区里是一张光杆卡，
+     用户会以为"收起来"把子任务弄丢了（0B.4 的承诺也就断了）。 */
+  const todayYmd = ymd(today0());
+  const doneRoots = S.items.filter(i => i.done && !isSeed(i) && !i.repeat &&
+    ymd(new Date(i.doneAt || i.createdAt || 0)) === todayYmd &&
+    !(i.parent && byId.has(i.parent))).sort(cmpItem);
+  doneRoots.forEach(r => {
+    const mine = S.items.filter(x => x.parent === r.id && !isSeed(x));
+    if (mine.length){
+      const cur = kids.get(r.id) || [];
+      const seen = new Set(cur.map(x => x.id));
+      mine.forEach(x => { if (!seen.has(x.id)) cur.push(x); });
+      kids.set(r.id, cur.sort(cmpItem));
+    }
+  });
   cols.forEach((c, zi) => {
+    /* ★ 0B：分区列表**不收已完成的根条目** —— 它们沉到下面那条「已完成」里。
+       不排除的话，一个做完了的父任务会继续占着分区列表（数据上它是根），
+       与「收进已完成区」的说法自相矛盾；它的子任务则跟着它在已完成区里展开。 */
+    const live = c.list.filter(x => !x.done);
     const fd = S.foldedZones.includes(c.k);
     bh += `<section class="glass zone${c.cls || ''}${fd ? ' folded' : ''}${rv()}" data-z="${c.k}"${rvd(100 + zi * 80)}>
       <header data-zfold="${c.k}" role="button" tabindex="0" aria-expanded="${fd ? 'false' : 'true'}">
-        <span class="dot"></span><h3>${c.label}</h3><span class="n mono">${c.list.length}</span>
+        <span class="dot"></span><h3>${c.label}</h3><span class="n mono">${live.length}</span>
         <i class="z-chev" aria-hidden="true"></i>
       </header>
-      ${c.list.length ? c.list.map(renderTree).join('') : `<div class="empty">${c.empty}</div>`}
+      ${live.length ? live.map(x => renderTree(x)).join('') : `<div class="empty">${c.empty}</div>`}
     </section>`;
   });
+
+  /* ★ 0B：已完成收纳区（默认收起）。整条压在分区列表脚下 ——
+     它是"今天做完的东西"，不该继续占第一屏；但也不能让用户以为做完就没了。 */
+  if (doneRoots.length){
+    const open = !!S.doneOpen;
+    const kidN = doneRoots.reduce((n, x) => n + ((byParent.get(x.id) || []).length), 0);
+    bh += `<section class="glass zone done-zone${open ? '' : ' folded'}${rv()}" data-z="done"${rvd(40)}>
+      <header data-donefold="1" role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}">
+        <span class="dot"></span><h3>已完成</h3>
+        <span class="n mono">${doneRoots.length}</span>
+        <span class="done-hint">${kidN ? '含 ' + kidN + ' 条子任务' : ''}</span>
+        <i class="z-chev" aria-hidden="true"></i>
+      </header>
+      ${open ? doneRoots.map(x => renderTree(x)).join('') : ''}
+    </section>`;
+  }
 
   /* 考虑区：这里放的是「还没决定要不要做」的事，不是待办 —— 不占三栏之一，
      靠 grid-column:1/-1 铺满整行落在所有栏目脚下，绿点跟上面三栏的蓝点分开。
@@ -4602,8 +4834,13 @@ function renderTimelineBody(){
       }).join('') + `</ol></div>`;
 }
 
+/* ★ 0B.8：统计口径一律排除想法。种子没有"做完"这回事（它只有"用完了"= done），
+   而 done 这一个字段两边共用 —— 一条用完的种子以前会被算进「今日完成」和「连续打勾」，
+   统计页就多出用户没打过勾的数字。ordered() 已经在过滤种子，但统计这三处直接扫 S.items。
+   抽成一个函数让三处口径只有一处真相源（以前是各写各的 filter(i => i.done)）。 */
+function statDoneItems(){ return S.items.filter(i => i.done && !isSeed(i)); }
 function streak(){
-  const days = new Set(S.items.filter(i => i.done && i.doneAt).map(i => ymd(new Date(i.doneAt))));
+  const days = new Set(statDoneItems().filter(i => i.doneAt).map(i => ymd(new Date(i.doneAt))));
   let n = 0; const d = today0();
   if (!days.has(ymd(d))) d.setDate(d.getDate() - 1);
   while (days.has(ymd(d))){ n++; d.setDate(d.getDate() - 1); }
@@ -4945,6 +5182,7 @@ function treeMapHTML(list){
           ? `<span class="tn-chip lin" title="由 ${n.it.bornFrom.length} 条合并而来">血缘 ${n.it.bornFrom.length}</span>` : ''}
         ${n.kids ? `<button type="button" class="tn-fold${col ? ' col' : ''}" data-act="tnfold"
             data-id="${esc(n.it.id)}" aria-label="${col ? '展开' : '收起'}下面的 ${n.kids} 条"
+            title="${col ? '展开' : '收起'}这 ${n.kids} 条（含更深一层的全部子孙，不只是直接长在它下面的）"
             >${col ? '＋' : '－'}${n.kids}</button>` : ''}
       </div>
     </div>`;
@@ -5297,6 +5535,23 @@ function renderIdeas(){
     || (Array.isArray(i.sparks) && i.sparks.some(s => (s.text || '').toLowerCase().includes(q)));
   const all = S.items.filter(i => isSeed(i) && qHit(i) &&
     (!ideaUI.tags.length || ideaUI.tags.some(t => (i.tags || []).includes(t))));
+  /* ★ 0B.10：命中的子想法要把**祖先链**补进可见集，做法照抄清单页 4424-4433 那段。
+     不补会出两种别扭：①搜索结果里那条明明是嵌在别人下面的，却平铺在顶层，看不出从属；
+     ②treeHTML 会因为父不可见而把它当根（它自己做了上浮兜底，这里补了才对得上）。
+     只补**种子**祖先：待办父节点不属于想法页，混进来会渲染成一张想法卡，
+     而卡片上的推进/立项这些动作对一条待办没有意义（它已经在清单页了）。 */
+  {
+    const byId = new Map(S.items.map(i => [i.id, i]));
+    for (const i of all.slice()){
+      let cur = i, guard = 0;
+      while (cur.parent && byId.has(cur.parent) && guard++ < PARENT_GUARD){
+        const p = byId.get(cur.parent);
+        if (!isSeed(p)) break;
+        if (!all.some(x => x.id === p.id)) all.push(p);
+        cur = p;
+      }
+    }
+  }
   const allById = new Map(S.items.map(i => [i.id, i]));
   const live = all.filter(i => !i.done && !seedAncestorUsed(i, allById))
     .sort((a, b) => ideaLastAt(b) - ideaLastAt(a));
@@ -5438,7 +5693,12 @@ function renderIdeas(){
     if (live.length){
       h += `<div class="idea-list">` + treeHTML(live) + `</div>`;
     } else {
-      h += `<div class="empty-soft">没有在用的想法了，下面是收起来的。</div>`;
+      /* ★ 0B.10：注意这里判 live 而不是判 all —— all 现在还会带上"被补进来的祖先链"，
+         只瞄一眼 all 就可能有祖先却没命中的种子，于是渲染出一片空白（比空态更糟）。 */
+      const filtering = !!(ideaUI.q || (ideaUI.tags && ideaUI.tags.length));
+      h += filtering
+        ? `<section class="glass zone zone-wide${rv()}" data-z="idea"><div class="empty">没有匹配的想法 —— 换个词，或者把搜索框和标签筛选清掉。</div></section>`
+        : `<div class="empty-soft">没有在用的想法了，下面是收起来的。</div>`;
     }
     if (used.length){
       /* ★ 第 2 波（用户："这个分割线还有这个二也不需要了"）：分组标题整块删掉 ——
@@ -5555,6 +5815,15 @@ function taskToSeed(it, quiet){
   it.zone = 'idea';
   it.date = null; it.dateEnd = null; it.monthOnly = false; it.time = null; it.repeat = null;
   it.hw = null; it.promoted = null; it.bornFrom = null; it.parent = null;
+  /* foldedByParent 是"被父任务顺手收起"的待办标记，变成种子之后没有意义 —— 一并清掉。
+     它与 openItemEditor 保存分支里种子方向的清理清单保持一致（0B.5 的验收点）。 */
+  delete it.foldedByParent;
+  /* ★ 0B.5：这里**不再清** `lastPromoted`。它跟 promoted / bornFrom 不是一类东西：
+     promoted / bornFrom 是"这条被怎么处理过"的标记，变成种子之后无意义，必须清；
+     lastPromoted 只是"最近一次立项产生的那条待办"的指针，想法卡上 ↑「补到待办里」
+     就靠它（见 seedHTML 的 pushTask）。清掉它，那条待办就再也加不上后续内容了 ——
+     一个字段的清理不该顺手剪掉一条功能。判空的入口本来就有（find 不到就不画那颗 ↑）。
+     这一列必须与 openItemEditor 保存分支里种子方向的清理**完全一致**（0B.5 的验收点）。 */
   /* 只有"原文比标题更长"时才把原文当第一步 —— 否则标题和第一步一模一样，看着像重复 */
   if (!Array.isArray(it.sparks) || !it.sparks.length){
     const extra = String(it.raw || '').trim();
@@ -5568,7 +5837,7 @@ function taskToSeed(it, quiet){
   save(); refresh();
   if (!quiet){
     toast('已存成想法 —— 在底栏左端那颗灯泡里', '去看看', () => {
-      S.view = 'idea'; ANIM = true; refresh();
+      goView('idea');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   }
@@ -5664,7 +5933,7 @@ function seedPromote(it, task, opts){
   buzz(24);   // §11 立项成功：单中震
   save(); refresh();
   toast('已立项：' + task.title, '去看', () => {
-    S.view = 'list'; ANIM = true; refresh();
+    goView('list');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
   return task;
@@ -5720,12 +5989,13 @@ function maybeGestureHelp(){
    做法是一个队列：一次只开一个，**确定和取消都算"过了一条"**，自动开下一条，
    全部走完给一句总结。
    「合并 / 收起来 / 删除」是**一次性**动作，不进队列（没什么可逐条的）。 */
-const batchQ = { ids: [], i: 0, kind: '', done: 0 };
+/* made：这一批新产生的条目（目前只有"批量生长"会产），供收尾时做**整批一次**的撤销 */
+const batchQ = { ids: [], i: 0, kind: '', done: 0, made: [] };
 function batchStart(kind){
   const ids = [...ideaUI.mergeSel].filter(id => S.items.some(x => x.id === id && isSeed(x)));
   if (!ids.length){ toast('先勾几条想法'); return; }
   ideaUI.mergeMode = false; ideaUI.mergeSel.clear();
-  batchQ.ids = ids; batchQ.i = 0; batchQ.kind = kind; batchQ.done = 0;
+  batchQ.ids = ids; batchQ.i = 0; batchQ.kind = kind; batchQ.done = 0; batchQ.made = [];
   batchStep();
 }
 function batchStep(){
@@ -5752,7 +6022,7 @@ function batchStep(){
   if (batchQ.kind === 'grow'){
     setModalAfterClose(batchAdvance);
     openSeedPrompt('生长 ' + tag, it.title, '从这里分出去的那条',
-      v => { if (v && v.trim()) seedGrow(it, v); });
+      v => { if (v && v.trim()){ const nx = seedGrow(it, v); if (nx) batchQ.made.push(nx); } });
     return;
   }
   batchFinish();
@@ -5760,8 +6030,19 @@ function batchStep(){
 function batchAdvance(){ batchQ.done++; batchQ.i++; batchStep(); }
 function batchFinish(){
   const n = batchQ.done;
-  batchQ.ids = []; batchQ.i = 0; batchQ.kind = ''; batchQ.done = 0;
+  const kind = batchQ.kind;
+  /* ★ 2026-10-06 审查修复（撤销出口不齐）：批量生长原来只弹一句「过完 N 条了」，
+     没有撤销 —— 而同批的合并 / 收起来 / 删除都配了撤销（见 §10 的一致性原则）。
+     批量动作的撤销应当是**整批一次**：把这一批长出来的新想法记在 batchQ.made 里，
+     撤销＝一次性把它们删掉（父条目的折叠态一并还原）。 */
+  const made = batchQ.made.slice();
+  batchQ.ids = []; batchQ.i = 0; batchQ.kind = ''; batchQ.done = 0; batchQ.made = [];
   refresh();
+  if (kind === 'grow' && made.length){
+    const keep = S.items.filter(x => made.indexOf(x) < 0);
+    toast('长出了 ' + made.length + ' 条新想法', '撤销', () => { S.items = keep; save(); refresh(); });
+    return;
+  }
   toast(n ? ('过完 ' + n + ' 条了') : '这几条都跳过了');
 }
 /* 合并：勾两条以上 → 生出一条新种子。**原种子不被吃掉**（用户定稿），只挂一行"来自 A ＋ B"。
@@ -5902,7 +6183,7 @@ function demoClear(){
   const keep = S.items.slice();
   S.items = S.items.filter(i => !i.demo);
   /* 示例可能是别的条目的父节点 → 下面那层上浮为根，**不级联删**（跟批量删除一个规则） */
-  S.items.forEach(x => { if (x.parent && !S.items.some(y => y.id === x.parent)) x.parent = null; });
+  sanitizeParents();
   save(); refresh();
   toast('清掉 ' + gone + ' 条示例', '撤销', () => { S.items = keep; save(); refresh(); });
 }
@@ -5939,7 +6220,7 @@ function openSeedNew(){
     const v = inp.value;
     closeModal();
     const nx = newSeed(v);
-    if (nx){ S.view = 'idea'; ANIM = true; refresh(); }
+    if (nx){ goView('idea'); }
   };
   document.getElementById('sn_no').onclick = closeModal;
   document.getElementById('sn_yes').onclick = ok;
@@ -6001,10 +6282,11 @@ function openSeedPrompt(title, label, placeholder, onOk){
 
 function renderStat(){
   const today = ymd(today0());
-  const doneItems = S.items.filter(i => i.done);
+  /* ★ 0B.8：一律排除想法（种子）——见 statDoneItems 的说明 */
+  const doneItems = statDoneItems();
   const doneTodayList = doneItems.filter(i => i.doneAt && ymd(new Date(i.doneAt)) === today);
-  const overdue = S.items.filter(i => !i.done && i.date && daysFromToday(i.date) < 0).length;
-  const hwOpen = S.items.filter(i => i.hw && !i.done && i.hw.status !== 'submitted').length;
+  const overdue = S.items.filter(i => !i.done && !isSeed(i) && i.date && daysFromToday(i.date) < 0).length;
+  const hwOpen = S.items.filter(i => i.hw && !i.done && !isSeed(i) && i.hw.status !== 'submitted').length;
   const doneAll = doneItems.length;
   const st = streak();
   const tile = S.statLayout === 'tile';
@@ -6274,7 +6556,7 @@ function openAiNeedOn(){
   document.getElementById('ai_no').onclick = closeModal;
   document.getElementById('ai_go').onclick = () => {
     closeModal();
-    S.view = 'settings'; ANIM = true; refresh();
+    goView('settings');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 }
@@ -6695,6 +6977,19 @@ function renderSettings(){
             <button type="button" class="pill${S.captureZone === 'idea' ? ' on' : ''}"
                     data-capzone="idea" aria-pressed="${S.captureZone === 'idea' ? 'true' : 'false'}">想法</button>
           </div>
+        </div>
+        <!-- ★ 0B（决策 2）：子任务全勾完**不**自动完成父任务，默认关。
+             理由：父是"这件事"，子是"这件事的几步"，手上这一步做完不等于整件事结束。
+             打开后：勾掉最后一个未完成子任务时，把祖先里"自己下面已经全勾完"的那些逐级补上勾。 -->
+        <div class="set-row">
+          <div class="set-txt">
+            <b>子任务做完就完成父任务</b>
+            <span>开着时，一个父任务下面所有子任务都打了勾，父任务自动跟着打勾。
+              默认关 —— 父任务往往是"这件事"本身，几步做完不代表整件事结束。
+              父任务标着循环、或者这条是作业时不会自动连动。</span>
+          </div>
+          <button class="switch" data-set="autoDoneParent" role="switch" aria-label="子任务做完就完成父任务"
+                  aria-checked="${S.autoDoneParent ? 'true' : 'false'}"></button>
         </div>
       </section>
 
@@ -7832,7 +8127,7 @@ function commitEntry(){
            录入那一刻仍然不做任何决定，只是落点变了。 */
         taskToSeed(it, true);
         toast('已存成想法 —— 在底栏左端那颗灯泡里', '去看看', () => {
-          S.view = 'idea'; ANIM = true; refresh();
+          goView('idea');
           window.scrollTo({ top: 0, behavior: 'smooth' });
         });
         const sec0 = document.getElementById('view');
@@ -7960,8 +8255,24 @@ view.addEventListener('keydown', e => {
 });
 
 view.addEventListener('click', e => {
-  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart]');
+  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-donefold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart]');
   if (!el) return;
+
+  /* ★ 0B：分区列表底部「已完成」那条的展开 / 收起。
+     与分区折叠同一个手感（.zone 高度过渡），但它不进 S.foldedZones ——
+     分区折叠是"我把长期收起来了"的长期偏好，已完成区是"我现在想不想看"的临时动作，
+     所以用会话级的 S.doneOpen，重开回到收起。 */
+  if (el.dataset.donefold !== undefined){
+    S.doneOpen = !S.doneOpen;
+    const sec = el.closest('.zone');
+    if (!sec){ refresh(); return; }
+    const wasFolded = sec.classList.contains('folded');
+    el.setAttribute('aria-expanded', wasFolded ? 'false' : 'true');
+    if (reduceMotion()){ refresh(); return; }
+    /* 展开要走 refresh（收起态下子卡片根本没有 DOM，没有可展开的东西） */
+    refresh();
+    return;
+  }
 
   /* 分区折叠（长期 / 短期 / 循环 / 考虑）：复用 .zone 高度过渡（foldZoneWithMotion），
      就地切换、不走 refresh()。走 refresh() 的话整页重建会闪、滚动位置也会跳，
@@ -8110,6 +8421,13 @@ view.addEventListener('click', e => {
       if (S.voice && !voiceReady()) toast('当前设备不支持离线语音，长按仍走键盘输入');
       else toast(S.voice ? '已开启语音输入（长按圆钮说话）' : '已关闭语音输入');
     }
+    /* ★ 0B（决策 2）：子任务全勾完是否自动完成父任务。默认关，
+       真正的连动逻辑在 toggleDone → parentAutoDone，这里只存开关 + 回执。 */
+    else if (el.dataset.set === 'autoDoneParent'){
+      S.autoDoneParent = !S.autoDoneParent; save();
+      el.setAttribute('aria-checked', S.autoDoneParent ? 'true' : 'false');
+      toast(S.autoDoneParent ? '开着：子任务做完，父任务会跟着打勾' : '关着：子任务归子任务，父任务要自己勾');
+    }
     /* v3.4 系统语音（备用路线）：只在设备端离线不可用时才会真的被走到。 */
     else if (el.dataset.set === 'voiceSystem'){
       S.voiceSystem = !S.voiceSystem; save();
@@ -8176,7 +8494,7 @@ view.addEventListener('click', e => {
     const keep = S.items.slice();
     S.items = S.items.filter(x => list.indexOf(x) < 0);
     /* 被删掉的可能是别人的父节点 → 下面那层上浮为根，**不级联删** */
-    S.items.forEach(x => { if (x.parent && !S.items.some(y => y.id === x.parent)) x.parent = null; });
+    sanitizeParents();
     ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); save(); refresh();
     toast('删掉 ' + list.length + ' 条', '撤销', () => { S.items = keep; save(); refresh(); });
     return;
@@ -8317,7 +8635,7 @@ view.addEventListener('click', e => {
     const keep = S.items.slice();
     S.items = S.items.filter(i => !(isSeed(i) && i.done));
     /* 被清掉的可能是别人的父节点 → 子节点上浮为根，**不级联删** */
-    S.items.forEach(x => { if (x.parent && !S.items.some(y => y.id === x.parent)) x.parent = null; });
+    sanitizeParents();
     save(); refresh();
     toast('清掉 ' + gone.length + ' 条已收起的', '撤销', () => { S.items = keep; save(); refresh(); });
     return;
@@ -8382,7 +8700,7 @@ view.addEventListener('click', e => {
     if (!t){ toast('那条待办已经删掉了，想法还在'); return; }
     /* ★ 审查修复（2026-10-04）：跳过去还得**找得到**它 —— 清掉清单页的搜索词
        （否则它可能正好被筛掉），滚到那一条并闪一下。 */
-    S.q = ''; S.view = 'list'; ANIM = true; refresh();
+    S.q = ''; goView('list');
     setTimeout(() => {
       const node = view.querySelector('[data-fk="t:' + t.id + '"]');
       const row = node && node.closest ? node.closest('.item') : null;
@@ -8428,7 +8746,7 @@ view.addEventListener('click', e => {
     toast('已补到「' + task.title + '」里', '撤销', () => { task.raw = oldRaw; save(); refresh(); });
     return;
   }
-  if (act === 'tick' && it){ tickWithFeedback(el, it); return; }
+  if (act === 'tick' && it){ tickAskAndCommit(el, it); return; }
   if (act === 'del' && it){ remove(it, el); return; }
   if (act === 'edit' && it){ openEdit(it); return; }
   if (act === 'st' && it && it.hw){
@@ -8448,9 +8766,146 @@ view.addEventListener('click', e => {
    exitPending 是打勾与删除**共用**的一张表：同一条正在退场时，另一个按钮也不该响应。 */
 const exitPending = new Set();
 const EXIT_MS = 420;
+/* ★ 0B：给 tickParentOnly 用的"这一次打勾的通用提示先别弹"开关（见 toggleDone 末尾）。
+   它是**一次性**的：调用方在自己那段里置上、finally 清掉，不留全局残留。 */
+let tickSilence = null;
+/* ★ 0B.1 打勾的统一入口：勾**父任务**而它下面还有没做完的子任务时，先问一句。
+   为什么闸门放在这里而不放进 toggleDone：
+     · toggleDone 是"数据层"，此刻 DOM 已经不能安全改（调用点可能刚跑完退场动画）；
+     · 提示必须**早于**退场动画 —— 先播动画再问，用户看到的是一条已经消失的行配一个问号。
+   两个选项都能撤销：
+     · `一起勾`    → 后代全部置 done（撤销整棵子树还原）；
+     · `只勾父任务` → 父勾上，父下面没做完的后代跟着一起收进已完成区（带 foldedByParent
+       标记 + 撤销还原），**不是**升格成根条目、也不是留在分区列表里。 */
+function tickAskAndCommit(el, it){
+  if (!it || it.done) return tickWithFeedback(el, it);
+  const kids = incompleteDescendants(it);
+  if (kids.length){
+    askTickWithKids(it, kids, el);
+    return;
+  }
+  tickWithFeedback(el, it);
+}
+/* 这条条目下面（含更深层）还没做完的后代，深度优先、父在前。
+   guard 上限与文件其它几处一致（防脏数据成环时转不出来）。 */
+function incompleteDescendants(root){
+  const out = [];
+  const walk = (id, depth) => {
+    if (depth > PARENT_GUARD) return;
+    for (const x of S.items){
+      if (x.parent !== id || x.done) continue;
+      out.push(x);
+      walk(x.id, depth + 1);
+    }
+  };
+  walk(root.id, 0);
+  return out;
+}
+/* 沿 parent 链往上收集祖先 id（近的在前）。guard 上限与文件其它几处一致 ——
+   parent 成环的脏数据下必须能转出来。 */
+function ancestorIds(id){
+  const byId = new Map(S.items.map(i => [i.id, i]));
+  const out = [];
+  let cur = byId.get(id), g = 0;
+  while (cur && cur.parent && byId.has(cur.parent) && g++ < PARENT_GUARD){
+    const p = byId.get(cur.parent);
+    out.push(p.id);
+    cur = p;
+  }
+  return out;
+}
+/* ★ 0B.2：子任务全勾完时，把祖先里"自己下面的子任务已经全勾完"的那些逐级补上勾。
+   自底向上走，所以每一级都看得到上一级刚被补上的结果（一次性把整条链补完，
+   不需要再点一次）。
+   只在开关打开时被 toggleDone 调用。 */
+function parentAutoDone(it){
+  const hit = [];
+  for (const pid of ancestorIds(it.id)){
+    const p = S.items.find(x => x.id === pid);
+    if (!p || p.done) continue;
+    if (S.items.some(x => x.parent === pid && !x.done)) break;   // 这一级还有别的没做完 → 停
+    p.done = true; p.doneAt = Date.now();
+    hit.push(p);
+  }
+  if (!hit.length) return;
+  save(); refreshAfterChange(320);
+  toast('子任务都做完了，父任务也一起勾上了', '撤销', () => {
+    hit.forEach(x => { x.done = false; x.doneAt = null; });
+    save(); refreshAfterChange(320);
+  });
+}
+/* 「还有 N 项没做，一起勾掉吗？」
+   用 toast 的多按钮形态而不是弹窗：这只是一句追问，不该把整页挡住、也不该
+   触发弹层的滚动锁与焦点陷阱（那套是给"要填东西"的弹层用的）。 */
+function askTickWithKids(it, kids, el){
+  const n = kids.length;
+  toast('「' + it.title + '」下面还有 ' + n + ' 项没做，一起勾掉吗？', [
+    { label: '一起勾', fn: () => tickWithSubtree(el, it) },
+    { label: '只勾父任务', fn: () => tickParentOnly(el, it) }
+  ], 8000);
+}
+/* ★ 0B.1（决策 1 的原话）：选「只勾父任务」→ 子任务**跟着父一起收进已完成区**，
+   不是升格成根条目、也不是留在分区列表里。
+   所以这里不只是把父勾上：父下面没做完的后代也一并置 done，让它们跟着父一起离开分区列表。
+   纪律（决策 6 另一半：自动做错比不做更烦）：
+     · 真的被用户勾过的子任务**原样不动**（doneAt 保留它自己那次勾的时间）；
+     · 被这一下顺带收起来的，写 `foldedByParent = <父 id>` —— 这是**新字段**（红线允许），
+       记的是"它不是做完的，是被父任务收起的"，将来统计/回顾要分开算时有据可依；
+     · 撤销把 done/doneAt/标记一起还原成动手之前的样子。
+   与「一起勾」的区别：一起勾 = 用户确认"这些都做完了"；只勾父 = 用户只对父任务负责，
+   子任务是被收起来的。数据上两者都进已完成区，区别记在 foldedByParent 与提示文案上。 */
+function tickParentOnly(el, it){
+  const before = incompleteDescendants(it);
+  const beforeAt = before.map(x => x.doneAt || null);
+  /* ⚠️ tickWithFeedback 走到 toggleDone 时会**同步**弹一条「完成 · 标题」。
+     那条提示的撤销回调里 `it.done = false` 看上去没问题，但它是在"数据层"里闭包捕获的，
+     而这里紧接着又做了一次 refreshAfterChange —— 两次刷新撞在一起时，用户点「撤销」
+     只会看到子任务回来、父任务还是勾着（实测：父不还原、已完成区不消失）。
+     而且两条 toast 会互相顶掉：用户根本看不到「完成 · 标题」那条。
+     所以这一段把"标题"那条通用提示静音掉：这一路上的话由**本函数**那条提示统一说。
+     静音只影响这一次调用，不改变 toggleDone 的其它行为。 */
+  const quiet = { on: true };
+  tickSilence = quiet;
+  try { tickWithFeedback(el, it); }
+  finally { tickSilence = null; }
+  before.forEach(x => { x.done = true; x.doneAt = Date.now(); x.foldedByParent = it.id; });
+  save(); refreshAfterChange(320);
+  /* 撤销时**重新查一次父任务**，不信闭包里的引用：整页重渲染之后旧引用可能已经不在库里
+     （上面那个 bug 的根因之一）。查不到就按它在库里的身份跳过，别把一个不存在的东西写回状态。 */
+  toast('父任务已勾上 · 下面 ' + before.length + ' 项没收尾的也一起收起来了', '撤销', () => {
+    before.forEach((x, i) => {
+      const live = S.items.find(y => y.id === x.id) || x;
+      live.done = false; live.doneAt = beforeAt[i];
+      delete live.foldedByParent;
+    });
+    const p = S.items.find(y => y.id === it.id) || it;
+    p.done = false; p.doneAt = null;
+    save(); refreshAfterChange(320);
+  });
+}
+/* 一起勾：整棵子树按父任务的新状态对齐（父完成 → 后代全完成）。祖先先落，子后落，
+   spawnNextCycle 复制子任务时读到的是"原始"子任务（date 语义不受影响，与手点顺序一致）。
+   注意 toast 会互相顶掉：tickWithFeedback 自己那条「完成…」是同步弹的，
+   这里紧接着再弹一条就会把它盖掉 —— 所以撤销的兜底放在**这一条**提示上。 */
+function tickWithSubtree(el, it){
+  const before = incompleteDescendants(it);
+  const beforeAt = before.map(x => x.doneAt || null);
+  tickWithFeedback(el, it);
+  before.forEach(x => { x.done = true; x.doneAt = Date.now(); });
+  save(); refreshAfterChange(320);
+  toast('一起勾掉了 ' + before.length + ' 项', '撤销', () => {
+    before.forEach((x, i) => { x.done = false; x.doneAt = beforeAt[i]; });
+    save(); refreshAfterChange(320);
+  });
+}
 function tickWithFeedback(el, it){
   if (exitPending.has(it.id)) return;
-  const row = el.closest('.item, .hwcard');
+  /* ★ 0B 顺手修的既有缺陷（真机复现过：点确认条上的「只勾父任务」什么都不发生）：
+     这条路原来无条件 `el.closest(...)` —— 只要 el 不是元素（null / 已从 DOM 摘掉的按钮），
+     整条打勾就抛 TypeError 静默中断：父任务勾不上、子任务也一动不动，控制台之外毫无提示。
+     "拿不到行"只影响退场动画，不该影响数据落定 —— 没有 el 就当 reduceMotion 处理，
+     直接走同步 toggleDone。 */
+  const row = (el && typeof el.closest === 'function') ? el.closest('.item, .hwcard') : null;
   if (!row || reduceMotion()){ toggleDone(it); return; }
   exitPending.add(it.id);
   /* 退场动画期间把祖先的 content-visibility:auto 放开（.zone 带着它）：
@@ -8605,8 +9060,12 @@ function foldWithMotion(chip, it){
   const box = host ? host.querySelector(':scope > .goal-kids, :scope > .seed-kids') : null;
   const isSeedBox = !!(box && box.classList.contains('seed-kids'));
   const markFolded = on => { if (isSeedBox) box.hidden = !!on; else box.classList.toggle('folded', !!on); };
+  /* ★ 0B.11：找不到可折叠子树时**不写** collapsed。
+     原来这里无条件 `collapsed.add(it.id)` 再整页重渲染 —— 于是"这条没有任何子任务"
+     也会被记成"用户把它收起来了"：以后一旦它长出子任务，那棵子树会直接是收起的
+     （用户没点过任何折叠钮，却看不见刚长出来的东西，也没有 ▸ 可点）。
+     collapsed 是会话级的显示态，没有东西可折叠时就不该产生状态。 */
   if (!box){                                  // 没有可折叠的子树（正常到不了）：退回整页重渲染
-    collapsed.has(it.id) ? collapsed.delete(it.id) : collapsed.add(it.id);
     refresh(); return;
   }
   const wasFolded = collapsed.has(it.id);
@@ -8661,21 +9120,42 @@ function toggleDone(it){
   it.done = !it.done;
   it.doneAt = it.done ? Date.now() : null;
   if (it.done && it.hw && it.hw.status !== 'submitted'){ it.hw.status = 'submitted'; it.hw.submittedAt = ymd(new Date()); }
+  /* ★ 0B.2（决策 2）：默认**不**自动完成父任务 —— 父任务是"这件事"，子任务是"这件事的几步"，
+     手上这一步做完不等于整件事结束。开关打开时才连祖先一起补勾。
+     只在"刚勾上"这个方向触发；取消勾选时**不动父任务**（否则会有"取消一个子任务，
+     父任务跟着被取消"这种更难解释的连带）。
+     排除循环与作业：循环条目勾掉会排下一轮、作业勾掉会写"已交"状态，
+     在这一步顺手把祖先补掉会让"这一轮结束了吗"变得没有答案（父任务已完成 → 不再排轮）。 */
+  if (it.done && S.autoDoneParent && !it.repeat && !it.cycleOf && !it.hw) parentAutoDone(it);
   /* 循环任务：打勾即完成一轮，按间隔生成下一次（作业不走循环）。
      ★ v3.40 两条新语义（需求 A6）：
        · 间隔 = **区间结束后空 N 天**，下一轮起点 = 本轮终点 + N + 1 天；
          单日任务终点就是它自己，于是 `date + N + 1`。
        · `每天都做`：区间内每一天是一条独立条目，全部生成、全勾完才排下一轮。 */
-  const cycle = { ids: [], label: '' };
-  if (it.done && it.repeat && !it.hw){
+  const cycle = { ids: [], label: '', daily: false };
+  /* ★ 0B.9：`repeat` 只对**顶层**条目生效。子任务自带 repeat 时（导入/备份里可能有），
+     它勾掉后会在同一个父下面凭空多出一条同样挂着这个父的新条目 ——
+     用户的清单里就多了一条谁也不认识的行。判断放在最前面，下面两条分支都受它管。 */
+  const topLevel = !it.parent;
+  if (it.done && it.repeat && !it.hw && topLevel){
     const start = it.date || ymd(today0());
     const end = it.dateEnd && it.dateEnd > start ? it.dateEnd : start;
-    if (it.date && it.timeMode === 'daily') cycle.ids = spawnDailyKids(it, start, end);
+    if (it.date && it.timeMode === 'daily'){
+      cycle.ids = spawnDailyKids(it, start, end); cycle.daily = true;
+      /* ★ 0B.6：区间内每一天都已经被上一轮排过了 → spawnDailyKids 返回空数组。
+         原来这里一片安静（用户看到"完成"却什么也没发生，只会以为循环坏了）。
+         说清楚一句：不是坏了，是这一区间已经排满。 */
+      if (!cycle.ids.length) toast('这一轮的每一天都已经排过了，没有新条目要生成');
+    }
     else cycle.ids = spawnNextCycle(it, start, end);
     if (cycle.ids.length){
       const nx = S.items.find(x => x.id === cycle.ids[0]);
       /* 撤销要用同一个标记把整轮生成的条目一起撤回 */
-      cycle.ids.forEach(id => { const o = S.items.find(x => x.id === id); if (o) o.cycleOf = it.id; });
+      /* ★ 0A.2：`cycleOf` 这个组标记**只给"每天模式"那一批同日期的兄弟条目**。
+         间隔循环（每 N 天）复制到新条目下面的清单型子任务不能带它 —— 带了的话，
+         子任务一个个勾完时会被 8730 那段"同组全勾完就再排一轮"认成一组，
+         于是又排出一轮重复的（同一批子任务的第二次复制）。 */
+      if (cycle.daily) cycle.ids.forEach(id => { const o = S.items.find(x => x.id === id); if (o) o.cycleOf = it.id; });
       if (nx){
         const label = (nx.dateEnd && nx.dateEnd !== nx.date)
           ? '，' + teDateLabelFromStr(nx.date) + '–' + teDateLabelFromStr(nx.dateEnd) + '再来一轮'
@@ -8686,25 +9166,34 @@ function toggleDone(it){
   }
   /* ★ 审查修复（2026-10-04）：`每天都做` 的"全勾完才排下一轮"从来没有出口 ——
      子条目被置成 repeat:null（勾它不排轮），父条目再勾又会被 spawnDailyKids 的 have 集合挡光。
-     现在在"勾完一个子条目"时判断同组是否全部完成，全完才排下一轮。 */
+     现在在"勾完一个子条目"时判断同组是否全部完成，全完才排下一轮。
+     ★ 0B 顺手修的既有缺陷（0A 回报里登记的）：spawnNextCycle 返回的是**数组**
+     （第 0 项是新父条目 id，其余是复制过来的子任务 id），这里原来当对象用 ——
+     `nx.date` 与 `nx.id` 全是 undefined，于是提示里日期是空的、点「撤销」是空操作
+     （什么都不删，下一轮排出来了却撤不掉）。现在按数组语义取。 */
   if (it.done && it.cycleOf && !cycle.ids.length){
     const parent = S.items.find(x => x.id === it.cycleOf);
     const grp = S.items.filter(x => x.cycleOf === it.cycleOf);
     if (parent && parent.repeat && grp.length && grp.every(x => x.done)){
       const st = parent.date || ymd(today0());
       const en = parent.dateEnd && parent.dateEnd > st ? parent.dateEnd : st;
-      const nx = spawnNextCycle(parent, st, en);
+      const made = spawnNextCycle(parent, st, en);
+      const nx = made.length ? S.items.find(x => x.id === made[0]) : null;
       if (nx){
         save(); refreshAfterChange(320);
         toast('这一轮做完了 · ' + teDateLabelFromStr(nx.date) + '再来一轮', '撤销', () => {
-          S.items = S.items.filter(x => x.id !== nx.id); save(); refreshAfterChange(320);
+          const kill = new Set(made);
+          S.items = S.items.filter(x => !kill.has(x.id)); save(); refreshAfterChange(320);
         });
         return;
       }
     }
   }
   save(); refreshAfterChange(320);
-  if (it.done) toast('完成 · ' + it.title + cycle.label, '撤销', () => {
+  /* ★ 0B：tickSilence 是给 tickParentOnly 用的"这一路上的话由我说"开关 ——
+     它调用本函数后会紧接着弹自己那条更贴切的提示（含子任务一起收起的说明），
+     这里再弹一条「完成 · 标题」只会被顶掉、还会让撤销出现两套说法。 */
+  if (it.done && !tickSilence) toast('完成 · ' + it.title + cycle.label, '撤销', () => {
     it.done = false; it.doneAt = null;
     if (cycle.ids.length){
       const kill = new Set(cycle.ids);
@@ -8713,7 +9202,15 @@ function toggleDone(it){
     save(); refreshAfterChange(320);
   });
 }
-/* 下一轮：起点 = 本轮终点 + 间隔 + 1 天，区间跨度沿用本轮（需求 A6 例：9/20–9/22 间隔2 → 9/25–9/27） */
+/* 下一轮：起点 = 本轮终点 + 间隔 + 1 天，区间跨度沿用本轮（需求 A6 例：9/20–9/22 间隔2 → 9/25–9/27）
+   ★ 0A.2：**清单型子任务跟着一起复制到新条目下面**。原来只 `Object.assign({}, it, …)` 复制父条目，
+   "每月买菜"这种循环＋清单的组合，下一轮是空的 —— 每个月的清单都得手打一遍。
+   判定标准（已定决策）：
+     · 子任务**没有 date** → 复制（含"只有 time 钟点"的，例如早中晚吃药）
+     · 子任务**有 date**  → 不复制（阶段型，比如"论文初稿 11/1"，只属于那一轮）
+   新子任务：parent 指向新条目、done:false、doneAt:null、id 重新生成。
+   cycleOf 一并清空 —— 它是"这一轮"的组标记，不该跨轮继承（见 toggleDone 里的说明）。
+   返回值 = 这一轮**新建的全部 id**（第 0 项仍是新父条目），调用的撤销路径要用它整批撤回。 */
 function spawnNextCycle(it, start, end){
   const base = dateFrom(end);
   base.setDate(base.getDate() + it.repeat + 1);
@@ -8722,6 +9219,8 @@ function spawnNextCycle(it, start, end){
     id: uid(), done: false, doneAt: null, createdAt: Date.now(),
     date: ymd(base), dateEnd: null, cycleOf: null,
     timeMode: it.timeMode || 'once', hw: null,
+    /* 0A.7：整条循环链共用一个组标识（链根 = 最初那条循环任务的 id），跨轮继承 */
+    cycleGroup: it.cycleGroup || it.id,
     tags: [...(it.tags || [])]
   });
   if (span){
@@ -8729,12 +9228,34 @@ function spawnNextCycle(it, start, end){
     nx.dateEnd = ymd(e2);
   }
   S.items.unshift(nx);
-  return [nx.id];
+  const made = [nx.id];
+  /* 只有**清单型**（无 date）子任务跟随下一轮；倒序复制，让新条目里的顺序与原顺序一致。
+     这里是"完成一轮"那一下的一次全表扫描（O(n)，全程只跑一次），
+     与渲染路径里"每个节点都 filter 一遍全表"（O(n²)，_verify-a11y 专门盯的那处）不是一回事 ——
+     渲染那边走的是 byParent 一次索引。 */
+  const kidsOfIt = S.items.filter(k => k.parent === it.id);
+  kidsOfIt.slice().reverse().forEach(k => {
+    if (k.date || isSeed(k)) return;
+    const nk = Object.assign({}, k, {
+      id: uid(), parent: nx.id, done: false, doneAt: null, createdAt: Date.now(),
+      cycleOf: null, tags: [...(k.tags || [])]
+    });
+    S.items.unshift(nk);
+    made.push(nk.id);
+  });
+  return made;
 }
-/* 每天都做：区间内每一天展开成独立条目（跳过本轮已有的日期），全勾完才排下一轮 */
+/* 每天都做：区间内每一天展开成独立条目（跳过本轮已有的日期），全勾完才排下一轮
+   ★ 0A.7：判重从"同标题 + 同日期"改成"**同一循环组** + 同日期"。
+   旧写法 `x.title === it.title` 会让两条同名循环任务互相干扰：A 任务在区间内生成过 10/02，
+   B 任务（标题也叫"背单词"）就一条都生成不出来。组标识用 cycleGroup（0A.7 新增字段）：
+   同一条循环链的父/子都带同一个值（链根 = 最初那条循环任务的 id），与标题无关。 */
 function spawnDailyKids(it, start, end){
   const ids = [];
-  const have = new Set(S.items.filter(x => x.title === it.title && x.date).map(x => x.date));
+  const gid = it.cycleGroup || it.id;
+  const have = new Set(S.items
+    .filter(x => x.id !== it.id && x.date && (x.cycleGroup || x.id) === gid)
+    .map(x => x.date));
   const d = dateFrom(start), last = dateFrom(end);
   while (d <= last){
     const ds = ymd(d);
@@ -8742,6 +9263,7 @@ function spawnDailyKids(it, start, end){
       const k = Object.assign({}, it, {
         id: uid(), done: false, doneAt: null, createdAt: Date.now(),
         date: ds, dateEnd: null, repeat: null, cycleOf: null, hw: null,
+        cycleGroup: gid,
         tags: [...(it.tags || [])]
       });
       S.items.unshift(k); ids.push(k.id);
@@ -8767,7 +9289,11 @@ function remove(it, el){
      aria-current / body[data-view] 也还是想法 → 页面变成清单、底栏停在想法。
      删除不该换页：refresh() 按 S.view 分派渲染，删完停在原来的页。 */
   const commit = () => {
-    S.items.splice(idx, 1); save(); refresh();
+    S.items.splice(idx, 1);
+    /* ★ 0A.1：删掉的可能是别人的父节点 → 立刻收口（悬空置 null、断环），
+       不留到下次启动才自愈 —— 否则这一屏里就有条目挂在一个不存在的父上。 */
+    sanitizeParents();
+    save(); refresh();
     toast('已删除「' + it.title + '」', '撤销', () => { S.items.splice(idx, 0, it); save(); refresh(); });
   };
   if (!row || reduceMotion()){ commit(); return; }
@@ -8836,7 +9362,9 @@ function unlockPage(){ document.documentElement.classList.remove('locked'); }
    ③ 焦点跑到遮罩后面按 Enter 触发底层按钮的路径被彻底切断 ——
       那条路径的症状（背景被 scrollTo 顶走）和"滚动穿透"一模一样，光测滚轮永远发现不了。
    弹层和 toast 都在 .page-shell 之外，所以不会被自己设的 inert 误伤。 */
-const MASK_BG = ['.site-header', '.page-shell', '.pdaim-footer'];
+/* ★ 2026-10-06 清理：`.site-header` 是顶栏时代的死选择器（顶栏早已撤掉），
+   留着只会让"到底哪几块被 inert"说不清 —— 与验收脚本同步删掉。 */
+const MASK_BG = ['.page-shell', '.pdaim-footer'];
 function setBackgroundInert(on){
   for (const sel of MASK_BG){
     const el = document.querySelector(sel);
@@ -9464,12 +9992,30 @@ function teSyncUI(){
   const sw = document.querySelector('#te_sw');
   const rp = document.querySelector('#te_rep');
   if (sw && rp){
-    if (!TE.start){ TE.repeatOn = false; sw.checked = false; sw.disabled = true; rp.classList.add('dis'); }
-    else { sw.disabled = false; sw.checked = !!TE.repeatOn; rp.classList.toggle('dis', !sw.checked); }
+    /* ★ 0B.7：勾了作业时这颗循环开关是锁死的（理由见 syncHwRepeat）。
+       teSyncUI 会被很多路径调用，所以这里的判断也带上 dataset.hwlock ——
+       只在打开弹层那一次设 disabled，后面任何一次刷新都会被这里重新打开。 */
+    const hwLock = sw.dataset.hwlock === '1';
+    if (hwLock){
+      sw.disabled = true;
+      rp.classList.add('dis');
+    } else if (!TE.start){
+      TE.repeatOn = false; sw.checked = false; sw.disabled = true; rp.classList.add('dis');
+    } else {
+      sw.disabled = false; sw.checked = !!TE.repeatOn; rp.classList.toggle('dis', !sw.checked);
+    }
   }
   /* 区间内语义两颗按钮的选中态 */
+  const twoEnds = TE.picks === 2;
   document.querySelectorAll('#te_mode button').forEach(b => {
-    b.classList.toggle('on', (b.dataset.m === 'daily' ? 'daily' : 'once') === teMode());
+    const daily = b.dataset.m === 'daily';
+    /* ★ 0B.6：「每天都做」只在**区间**（两个端点）下才有意义 ——
+       单日区间每天就是它自己一天，展开出来还是同一条，用户点了会以为坏了。
+       原来这两颗按钮只按 TE.start 启停，单日也能点亮。现在按 TE.picks 判，
+       并且禁用（不只是变灰，要真的点不动）+ 说清楚为什么。 */
+    b.disabled = daily && !twoEnds;
+    b.title = (daily && !twoEnds) ? '先在日历上点出两个端点（一个区间）才能选「每天都做」' : '';
+    b.classList.toggle('on', (daily ? 'daily' : 'once') === teMode());
   });
   const de = document.querySelector('#te_derive');
   if (de){
@@ -9624,6 +10170,11 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
           <button type="button" class="btn ghost srcseed" id="m_srcseed" data-id="${esc(src.id)}">💡 ${esc(src.title)}</button></div>` : '';
       })()}
     </div>
+    <div class="field" id="m_parentfield"><label>挂在…下面</label>
+      <button type="button" class="btn ghost parentpick" id="m_parent">
+        <span id="m_parenttxt"></span><span class="pp-chev" aria-hidden="true">›</span>
+      </button>
+    </div>
     <div class="te-row" id="te_row">
       <button type="button" class="te-head" id="te_head" aria-expanded="false" aria-controls="te_body">
         <span class="te-cap">时间</span>
@@ -9646,6 +10197,8 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
             <span class="te-gap">间隔 <input type="number" class="te-num" id="te_gap" min="1" max="365" step="1" value="1"> 天</span>
             <span class="te-derive" id="te_derive"></span>
           </div>
+          <!-- ★ 0B.7：勾了作业时出现的一行灰字，说明循环为什么是灰的 -->
+          <p class="te-hwnote hide" id="te_hwnote">这是作业 —— 作业不走循环（它有自己的提交状态，排下一轮会说不清这一轮算不算交）。</p>
           <div class="te-mode" id="te_mode" role="group" aria-label="区间内语义">
             <button type="button" data-m="once" class="on">做一次</button>
             <button type="button" data-m="daily">每天都做</button>
@@ -9692,7 +10245,7 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
     const nx = seedFromTask(it);
     if (!nx) return;
     closeModal();
-    S.view = 'idea'; ANIM = true; refresh();
+    goView('idea');
     toast('已经重新种下一条想法，原待办还在', '去看', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
   };
   /* ★ v5.0 双向活链：点「想法来源」跳回那条想法 */
@@ -9700,7 +10253,7 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
   if (ssBtn) ssBtn.onclick = () => {
     S.lastOpenedSeed = ssBtn.dataset.id;
     closeModal();
-    S.view = 'idea'; ANIM = true; ideaUI.q = ''; ideaUI.tags = []; refresh();
+    ideaUI.q = ''; ideaUI.tags = []; goView('idea');
   };
 
   /* 三个下拉改自定义控件后在这里赋值（模板里只剩空的 <div class="sel">）。
@@ -9716,6 +10269,38 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
      那一刻就得立刻让位。（.hide 在 CSS 里是 display:none !important，压得住 .te-row 的 display。） */
   const hwField = document.getElementById('m_hw') ? document.getElementById('m_hw').closest('.field') : null;
   const hwBox = document.getElementById('m_hwbox');
+  /* ★ 0B.2：「挂在…下面」的当前值。
+     打开弹层时就快照一次初值（后面按分区切换要能回到"顶层"），
+     用户在选择列表里点一条只是改这个变量，**保存时才真的落库** ——
+     跟标题/日期一样，取消就是取消。
+     注意：父级永远不能改成自己或自己的后代（会成环），候选列表按 aiIsDescendant 过滤。 */
+  let parentVal = it.parent || null;
+  const parentOf = id => (id ? S.items.find(x => x.id === id) || null : null);
+  /* ★ 0B 顺手修的缺陷（实测）：这里原来无条件读 `selValue('m_zone')` ——
+     而 selValue 是 `document.getElementById(id).dataset.value`，取不到元素就抛 TypeError。
+     挂靠列表是**另一个弹层**：它的确定/移出回调跑起来时，编辑弹层的内容早就被换掉了，
+     `#m_zone` 根本不在 DOM 里 —— 一抛就把 onPick 后面的东西全带走（列不关、编辑页不回来）。
+     现在把"要不要顺带判分区"交给调用点：挂靠列表的回调传 false，只更新那一行文案。 */
+  function renderParentRow(showIdeaToggle){
+    const txt = document.getElementById('m_parenttxt');
+    const btn = document.getElementById('m_parent');
+    const fld = document.getElementById('m_parentfield');
+    if (!txt || !btn) return;
+    if (showIdeaToggle){
+      const idea = selValue('m_zone') === 'idea';
+      if (fld) fld.classList.toggle('hide', !!idea);
+      if (idea){ parentVal = null; }
+    }
+    const p = parentOf(parentVal);
+    if (!p){
+      parentVal = null;
+      txt.textContent = '顶层（不属于谁）';
+      btn.classList.add('mutepick');
+    } else {
+      txt.textContent = p.title;
+      btn.classList.remove('mutepick');
+    }
+  }
   function syncZone(){
     const idea = selValue('m_zone') === 'idea';
     const teRow = document.getElementById('te_row');
@@ -9724,15 +10309,44 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
     if (hwField) hwField.classList.toggle('hide', idea);
     if (hwBox) hwBox.classList.toggle('hide', idea);
     if (f) f.querySelector('label').textContent = idea ? '原文（种子记下的那句话）' : '原文';
+    renderParentRow(true);
   }
   {
     const sel = document.getElementById('m_zone');
     if (sel) sel.addEventListener('click', () => setTimeout(syncZone, 0));
   }
-  syncZone();
+  renderParentRow(true);
+  document.getElementById('m_parent').onclick = () => openParentPicker(it, isNew, () => parentVal, id => {
+    parentVal = id;
+    /* 这里**不能**再判分区：此刻 #m_zone 已经不在 DOM 里了（见 renderParentRow 的说明） */
+    renderParentRow(false);
+  });
+  /* ★ 0B.7：作业与循环互斥。让循环对作业生效会牵扯"提交状态"这套语义
+     （勾作业会写 hw.status='submitted'，再排一轮就说不清"这一轮算交没交"），
+     所以勾了作业就把循环开关禁用掉，并在旁边说明原因。 */
+  function syncHwRepeat(){
+    const on = !!(document.getElementById('m_hw') && document.getElementById('m_hw').checked);
+    const row = document.getElementById('te_rep');
+    const sw = document.getElementById('te_sw');
+    const note = document.getElementById('te_hwnote');
+    if (note) note.classList.toggle('hide', !on);
+    if (!sw) return;
+    sw.dataset.hwlock = on ? '1' : '';
+    if (on){
+      /* 老数据（作业 + repeat）要能继续显示：只把开关置灰，不改 it.repeat —— 用户没动过它，
+         不该因为打开一次编辑弹层就被悄悄清掉。真要清，是用户取消勾选作业之后的显式动作。 */
+      sw.disabled = true;
+      if (row) row.classList.add('dis');
+    } else {
+      teSyncUI();
+    }
+  }
   document.getElementById('m_hw').onchange = e => {
     document.getElementById('m_hwbox').style.display = e.target.checked ? 'block' : 'none';
+    syncHwRepeat();
   };
+  /* 打开弹层时也要判一次：老数据（作业 + repeat）打开就得看到循环是锁着的 */
+  syncHwRepeat();
 
   /* ---- 时间行接线（v3.40）----
      顺序很重要：先 teMount() 建状态，再接线（接线里要读 TE），最后 teSyncUI() 刷界面。 */
@@ -9820,9 +10434,24 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
       if (!Array.isArray(it.suggest)) it.suggest = [];
       if (it.reviewedAt === undefined) it.reviewedAt = null;
       if (it.aiUse === undefined) it.aiUse = null;
+      /* ★ 0B.5：待办 → 想法 这一半的字段对称清理。
+         清的就是 `taskToSeed()`（5533 那一带）清的那一列 —— 两条路都通向"它变成了一条想法"，
+         造出来的形状必须一模一样，否则一条还挂着待办父、一条没有，同一个动作两种结果。
+         这里清 parent：想法不参与待办的父子树（挂着一个"任务父"就是跨机制混挂）。 */
+      it.parent = null;
+      /* foldedByParent 是待办侧的标记（"被父任务顺手收起"），变成想法后无意义 —— 一起清。
+         这一列与 taskToSeed 的清理清单必须完全一致（0B.5 的验收点）。 */
+      delete it.foldedByParent;
     } else {
       delete it.kind;
       delete it.sparks; delete it.bornFrom; delete it.promoted;
+      /* ★ 0B.5：想法 → 待办 这一半。两个方向的清理都要对称、都要清干净。
+         注意 `lastPromoted` **不清**：它记的是"最近一次立项产生的那条待办"，
+         是想法卡上 ↑「补到待办里」的入口（见 seedHTML 的 pushTask）。
+         它不是"这条是种子"的标记，留着不产生跨机制混挂 —— 目标待办若已被删，
+         那段渲染本来就有 `S.items.find` 的判空，不会指到不存在的东西上。
+         这也正是 taskToSeed 与这里唯一的口径差异所在（那边同样保留它）。 */
+      it.parent = parentVal;
     }
     if (document.getElementById('m_hw').checked){
       it.hw = it.hw || { status:'todo' };
@@ -9848,14 +10477,74 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
   };
 }
 function openEdit(it){ openItemEditor(it, false); }
+/* ★ 0B.2：编辑弹层里「挂在…下面」的选择列表。
+   形态照抄弹层语言（openMask + .modal），不新造浮层 ——
+   本项目在浮层层序上踩过坑（.glass 里面的浮层再高的 z-index 也出不去）。
+   候选过滤与 aiSuggestApply 同一条规矩：自己、自己的后代都排除（挂上去就是环）。
+   选择结果由调用方落进弹层自己的临时变量，**保存时才动数据** —— 这条路上没有撤销，
+   因为"取消了就等于没改过"比"改了再撤回"更简单也更符合弹层里别的东西的语义。 */
+function openParentPicker(it, isNew, getCur, onPick){
+  const cur = getCur();
+  /* 后代判定用现成的 aiIsDescendant（它按 parent 链上溯、带 64 步 guard） */
+  const pool = S.items
+    .filter(x => !isSeed(x) && !x.done && x.id !== it.id && x.zone !== 'idea')
+    .filter(x => !aiIsDescendant(x, it))
+    .sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'zh'));
+  modal.innerHTML =
+    `<h3 id="modalTitle">挂在…下面</h3>
+     <div class="field"><label>搜标题</label>
+       <input type="text" id="pp_q" placeholder="打两个字筛一下（${pool.length} 条可选）" autocomplete="off"></div>
+     <div class="pp-list" id="pp_list"></div>
+     <div class="foot">
+       <button class="btn" id="pp_top">移出到顶层</button>
+       <div class="spacer"></div>
+       <button class="btn primary" id="pp_ok">确定</button>
+     </div>`;
+  const listEl = document.getElementById('pp_list');
+  let picked = cur || null;
+  const render = () => {
+    const q = (document.getElementById('pp_q').value || '').trim().toLowerCase();
+    const rows = pool.filter(x => !q || String(x.title || '').toLowerCase().includes(q));
+    listEl.innerHTML = rows.length
+      ? rows.map(x => `<button type="button" class="pp-row${picked === x.id ? ' on' : ''}" data-pid="${esc(x.id)}" aria-pressed="${picked === x.id ? 'true' : 'false'}">${esc(x.title)}</button>`).join('')
+      : '<div class="empty">没有匹配的条目。</div>';
+    listEl.querySelectorAll('.pp-row').forEach(b => b.onclick = () => { picked = b.dataset.pid; render(); });
+  };
+  render();
+  document.getElementById('pp_q').oninput = render;
+  document.getElementById('pp_top').onclick = () => { onPick(null); closeModal(); };
+  document.getElementById('pp_ok').onclick = () => { onPick(picked); closeModal(); };
+  openMask();
+}
 /* 语言 / 快捷录入"进入编辑"分支：拿识别结果（或空串）先解析成草稿，再让用户改标签 / 日期 / 优先级 / 分区，确定才入库。 */
 function openEditNew(rawText){
   const p = parseSmart(rawText || '');
   const it = { id: uid(), raw: (rawText || '').trim(), title: p.title || (rawText || '').trim(),
     date: p.date, dateEnd: p.dateEnd, monthOnly: p.monthOnly, time: p.time,
     zone: p.zone || 'short', tags: p.tags || [], done: false, doneAt: null,
-    createdAt: Date.now(), hw: null, repeat: p.repeat || null, pri: p.pri || 0, timeMode: 'once' };
+    createdAt: Date.now(), hw: null, repeat: p.repeat || null, pri: p.pri || 0, timeMode: 'once',
+    parent: null, goal: !!p.goal };
+  /* ★ 0A.4：这条路以前**不消费** `p.path` —— 「论文> 查文献」里的父级被整段丢掉，
+     和 addItem（粘贴/回车那条路）行为不一致。现在照 addItem 的写法逐级挂靠。
+     种子不参与复合目标的父子关系（见 addItem 的说明），所以 idea 分区跳过。 */
+  hangPath(it, p, 'long');
   openItemEditor(it, true);
+}
+/* ★ 0A.4：把 `A> B> C` 解析出来的祖先链落成真实的父子关系（复用 findOrCreateGoal 自动建目标卡）。
+   抽成一个函数是因为粘贴导入、语音编辑这两条要补的路写的是同一套东西 —— 抄两遍迟早漂开。
+   addItem 里那份等价逻辑**保持原样不动**：本卡只补缺口，不重构既有路径（红线 4）。 */
+function hangPath(it, p, zone){
+  if (!it || !p || !p.path || !p.path.length) return;
+  if (p.zone === 'idea') return;                 // 想法不挂待办树
+  let prev = null;
+  for (const seg of p.path){
+    const node = findOrCreateGoal(seg, prev ? prev.zone : (zone || 'long'));
+    if (!node) break;
+    if (prev && node.id !== prev.id) node.parent = prev.id;
+    if (node.goal !== true) node.goal = true;
+    prev = node;
+  }
+  if (prev && prev.id !== it.id) it.parent = prev.id;
 }
 
 /* ---------------- 导入 / 导出 ---------------- */
@@ -9881,8 +10570,12 @@ function importText(txt, base){
         date: p.date, dateEnd: p.dateEnd, monthOnly: p.monthOnly, time: p.time,
         zone: sawSection ? zone : p.zone,
         tags: p.tags, done, doneAt: done ? Date.now() : null,
-        createdAt: Date.now() + n, hw: null, repeat: p.repeat || null, pri: p.pri || 0
+        createdAt: Date.now() + n, hw: null, repeat: p.repeat || null, pri: p.pri || 0,
+        parent: null, goal: !!p.goal
       };
+      /* ★ 0A.4：粘贴导入**逐行**都要消费 `p.path` —— 以前这条路的父级前缀被整段吃掉，
+         「论文> 查文献」导进来只是两条互不相干的扁平条目。 */
+      hangPath(it, p, zone);
       if (/作业/.test(p.title)){
         it.hw = { course: guessCourse(p.title), detail:'', channel: guessChannel(line), naming: guessNaming(line),
                   status: done ? 'submitted' : 'todo', submittedAt: done ? ymd(new Date()) : null };
@@ -9893,6 +10586,9 @@ function importText(txt, base){
   } finally {
     BASEDAY = null;
   }
+  /* ★ 0A.1：导入是"外部数据进来"的路，父级可能指向本次没导入的条目（比如分段粘进来的）——
+     在这里收口一次，不让悬空 parent 落进存档。 */
+  sanitizeParents();
   save(); refresh();
   return n;
 }
@@ -9938,6 +10634,7 @@ window.addEventListener('dragover', e => e.preventDefault());
    ① **形状校验**。原来只判 `if (o.items)`：一个 items 是字符串/对象/数字的 json 会直接塞进
       S.items，下一次渲染就 `S.items.map is not a function` 整个应用瘫痪 ——
       而且坏数据当场就写进了 localStorage，刷新也救不回来，只能手动清。
+      ★ 0A.6：现在判据与 load() **完全对齐**（能不能救得看同一条规则，不是各写一套）。
    ② **二次确认**。这是唯一一个会覆盖全部数据的操作，不能点一下就没。
    另外老备份（只带 items 的那种）没有 tags 字段，缺什么就保持现状，**不能顺手把标签库清空**。 */
 window.addEventListener('drop', e => {
@@ -9947,14 +10644,18 @@ window.addEventListener('drop', e => {
   r.onload = () => {
     let o = null;
     try { o = JSON.parse(r.result); } catch (err){ o = null; }
-    if (o && Array.isArray(o.items)){
+    /* ★ 0A.6：判"这是不是一份备份"的口径与 load() 对齐 —— 不再只认数组，
+       一个存成 id→条目 字典的 items 在启动加载那边能救，在这边以前会被当成笔记文本去导。
+       逐条校验也共用 sanitizeItems()。 */
+    if (o && typeof o === 'object' && o.items && typeof o.items === 'object'){
+      const items = sanitizeItems(o.items);
       /* 原生 confirm 对话框换成应用内确认框 —— 系统弹窗跟全站不是一个语言。
          恢复逻辑整个挪进回调：uiConfirm 关掉弹窗后才真正动数据。 */
       uiConfirm('恢复备份',
-        '用备份里的 ' + o.items.length + ' 条，覆盖现在的 ' + S.items.length + ' 条？\n\n此操作不可撤销（当前数据不会自动留底）。',
+        '用备份里的 ' + items.length + ' 条，覆盖现在的 ' + S.items.length + ' 条？\n\n此操作不可撤销（当前数据不会自动留底）。',
         '确认覆盖',
         () => {
-          S.items = o.items;
+          S.items = items;
           if (Array.isArray(o.tags)){ S.tags = normTagList(o.tags); syncTags(); }
           if (o.statLayout === 'tile' || o.statLayout === 'card') S.statLayout = o.statLayout;
           if (typeof o.hintOpen === 'boolean') S.hintOpen = o.hintOpen;
@@ -9987,6 +10688,12 @@ window.addEventListener('drop', e => {
             S.dateShow = { y: o.dateShow.y !== false, m: o.dateShow.m !== false, d: o.dateShow.d !== false };
           }
           if (['off', 'low', 'std', 'high'].includes(o.haptic)) S.haptic = o.haptic;
+          /* ★ 0B.2：勾完最后一个子任务是否自动完成父任务 —— 也要跟着备份回来，
+             否则同一份备份恢复两次结果不同 */
+          if (typeof o.autoDoneParent === 'boolean') S.autoDoneParent = o.autoDoneParent;
+          /* ★ 0A.1：备份里的 parent 同样可能悬空或成环（备份可能来自旧版本、也可能被手改过）——
+             落盘前收口，判据与启动加载完全一致。 */
+          sanitizeParents();
           save(); applyHelp(); refresh();
           toast('已从备份恢复 ' + S.items.length + ' 条');
         });
@@ -10015,9 +10722,7 @@ tabbar.addEventListener('click', e => {
      它是"带 .tab 却没有页"这类按钮的通用护栏，不是只为外观键写的。 */
   if (!v) return;
   if (v === S.view) return;
-  S.view = v;
-  ANIM = true;   // 切视图时允许播一次入场
-  refresh();
+  goView(v);   // ★ 换页面的唯一入口：视图 + 会话态清理 + 副作用收敛（见 goView 的说明）
   if (v === 'list'){
     const sec = document.getElementById('view');
     if (sec) window.scrollTo({ top: sec.offsetTop - 132, behavior: 'smooth' });
@@ -10237,7 +10942,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.2.2';
+const APP_VERSION = '5.3.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
@@ -10831,9 +11536,29 @@ window.addEventListener('yushi:speech', e => {
   if (voiceActive) setVoiceStatus();          // 识别文字实时铺到栏体正上方那一行
 });
 
+/* ---------------- 换页面：**唯一入口** ----------------
+   ★ 2026-10-06 审查修复（状态收敛）：换页面原来是 9 处各写一遍 `S.view = 'xxx'`，
+   每处都得自己记得"要不要顺手清临时态、要不要收敛副作用类"。tree-full 那次死路
+   （底栏消失 + 页面锁死，安卓上没有 Escape 只能杀进程）就是这种写法的后果 ——
+   后来只能在 refresh() 里补一道兜底。
+   现在收成一处：调用点只表达"我要去哪一页"，下面三件事由它统一负责：
+     ① 该清的会话态（多选 / 续写框）；
+     ② 副作用类收敛（全屏树只在"想法页 + 树状图"里才有意义，否则一定得关）；
+     ③ 入场动画开关 + 重绘。
+   ⚠️ refresh() 顶部那道 tree-full 兜底**保留** —— 它是安全网（万一还有别的路径绕过这里），
+      不是冗余代码。 */
+function goView(v, opts){
+  const o = opts || {};
+  if (S.view === v){ refresh(); return; }
+  S.view = v;
+  if (v !== 'idea'){ ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); ideaUI.sparkOpen = null; }
+  if (v !== 'idea' || S.ideaLayout !== 'tree') setTreeFull(false);
+  if (o.anim !== false) ANIM = true;
+  refresh();
+}
 /* 切到录入界面并聚焦输入框（切页 + 焦点都走这一处，幂等） */
 function goEntry(){
-  if (S.view !== 'entry'){ S.view = 'entry'; ANIM = true; refresh(); }
+  goView('entry');
   const el = document.getElementById('entry');
   if (el) requestAnimationFrame(() => el.focus());
 }

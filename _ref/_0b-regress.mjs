@@ -89,11 +89,17 @@ const TREE_MAX_DEPTH = constNum(html, 'TREE_MAX_DEPTH');
 
 /* 纯逻辑函数（应用层按名取） */
 const appFnNames = ['isSeed', 'uid', 'sanitizeParents', 'spawnNextCycle', 'spawnDailyKids',
-  'incompleteDescendants', 'ancestorIds', 'parentAutoDone', 'taskToSeed', 'statDoneItems', 'streak', 'aiIsDescendant'];
+  'incompleteDescendants', 'ancestorIds', 'parentAutoDone', 'taskToSeed', 'statDoneItems', 'streak',
+  'aiIsDescendant', 'toggleDone', 'tickWithFeedback', 'tickParentOnly', 'tickWithSubtree'];
 const appSrc = appFnNames.map(n => extractFn(html, n)).join('\n\n');
 
 /* renderZoneBody 整段（0B.1 / 0B.3 / 0B.4 / 0B.11 的判定都在里面） */
 const zoneSrc = extractFn(html, 'renderZoneBody');
+/* 「已完成」区只收**今天**完成的（决策 B），所以 renderZoneBody 现在要用到 ymd/today0。
+   页面上这两个是同一 script 里的顶层函数，测试环境得自己喂进去。 */
+const ymdSrc = extractFn(html, 'ymd');
+const pad2Src = extractFn(html, 'pad2');
+const today0Src = extractFn(html, 'today0');
 
 /* 桩：renderZoneBody 依赖的外部符号。
    ordered() 的桩要用到 isSeed，但 new Function 里的名字只在那个函数作用域里解析，
@@ -131,14 +137,27 @@ function makeEnv(items){
   const save = () => { ui.saves++; };
   const refreshAfterChange = () => { ui.saves++; };
   const refresh = () => { ui.saves++; };
-  const toast = (msg, label, fn) => { ui.toasts.push({ msg: String(msg), labels: Array.isArray(label) ? label.map(a => a.label) : (label || null) }); };
+  const toast = (msg, label, fn) => {
+    ui.toasts.push({
+      msg: String(msg),
+      labels: Array.isArray(label) ? label.map(a => a.label) : (label || null),
+      fns: Array.isArray(label) ? label.map(a => a.fn) : (typeof fn === 'function' ? [fn] : []),
+      undo: typeof label === 'function' || (Array.isArray(label) && label.some(a => a.label === '撤销'))
+    });
+  };
+  /* tickWithFeedback 需要的三样东西：退场动画相关（测试里当 reduceMotion 走同步路径）、
+     exitPending 表、EXIT_MS 常量。桩掉之后打勾就是一次同步的数据落定。 */
+  const exitPending = new Set();
+  const reduceMotion = () => true;
+  const EXIT_MS = 420;
   const env = new Function(
     'S', 'view', 'collapsed', 'PARENT_GUARD', 'TREE_MAX_DEPTH',
     'ordered', 'cmpItem', 'esc', 'rv', 'rvd', 'tagActsHTML', 'itemHTML',
     'save', 'refresh', 'refreshAfterChange', 'toast', 'Date',
-    pure + '\n' + appSrc + '\n' + zoneSrc + '\n' + 'return { renderZoneBody, isSeed, incompleteDescendants, ancestorIds, parentAutoDone, taskToSeed, statDoneItems, streak, aiIsDescendant, spawnNextCycle, spawnDailyKids, uid };'
+    'exitPending', 'reduceMotion', 'EXIT_MS',
+    pure + '\n' + appSrc + '\n' + pad2Src + '\n' + ymdSrc + '\n' + today0Src + '\n' + zoneSrc + '\n' + 'return { renderZoneBody, isSeed, incompleteDescendants, ancestorIds, parentAutoDone, taskToSeed, statDoneItems, streak, aiIsDescendant, spawnNextCycle, spawnDailyKids, uid, tickParentOnly, tickWithSubtree, toggleDone };'
   )(S, view, collapsed, PARENT_GUARD, TREE_MAX_DEPTH, ordered, cmpItem, esc, rv, rvd, tagActsHTML, itemHTML,
-    save, refresh, refreshAfterChange, toast, Date);
+    save, refresh, refreshAfterChange, toast, Date, exitPending, reduceMotion, EXIT_MS);
   return { S, view, collapsed, env, itemHTML, ui };
 }
 const mk = (o) => Object.assign({
@@ -193,7 +212,7 @@ console.log('\n[2] 0B.3  goal 收口：角标只由"有没有子任务"决定');
 }
 
 /* ---------- 4. 0B.1 父完成不让子任务升格 ---------- */
-console.log('\n[3] 0B.1  勾父任务：子任务不升格为根条目');
+console.log('\n[3] 0B.1  勾父任务：子任务不升格为根条目（跟着父收进已完成区）');
 {
   const { env, S } = makeEnv([
     mk({ id: 'p', title: '论文', zone: 'short' }),
@@ -203,27 +222,80 @@ console.log('\n[3] 0B.1  勾父任务：子任务不升格为根条目');
   let out = env.renderZoneBody();
   t('未完成时：根只有 p，两条子任务都在父卡里',
     [idsIn(out).length, countId(out, 'k1'), countId(out, 'k2')].join('/'), '3/1/1');
-  /* 模拟"只勾父任务"：父 done，子任务一个都不动 */
-  S.items[0].done = true; S.items[0].doneAt = Date.now();
+  /* 模拟"只勾父任务"（决策 1 的落地：子任务跟着父一起被收起）：
+     父 done + 未完成后代一并 done（tickParentOnly 做的事），分区列表里一条都不该剩。 */
+  env.tickParentOnly(null, S.items[0]);
+  t('父被勾上', S.items[0].done, true);
+  t('两条没做完的子任务跟着被收起（done）', [S.items[1].done, S.items[2].done], [true, true]);
+  t('被收起的子任务带 foldedByParent 标记（记的是"被父收起"不是"自己做完了"）',
+    [S.items[1].foldedByParent, S.items[2].foldedByParent], ['p', 'p']);
   out = env.renderZoneBody();
-  /* 父完成后父卡不再渲染，两条子任务**不升格、不消失**：它们作为根留在同一栏里
-     （内容与父卡不连续但同一处），而不是被塞进别的分区或者凭空不见。 */
-  t('父完成后：子任务仍是根（不消失），且各自只渲染一次',
-    [idsIn(out).sort().join(','), countId(out, 'k1'), countId(out, 'k2')].join(' | '), 'k1,k2 | 1 | 1');
-  tOk('子任务没有跑到别的分区去（都在 short）',
-    (out.match(/data-z="long"[^]*?<\/section>/) || [''])[0].indexOf('data-id="k1"') < 0);
-  tOk('子任务仍挂在原父下（数据没被改）', S.items.filter(x => x.parent === 'p').length === 2);
+  tOk('分区列表里一条都不剩（子任务不升格、不留在栏里）', idsIn(out).length === 0, idsIn(out).join(','));
+  tOk('「已完成」收纳区出现了', /class="glass zone done-zone/.test(out));
+  tOk('收纳区默认收起（没有展开时的卡片）', /done-zone folded/.test(out));
+  tOk('收纳区标题带"含 N 条子任务"', /含 2 条子任务/.test(out), (out.match(/含 \d+ 条子任务/) || [''])[0]);
+  tOk('已完成根条目不再占分区列表（长期/短期/循环三栏里都找不到 p）',
+    !/data-z="(long|short|repeat)"[^]*?<div class="item[^"]*" data-id="p"/.test(out));
+  /* 展开收纳区：已完成父卡 + 它的子任务要能画出来 */
+  S.doneOpen = true;
+  const outOpen = env.renderZoneBody();
+  tOk('展开后已完成父卡画出来了', /data-id="p"/.test(outOpen));
+  tOk('展开后它的子任务挂在父卡下面（.goal-kids 里能看到 k1/k2）',
+    /data-id="k1"/.test(outOpen) && /data-id="k2"/.test(outOpen));
+  S.doneOpen = false;
+  /* ★ 决策 B：只显示**今天**完成的 —— 昨天做完的不许占位 */
+  {
+    const { env: e3, S: S3 } = makeEnv([
+      mk({ id: 'yes', title: '昨天做完的', zone: 'short', done: true, doneAt: Date.now() - 86400000 }),
+      mk({ id: 'now', title: '今天做完的', zone: 'short', done: true, doneAt: Date.now() }),
+    ]);
+    const o3 = e3.renderZoneBody();
+    /* ⚠️ 默认收起时收纳区里**不画卡片**（只有标题栏），所以"列了哪几条"不能靠扫整段 HTML；
+       按 done-zone 的起始位置切到文档尾，再在有卡片的前提下看 —— 这里显式展开一次。 */
+    S3.doneOpen = true;
+    const o3open = e3.renderZoneBody();
+    const sec3 = o3open.slice(o3open.indexOf('done-zone'));
+    tOk('今天完成的进收纳区', /今天做完的/.test(sec3));
+    t('收纳区里只列今天的这一条（昨天的被排除）',
+      [...sec3.matchAll(/class="item[^"]*" data-id="([^"]+)"/g)].map(m => m[1]), ['now']);
+    S3.doneOpen = false;
+    tOk('昨天完成的**不**进收纳区（第二天这行自然清空）', !/昨天做完的/.test(o3));
+    tOk('昨天完成的也没被删（数据还在库里）', S3.items.find(x => x.id === 'yes').done === true);
+  }
+  tOk('子任务仍挂在原父下（parent 没被改）', S.items.filter(x => x.parent === 'p').length === 2);
   tOk('子任务的 parent 一字未动', S.items[1].parent === 'p' && S.items[2].parent === 'p');
-  /* 反向：父重新打开，子树整棵回来 */
-  S.items[0].done = false;
+  /* 只勾父、**不**动子任务（脏数据 / 老路径）时的兜底：父进已完成区、子任务上浮到分区列表，
+     绝不"两处都画"、也绝不"哪儿都不画" */
+  {
+    const { env: e2, S: S2 } = makeEnv([
+      mk({ id: 'q', title: '父', zone: 'short', done: true, doneAt: Date.now() }),
+      mk({ id: 'qk', title: '子', parent: 'q' }),
+    ]);
+    const o = e2.renderZoneBody();
+    tOk('父进已完成收纳区', /done-zone/.test(o) && /含 1 条子任务/.test(o), (o.match(/含 \d+ 条子任务/) || [''])[0]);
+    tOk('没做完的子任务仍然看得见（上浮到分区列表，不在父卡里）',
+      /<div class="item" data-id="qk"/.test(o), o.slice(0, 120));
+  }
+  /* 反向：撤销「只勾父任务」→ done / doneAt / 标记一起还原 */
+  const ats = S.items.map(x => x.doneAt);
+  S.items[0].done = false; S.items[0].doneAt = null;
+  S.items[1].done = false; S.items[1].doneAt = null; delete S.items[1].foldedByParent;
+  S.items[2].done = false; S.items[2].doneAt = null; delete S.items[2].foldedByParent;
   out = env.renderZoneBody();
-  t('取消勾选父任务后子树整棵回来',
+  t('还原后子树整棵回来',
     [idsIn(out).length, countId(out, 'k1'), countId(out, 'k2')].join('/'), '3/1/1');
+  tOk('foldedByParent 已被清掉', S.items[1].foldedByParent === undefined && S.items[2].foldedByParent === undefined);
   tOk('源码里根判定已改成「无父 / 悬空父 / 父链上有已完成」',
     /return !i\.parent \|\| !byId\.has\(i\.parent\) \|\| underDone\(i\.id\);/.test(html));
   tOk('根判定里加了 inKids 兜底（画在父卡里的子任务不再当根画一遍）',
     /if \(inKids\.has\(i\.id\)\) return false;/.test(html));
   tOk('源码里根判定不再有 `|| p.done`', !/\|\| p\.done;\s*\/\/ 根/.test(html));
+  tOk('「只勾父任务」走的是 tickParentOnly（不是直接把父勾上了事）',
+    /label: '只勾父任务', fn: \(\) => tickParentOnly\(el, it\)/.test(html));
+  tOk('foldedByParent 这个新字段在改分区时被清（两条路都清）',
+    (extractFn(html, 'taskToSeed').includes('delete it.foldedByParent')) &&
+    (html.match(/delete it\.foldedByParent;/g) || []).length >= 2,
+    String((html.match(/delete it\.foldedByParent;/g) || []).length));
 }
 
 /* ---------- 5. 0B.1 确认流：谁来问、问什么 ---------- */

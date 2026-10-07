@@ -131,7 +131,7 @@ console.log('[1] 0B.1  勾父任务（还有未完成子任务）→ 弹确认�
 }
 
 /* ---------- [2] 0B.1 「只勾父任务」 ---------- */
-console.log('\n[2] 0B.1  「只勾父任务」→ 子任务不动、不被升格成根');
+console.log('\n[2] 0B.1  「只勾父任务」→ 没做完的子任务跟着父一起收进已完成区');
 {
   const pre = await ev(`return { found: !!document.querySelectorAll('#toast button')[1],
     label: (document.querySelectorAll('#toast button')[1] || {}).textContent,
@@ -144,35 +144,58 @@ console.log('\n[2] 0B.1  「只勾父任务」→ 子任务不动、不被升格
      但这里再兜一层，避免"点了没反应却什么线索都没有"）。 */
   await ev(`window.__samples = []; window.__winErr = [];
     window.addEventListener('error', function(ev){ window.__winErr.push(String(ev.message || ev.error)); });
+    /* 把 k1、k2 都先弄成**未完成**，这样"只勾父任务"才有没做完的后代要收起 */
     var p = S.items.find(function(x){ return x.id === 'p'; });
+    p.done = false; p.doneAt = null;
+    ['k1', 'k2'].forEach(function(id){ var x = S.items.find(function(y){ return y.id === id; }); x.done = false; x.doneAt = null; delete x.foldedByParent; });
+    save(); S.view = 'list'; refresh();
     window.__samp = setInterval(function(){ window.__samples.push([Date.now() % 100000, p.done]); }, 100);
     return 1;`);
-  const spent = await ev(`var b = document.querySelectorAll('#toast button')[1];
+  await sleep(420);
+  const spent = await ev(`window.__toastLog = [];
+    var _toast = toast;
+    toast = function(m, l, f){ window.__toastLog.push({ msg: String(m), labels: Array.isArray(l) ? l.map(function(a){ return a.label; }) : String(l || '') }); return _toast(m, l, f); };
+    var b = document.querySelectorAll('#toast button')[1];
     var before = S.items.find(function(x){ return x.id === 'p'; }).done;
     var dispatched = b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
     var p = S.items.find(function(x){ return x.id === 'p'; });
     return { dispatched: dispatched, before: before, pDoneSync: p.done, pending: exitPending.has('p'),
       rowCls: (function(){ var el = document.querySelector('#view .item[data-id="p"]'); return el ? el.className : 'NO_ROW'; })(),
+      toastLog: window.__toastLog,
       toastOn: document.getElementById('toast').classList.contains('on') };`);
-  tOk('（前置）这一条下面没有别的未完成子任务 → 确认条不该弹（直接落数据）',
-    spent.pDoneSync === true && spent.toastOn === false, JSON.stringify(spent));
+  if (process.env.REG_DEBUG) console.log('DBG spent=' + JSON.stringify(spent));
+  /* 这条路的 el 是真实 tick 元素，但 reduceMotion() 在 headless 下通常为 true
+     （无动画偏好），所以同步落数据 —— 断言"点下去那一刻的状态"对两种实现都不该假红。 */
+  tOk('（前置）点下去之后父确实被勾上了（同步或退场后都算）或者确认条开着',
+    spent.pDoneSync === true || spent.toastOn === true, JSON.stringify(spent));
 }
 await sleep(1200);
 {
   const r = await ev(`clearInterval(window.__samp);
     var p = S.items.find(function(x){ return x.id === 'p'; });
     var k1 = S.items.find(function(x){ return x.id === 'k1'; });
-    return { pDone: p.done, pDoneAt: !!p.doneAt, k1Done: k1.done, k1Parent: k1.parent,
-      samples: window.__samples, winErr: window.__winErr, pending: exitPending.has('p'),
-      rowCls: (function(){ var el = document.querySelector('#view .item[data-id="p"]'); return el ? el.className : 'NO_ROW'; })(),
-      roots: [].slice.call(document.querySelectorAll('#view .zone .item')).filter(function(el){ return !el.closest('.goal-kids'); }).map(function(el){ return el.dataset.id; }) };`);
+    var k2 = S.items.find(function(x){ return x.id === 'k2'; });
+    var sec = document.querySelector('.done-zone');
+    return { pDone: p.done, pDoneAt: !!p.doneAt,
+      k1Done: k1.done, k1Parent: k1.parent, k1Fold: k1.foldedByParent,
+      k2Done: k2.done, k2Fold: k2.foldedByParent,
+      winErr: window.__winErr, pending: exitPending.has('p'),
+      liveCols: [].slice.call(document.querySelectorAll('#view .zone:not(.done-zone) .item')).map(function(el){ return el.dataset.id; }),
+      doneZone: !!sec, doneHint: sec ? (sec.querySelector('.done-hint') || {}).textContent : null,
+      doneFolded: sec ? sec.classList.contains('folded') : null };`);
   if (process.env.REG_DEBUG) console.log('DBG=' + JSON.stringify(r));
   tOk('父被勾上', r.pDone === true, String(r.pDone));
-  tOk('子任务没被连带勾上', r.k1Done === false, String(r.k1Done));
+  tOk('两条没做完的子任务跟着被收起', r.k1Done === true && r.k2Done === true,
+    'k1=' + r.k1Done + ' k2=' + r.k2Done);
+  tOk('被收起的子任务带 foldedByParent 标记', r.k1Fold === 'p' && r.k2Fold === 'p',
+    r.k1Fold + '/' + r.k2Fold);
   tOk('子任务的 parent 一字未动', r.k1Parent === 'p', String(r.k1Parent));
-  tOk('父已完成的子任务不再是"根"（父卡不渲染，它跟着收进已完成区）',
-    r.roots.indexOf('k1') >= 0, r.roots.join(','));
-  tOk('子任务也没被静默删掉（数据还在）', r.k1Done === false && r.k1Parent === 'p');
+  tOk('三栏里没有残留的已完成条目（p/k1/k2 都不在）',
+    ['p', 'k1', 'k2'].every(id => r.liveCols.indexOf(id) < 0), r.liveCols.join(','));
+  tOk('出现「已完成」收纳区', r.doneZone === true);
+  tOk('收纳区默认收起', r.doneFolded === true);
+  tOk('收纳区写着「含 2 条子任务」', /含 2 条子任务/.test(r.doneHint || ''), r.doneHint);
+  tOk('全程没有窗口错误', (r.winErr || []).length === 0, (r.winErr || []).join(' | '));
 }
 {
   /* 这一段才是"只勾父任务"真正要验的形态：父下面还有**没做完**的子任务。
@@ -195,13 +218,90 @@ await sleep(1200);
   await sleep(1200);
   const r2 = await ev(`var p = S.items.find(function(x){ return x.id === 'p'; });
     var k1 = S.items.find(function(x){ return x.id === 'k1'; });
-    return { pDone: p.done, k1Done: k1.done, k1Parent: k1.parent,
-      k1InKids: !!document.querySelector('#view .goal-kids .item[data-id="k1"]'),
+    var doneSec = document.querySelector('.done-zone');
+    return { pDone: p.done, k1Done: k1.done, k1Parent: k1.parent, k1Fold: k1.foldedByParent,
+      liveCols: [].slice.call(document.querySelectorAll('#view .zone:not(.done-zone) .item')).map(function(el){ return el.dataset.id; }),
+      doneZone: !!doneSec,
+      doneFolded: doneSec ? doneSec.classList.contains('folded') : null,
+      doneItems: doneSec ? doneSec.querySelectorAll('.item').length : null,
+      doneHint: doneSec ? (doneSec.querySelector('.done-hint') || {}).textContent : null,
+      labels: [].slice.call(document.querySelectorAll('#toast button')).map(function(b){ return b.textContent; }),
       winErr: window.__winErr || [] };`);
   tOk('父被勾上（走真实元素的确认流，不再抛异常）', r2.pDone === true, JSON.stringify(r2.pDone));
-  tOk('子任务没被连带勾上', r2.k1Done === false, String(r2.k1Done));
+  tOk('没做完的子任务跟着被收起（done=true）', r2.k1Done === true, String(r2.k1Done));
+  tOk('被收起的子任务带 foldedByParent 标记', r2.k1Fold === 'p', String(r2.k1Fold));
   tOk('子任务的 parent 一字未动', r2.k1Parent === 'p', String(r2.k1Parent));
-  tOk('子任务没有画在父卡下面（父卡已经收了）', r2.k1InKids === false);
+  tOk('三栏里没有残留的已完成条目（p/k1 都不在）',
+    ['p', 'k1'].every(id => r2.liveCols.indexOf(id) < 0), r2.liveCols.join(','));
+  tOk('出现「已完成」收纳区', r2.doneZone === true);
+  tOk('收纳区默认收起（只有标题栏，一张卡都没有）', r2.doneFolded === true && r2.doneItems === 0,
+    'folded=' + r2.doneFolded + ' items=' + r2.doneItems);
+  tOk('收纳区标题写着「含 N 条子任务」', /含 \d+ 条子任务/.test(r2.doneHint || ''), r2.doneHint);
+  tOk('提示带「撤销」', r2.labels.indexOf('撤销') >= 0, r2.labels.join(','));
+  /* 展开收纳区：父卡 + 子任务都要画出来（0B.4 的承诺在已完成区里同样成立） */
+  await ev(`document.querySelector('.done-zone > header').click(); return 1;`);
+  await sleep(650);
+  {
+    const r4 = await ev(`var sec = document.querySelector('.done-zone');
+      var k2 = sec ? sec.querySelector('.item[data-id="k2"]') : null;
+      return { folded: sec ? sec.classList.contains('folded') : null,
+        p: !!(sec && sec.querySelector('.item[data-id="p"]')),
+        k1: !!(sec && sec.querySelector('.item[data-id="k1"]')),
+        k2: !!k2,
+        k1InKids: !!(sec && sec.querySelector('.goal-kids .item[data-id="k1"]')),
+        k2Done: k2 ? k2.classList.contains('done') : null };`);
+    tOk('点标题栏后展开', r4.folded === false);
+    tOk('展开后看得到刚做完的父任务', r4.p === true);
+    tOk('展开后子任务挂在父卡下面（不是光杆父卡）', r4.k1 && r4.k2 && r4.k1InKids,
+      'k1=' + r4.k1 + ' k2=' + r4.k2 + ' inKids=' + r4.k1InKids);
+    tOk('子任务在已完成区里也是划线态', r4.k2Done === true, String(r4.k2Done));
+  }
+  tOk('全程没有窗口错误', (r2.winErr || []).length === 0, (r2.winErr || []).join(' | '));
+  /* 点撤销 → done / doneAt / 标记一起还原。
+     先把 toast 的按钮回调包一层 try/catch：撤销链里任何一步抛异常，
+     以前只会表现为"点了没反应"，这一层让失败原因可见。 */
+  await ev(`window.__undoErr = null;
+    var _t = toast;
+    toast = function(m, l, f){
+      if (Array.isArray(l)) l = l.map(function(a){ return { label: a.label, fn: function(){ try { a.fn(); } catch(e){ window.__undoErr = String(e && e.message || e); } } }; });
+      else if (typeof f === 'function'){ var g = f; f = function(){ try { g(); } catch(e){ window.__undoErr = String(e && e.message || e); } }; }
+      return _t(m, l, f);
+    };
+    return 1;`);
+  await ev(`window.__toastLog2 = [];
+    var _t2 = toast;
+    toast = function(m, l, f){ window.__toastLog2.push({ msg: String(m), labels: Array.isArray(l) ? l.map(function(a){ return a.label; }) : String(l || '') }); return _t2(m, l, f); };
+    return 1;`);
+  await ev(`hideToast(); S.items.forEach(function(x){ if (['p','k1','k2'].indexOf(x.id) >= 0){ x.done = false; x.doneAt = null; delete x.foldedByParent; } }); S.doneOpen = false; save(); S.view='list'; refresh(); return 1;`);
+  await sleep(400);
+  /* 单测这条路：直接调 tickParentOnly，然后点它自己那条 toast 的「撤销」 */
+  const solo1 = await ev(`var p = S.items.find(function(x){ return x.id === 'p'; });
+    tickParentOnly(null, p);
+    return { pDone: p.done, k1: S.items.find(function(x){ return x.id === 'k1'; }).done,
+      text: document.getElementById('toast').textContent };`);
+  t('单独调 tickParentOnly：父被勾上', solo1.pDone, true);
+  t('单独调 tickParentOnly：子任务被收起', solo1.k1, true);
+  await ev(`[].slice.call(document.querySelectorAll('#toast button')).filter(function(b){ return b.textContent === '撤销'; })[0].click(); return 1;`);
+  await sleep(500);
+  const solo2 = await ev(`var p = S.items.find(function(x){ return x.id === 'p'; });
+    return { pDone: p.done, k1: S.items.find(function(x){ return x.id === 'k1'; }).done };`);
+  t('它的撤销把父还原', solo2.pDone, false);
+  t('它的撤销把子任务还原', solo2.k1, false);
+  {
+    const r3 = await ev(`var p = S.items.find(function(x){ return x.id === 'p'; });
+      var k1 = S.items.find(function(x){ return x.id === 'k1'; });
+      return { pDone: p.done, k1Done: k1.done, k1Fold: k1.foldedByParent,
+        undoErr: window.__undoErr,
+        doneZone: !!document.querySelector('.done-zone'),
+        cols: [].slice.call(document.querySelectorAll('#view .zone:not(.done-zone) .item')).map(function(el){ return el.dataset.id; }) };`);
+    if (process.env.REG_DEBUG) console.log('DBG undo=' + JSON.stringify(r3));
+    tOk('撤销链没有抛异常', !r3.undoErr, String(r3.undoErr));
+    t('撤销后父回到未完成', r3.pDone, false);
+    t('撤销后子任务回到未完成', r3.k1Done, false);
+    tOk('撤销后 foldedByParent 被清掉', r3.k1Fold === undefined, String(r3.k1Fold));
+    tOk('撤销后没有已完成收纳区了', r3.doneZone === false);
+    tOk('撤销后子树整棵回到分区列表', r3.cols.indexOf('p') >= 0 && r3.cols.indexOf('k1') >= 0, r3.cols.join(','));
+  }
 }
 {
   /* 最后把父还原成未完成，后面的用例（改挂）要用到「父下面有子任务」的形态 */
@@ -445,6 +545,270 @@ console.log('\n[9] 0B.11  对无子树的条目调用折叠 → collapsed 里不
     fake.remove();
     return { before: before, after: after };`);
   t('调用前后 collapsed 状态一致（没被写进去）', [r.before, r.after], [false, false]);
+}
+
+/* ---------- [10] 深色主题下的可读性（本卡新增的两处文字） ---------- */
+console.log('\n[10] 深色主题：新增的两处文字要看得清（对比度，含透明度合成）');
+{
+  /* 相对亮度 + WCAG 对比度，纯 JS 算，不靠眼看。
+     ⚠️ 前景色经常是带 alpha 的（灰字就是 rgba(255,255,255,.38)），
+     直接拿它当"字色"算会得出 19:1 的假绿 —— 实际观感是"38% 白叠在近黑底上"，
+     所以要先把前景按 alpha 合成到背景上再量。 */
+  const lum = `function _rgb(c){
+      var m = String(c).match(/[\\d.]+/g) || [0, 0, 0];
+      return [Number(m[0]), Number(m[1]), Number(m[2]), m.length > 3 ? Number(m[3]) : 1];
+    }
+    function _over(fg, bg){
+      var a = fg[3];
+      return [fg[0]*a + bg[0]*(1-a), fg[1]*a + bg[1]*(1-a), fg[2]*a + bg[2]*(1-a)];
+    }
+    function _bgStack(el){
+      var chain = [], n = el;
+      while (n && n !== document.documentElement){ chain.unshift(n); n = n.parentElement; }
+      chain.unshift(document.documentElement);
+      var base = _rgb(getComputedStyle(document.documentElement).backgroundColor);
+      if (base[3] === 0) base = _rgb(getComputedStyle(document.body).backgroundColor);
+      if (base[3] === 0) base = [255, 255, 255, 1];
+      var cur = [base[0], base[1], base[2]];
+      chain.forEach(function(n2){
+        var c = _rgb(getComputedStyle(n2).backgroundColor);
+        if (c[3] > 0) cur = _over(c, cur);
+      });
+      return cur;
+    }
+    function _lum(v){
+      var m = Array.isArray(v) ? v : _rgb(v);
+      function ch(x){ x = x / 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }
+      return 0.2126 * ch(m[0]) + 0.7152 * ch(m[1]) + 0.0722 * ch(m[2]);
+    }
+    /* 第二个参数统一收"元素"：底色按整条背景栈合成（.glass 是半透明的，只取最近一层会算错） */
+    function _ratio(fg, el){
+      var bg = _bgStack(el);
+      var f = _over(_rgb(fg), bg);
+      var l1 = _lum(f), l2 = _lum(bg);
+      var hi = Math.max(l1, l2), lo = Math.min(l1, l2);
+      return Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100;
+    }
+    function _bgOf(el){ var c = _bgStack(el); return 'rgb(' + c.map(Math.round).join(', ') + ')'; }`;
+  await ev(`applyTheme('dark', true); return 1;`);
+  await sleep(520);
+  {
+    /* 先证明"真的进暗色了"—— 不证明的话量到的是浅色主题的对比度，
+       会得出"深色下也没问题"的假绿。判据用**实际底色**（近黑），不猜类名。 */
+    const th = await ev(`return { bg: getComputedStyle(document.body).backgroundColor,
+      fg: getComputedStyle(document.body).color };`);
+    const bodyLum = th.bg;
+    tOk('（前置）暗色主题真的生效了（背景是深色）',
+      /rgb\(\s*(\d+)/.test(bodyLum) && Number(bodyLum.match(/\d+/)[0]) < 60, JSON.stringify(th));
+  }
+  const r = await ev(`${lum}
+    var it = S.items.find(function(x){ return x.id === 'solo'; });
+    it.date = '2026-10-01'; it.hw = { status:'todo', course:'', detail:'', channel:'', naming:'' };
+    openItemEditor(it, false);
+    document.getElementById('m_hw').checked = true;
+    document.getElementById('m_hw').onchange({ target: document.getElementById('m_hw') });
+    /* ⚠️ 要等 .hide 摘掉（onchange 里做的是视觉切换）再量：display:none 的元素
+       量的 rect 全是 0，看得见与否的结论会反过来。 */
+    var note2 = document.getElementById('te_hwnote');
+    var out1 = { noteFg: getComputedStyle(note2).color, noteBg: _bgOf(note2),
+      noteHidden: note2.classList.contains('hide'),
+      noteH: Math.round(note2.getBoundingClientRect().height),
+      contrast: _ratio(getComputedStyle(note2).color, note2) };
+    document.getElementById('m_parent').click();
+    var pp = document.getElementById('pp_list');
+    var row = document.querySelector('#pp_list .pp-row');
+    var out2 = { ppBg: getComputedStyle(pp).backgroundColor, rowFg: row ? getComputedStyle(row).color : null,
+      rowBg: row ? _bgOf(row) : null,
+      rowContrast: row ? _ratio(getComputedStyle(row).color, row) : null };
+    it.hw = null; it.date = null; save();
+    return { note: out1, list: out2 };`);
+  if (process.env.REG_DEBUG) console.log('DBG dark=' + JSON.stringify(r));
+  tOk('深色下：勾了作业那行灰字可见（没有 hide）', r.note.noteHidden === false);
+  tOk('深色下：那行灰字与底色对比度 ≥ 3.0（WCAG 大字/次要信息下限）', r.note.contrast >= 3.0,
+    r.note.contrast + '  fg=' + r.note.noteFg + ' bg=' + r.note.noteBg);
+  tOk('深色下：挂靠列表底色不透明（不是透明/半透明）',
+    !/rgba\([^)]*,\s*0?\.\d+\s*\)|transparent/.test(r.list.ppBg || ''), r.list.ppBg);
+  tOk('深色下：列表行的字与底色对比度 ≥ 4.5（正文标准）', (r.list.rowContrast || 0) >= 4.5,
+    String(r.list.rowContrast));
+  await ev(`closeModalNow(); S.theme = 'light'; save(); applyTheme(); S.view='list'; refresh(); return 1;`);
+  await sleep(420);
+}
+
+/* ---------- [11] 窄屏（360px）上的确认条 ---------- */
+console.log('\n[11] 窄屏 360px：确认条两个按钮都在屏内、点得到');
+{
+  await send('Emulation.setDeviceMetricsOverride', { width: 360, height: 780, deviceScaleFactor: 3, mobile: true });
+  await sleep(300);
+  await ev(`var p = S.items.find(function(x){ return x.id === 'p'; });
+    p.done = false; p.doneAt = null;
+    ['k1','k2'].forEach(function(id){ var x = S.items.find(function(y){ return y.id === id; }); x.done = false; x.doneAt = null; delete x.foldedByParent; });
+    save(); S.view='list'; refresh(); return 1;`);
+  await sleep(500);
+  await ev(`tickAskAndCommit(null, S.items.find(function(x){ return x.id === 'p'; })); return 1;`);
+  await sleep(260);
+  const r = await ev(`var t = document.getElementById('toast');
+    var bs = [].slice.call(t.querySelectorAll('button'));
+    var tr = t.getBoundingClientRect();
+    return { n: bs.length,
+      inViewport: bs.every(function(b){ var q = b.getBoundingClientRect(); return q.left >= 0 && q.right <= innerWidth + 1 && q.height > 0; }),
+      labels: bs.map(function(b){ return b.textContent; }),
+      toastRight: Math.round(tr.right), vw: innerWidth,
+      htmlOverflow: document.documentElement.scrollWidth > innerWidth + 1 };`);
+  t('两个按钮都在', r.n, 2);
+  tOk('两个按钮都完整落在视口内（360px 不被截）', r.inViewport === true, JSON.stringify(r));
+  tOk('整页没有横向溢出', r.htmlOverflow === false, 'toastRight=' + r.toastRight + ' vw=' + r.vw);
+  /* 收尾：把这一轮清掉，侧栏恢复 400px */
+  await ev(`hideToast(); S.items.forEach(function(x){ if (['p','k1','k2'].indexOf(x.id) >= 0){ x.done = false; x.doneAt = null; delete x.foldedByParent; } }); save(); refresh(); return 1;`);
+  await sleep(350);
+  await send('Emulation.setDeviceMetricsOverride', { width: 400, height: 888, deviceScaleFactor: 3, mobile: true });
+  await sleep(300);
+}
+
+/* ---------- [12] 确认条 8 秒窗口（不是一闪就没） ---------- */
+console.log('\n[12] 确认条在屏时间足够手指点（8 秒窗口内）');
+{
+  await ev(`tickAskAndCommit(null, S.items.find(function(x){ return x.id === 'p'; })); return 1;`);
+  await sleep(300);
+  const t0 = await ev(`return document.getElementById('toast').classList.contains('on');`);
+  await sleep(4500);
+  const t1 = await ev(`return { on: document.getElementById('toast').classList.contains('on'),
+    labels: [].slice.call(document.querySelectorAll('#toast button')).map(function(b){ return b.textContent; }) };`);
+  tOk('刚弹出时是开着的', t0 === true);
+  tOk('4.5 秒后仍在屏上（手指来得及点）', t1.on === true);
+  t('4.5 秒后按钮还是那两个', t1.labels, ['一起勾', '只勾父任务']);
+  /* 别留垃圾：清掉提示与这一轮的状态 */
+  await ev(`hideToast(); S.items.forEach(function(x){ if (['p','k1','k2'].indexOf(x.id) >= 0){ x.done = false; x.doneAt = null; delete x.foldedByParent; } }); save(); refresh(); return 1;`);
+  await sleep(320);
+}
+
+/* ---------- [13] 「已完成」区的深色 / 窄屏实测 ---------- */
+console.log('\n[13] 「已完成」区：深色主题 + 窄屏（新 UI 区自己的两项实测）');
+{
+  const lum = `function _rgb(c){ var m = String(c).match(/[\\d.]+/g) || [0,0,0];
+      return [Number(m[0]), Number(m[1]), Number(m[2]), m.length > 3 ? Number(m[3]) : 1]; }
+    function _over(fg, bg){
+      var a = fg[3];
+      return [fg[0]*a + bg[0]*(1-a), fg[1]*a + bg[1]*(1-a), fg[2]*a + bg[2]*(1-a)];
+    }
+    /* 把"页面 → 这一层"的所有半透明背景依次合成，得到这一点真实看到的底色。
+       只取最近的不透明背景会错得离谱：.glass 卡片自己是半透明的白，
+       直接拿它当底，白字压白底会算出 1.0 的假对比度（实测踩过）。 */
+    function _bgStack(el){
+      var chain = [], n = el;
+      while (n && n !== document.documentElement){ chain.unshift(n); n = n.parentElement; }
+      chain.unshift(document.documentElement);
+      var base = _rgb(getComputedStyle(document.documentElement).backgroundColor);
+      if (base[3] === 0) base = _rgb(getComputedStyle(document.body).backgroundColor);
+      if (base[3] === 0) base = [255, 255, 255, 1];
+      var cur = [base[0], base[1], base[2]];
+      chain.forEach(function(n2){
+        var c = _rgb(getComputedStyle(n2).backgroundColor);
+        if (c[3] > 0) cur = _over(c, cur);
+      });
+      return cur;
+    }
+    function _lum(v){ var m = Array.isArray(v) ? v : _rgb(v);
+      function ch(x){ x = x/255; return x <= 0.03928 ? x/12.92 : Math.pow((x+0.055)/1.055, 2.4); }
+      return 0.2126*ch(m[0]) + 0.7152*ch(m[1]) + 0.0722*ch(m[2]); }
+    /* 前景区块（文字）也要先叠到同一个底色上再算亮度 */
+    function _ratio(fg, el){
+      var bg = _bgStack(el);
+      var f = _over(_rgb(fg), bg);
+      var l1 = _lum(f), l2 = _lum(bg), hi = Math.max(l1,l2), lo = Math.min(l1,l2);
+      return Math.round(((hi+0.05)/(lo+0.05))*100)/100; }
+    function _bgOf(el){ var c = _bgStack(el); return 'rgb(' + c.map(Math.round).join(', ') + ')'; }`;
+
+  /* 先把状态铺好：今天完成一条带子任务的父任务（走真实的数据路径） */
+  await ev(`var p = S.items.find(function(x){ return x.id === 'p'; });
+    var k1 = S.items.find(function(x){ return x.id === 'k1'; });
+    var k2 = S.items.find(function(x){ return x.id === 'k2'; });
+    p.done = false; p.doneAt = null;
+    [k1, k2].forEach(function(x){ x.done = false; x.doneAt = null; delete x.foldedByParent; });
+    save(); S.view = 'list'; refresh(); return 1;`);
+  await sleep(420);
+  await ev(`tickParentOnly(null, S.items.find(function(x){ return x.id === 'p'; })); return 1;`);
+  await sleep(500);
+  await ev(`S.doneOpen = true; refresh(); return 1;`);
+  await sleep(520);
+
+  /* ① 浅色 + 400px 基线 */
+  {
+    const r = await ev(`${lum}
+      var sec = document.querySelector('.done-zone');
+      if (!sec) return { missing: true };
+      var h3 = sec.querySelector('h3'), hint = sec.querySelector('.done-hint'), head = sec.querySelector('header');
+      var card = sec.querySelector('.item');
+      var other = document.querySelector('.zone:not(.done-zone) > header h3');
+      var oh3 = other ? getComputedStyle(other).color : null;
+      return { hintFg: getComputedStyle(hint).color, hintBg: _bgOf(hint),
+        hintRatio: _ratio(getComputedStyle(hint).color, hint),
+        h3Fg: getComputedStyle(h3).color, otherH3Fg: oh3,
+        h3SameAsOthers: !!oh3 && getComputedStyle(h3).color === oh3,
+        cardVisible: card ? Math.round(card.getBoundingClientRect().height) : 0,
+        secW: Math.round(sec.getBoundingClientRect().width), vw: innerWidth,
+        overflow: document.documentElement.scrollWidth > innerWidth + 1 };`);
+    tOk('（前置）收纳区在页面上', r.missing !== true);
+    /* 分区标题的配色是**全站共用**的一套（.zone>header h3）：这里断言"已完成"这一栏
+       跟别的分区**同色**，而不是另立一个更高的门槛 —— 把整站标题都改深不在本卡范围。 */
+    tOk('浅色下：标题颜色与其它分区完全一致（没有偷偷调淡）',
+      r.h3SameAsOthers === true, r.h3SameAsOthers + ' ' + r.h3Fg + ' vs ' + r.otherH3Fg);
+    tOk('浅色下：「含 N 条子任务」那行小字 ≥ 3.0', (r.hintRatio || 0) >= 3.0, String(r.hintRatio));
+    tOk('浅色下：展开后子卡片有真实高度', (r.cardVisible || 0) > 0, String(r.cardVisible));
+    tOk('浅色下：收纳区没有横向溢出', r.overflow === false, 'secW=' + r.secW + ' vw=' + r.vw);
+  }
+  /* ② 深色 + 400px */
+  {
+    await ev(`applyTheme('dark', true); return 1;`);
+    await sleep(460);
+    const r = await ev(`${lum}
+      var sec = document.querySelector('.done-zone');
+      var h3 = sec.querySelector('h3'), hint = sec.querySelector('.done-hint');
+      var card = sec.querySelector('.item');
+      var t = card ? card.querySelector('.t') : null;
+      var other = document.querySelector('.zone:not(.done-zone) > header h3');
+      var oh3 = other ? getComputedStyle(other).color : null;
+      return { bodyBg: getComputedStyle(document.body).backgroundColor,
+        hintRatio: _ratio(getComputedStyle(hint).color, hint),
+        h3Fg: getComputedStyle(h3).color, otherH3Fg: oh3,
+        h3SameAsOthers: !!oh3 && getComputedStyle(h3).color === oh3,
+        cardDeco: t ? getComputedStyle(t).textDecorationLine : null,
+        cardDone: card ? card.classList.contains('done') : null };`);
+    tOk('（前置）此刻是深色（背景近黑）',
+      Number((r.bodyBg || 'rgb(0').match(/\d+/)[0]) < 60, r.bodyBg);
+    tOk('深色下：收纳区标题与其它分区同色', r.h3SameAsOthers === true, String(r.h3SameAsOthers));
+    tOk('深色下：「含 N 条子任务」小字 ≥ 3.0', (r.hintRatio || 0) >= 3.0, String(r.hintRatio));
+    /* 已完成的标题是"划线 + 变灰"的既有表达（全站 .item.done 那一套），本来就低对比；
+       这里只断言它跟浅色下**同一套处理**（都带 .done、都划线），不另立门槛。 */
+    tOk('深色下：已完成卡片仍是 .done + 划线（与浅色同一套表达）',
+      r.cardDone === true && /line-through/.test(r.cardDeco || ''),
+      'done=' + r.cardDone + ' deco=' + r.cardDeco);
+  }
+  /* ③ 深色 + 360px（最窄机型） */
+  {
+    await send('Emulation.setDeviceMetricsOverride', { width: 360, height: 780, deviceScaleFactor: 3, mobile: true });
+    await sleep(520);
+    const r = await ev(`${lum}
+      var sec = document.querySelector('.done-zone');
+      if (!sec) return { missing: true };
+      var head = sec.querySelector('header');
+      var hint = sec.querySelector('.done-hint');
+      var hr = head.getBoundingClientRect();
+      return { overflow: document.documentElement.scrollWidth > innerWidth + 1,
+        headRight: Math.round(hr.right), vw: innerWidth,
+        hintWrapped: hint ? Math.round(hint.getBoundingClientRect().height) : 0,
+        hintText: hint ? hint.textContent : '',
+        visible: hr.height > 0 };`);
+    tOk('（前置）360px 下收纳区还在', r.missing !== true && r.visible === true);
+    tOk('360px 下整页没有横向溢出', r.overflow === false, 'headRight=' + r.headRight + ' vw=' + r.vw);
+    tOk('360px 下标题栏内容没有被裁掉（有真实高度）', (r.hintWrapped || 0) > 0, String(r.hintWrapped));
+    /* 收尾：还原窄屏、暗色、数据与折叠态，后面的断言别被带偏 */
+    await send('Emulation.setDeviceMetricsOverride', { width: 400, height: 888, deviceScaleFactor: 3, mobile: true });
+    await sleep(300);
+    await ev(`applyTheme('light', true); S.doneOpen = false;
+      S.items.forEach(function(x){ if (['p','k1','k2'].indexOf(x.id) >= 0){ x.done = false; x.doneAt = null; delete x.foldedByParent; } });
+      save(); S.view='list'; refresh(); return 1;`);
+    await sleep(420);
+  }
 }
 
 console.log('\n== console 异常 ==\n' + (errors.length ? errors.join('\n') : '(无)'));
