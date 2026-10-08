@@ -3568,11 +3568,17 @@ function dateFrom(s){ const [y, m, d] = s.split('-').map(Number); return new Dat
 function dateText(v){
   const s = String(v == null ? '' : v);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  /* ★ 2B（用户 2026-10-08 真机截图）：三段全开时保持原来的紧凑写法 `2026-10-08`；
+     **一旦缺段就改用中文单位**。旧写法一律 `join('-')`，于是"月关掉、日留着"会拼出
+     `2026-08`（年 + 日）—— 那个形状正是标准的"年-月"，谁看都是 2026 年 8 月。
+     用户为这个专门截了图问"现在不是 10 月 8 号吗"，所以这不是口味问题。 */
+  const on = { y: !!S.dateShow.y, m: !!S.dateShow.m, d: !!S.dateShow.d };
+  if (on.y && on.m && on.d) return s;
   const p = [];
-  if (S.dateShow.y) p.push(s.slice(0, 4));
-  if (S.dateShow.m) p.push(s.slice(5, 7));
-  if (S.dateShow.d) p.push(s.slice(8, 10));
-  return p.join('-');
+  if (on.y) p.push(s.slice(0, 4) + '年');
+  if (on.m) p.push(String(+s.slice(5, 7)) + '月');
+  if (on.d) p.push(String(+s.slice(8, 10)) + '日');
+  return p.join('');
 }
 
 /* 导入历史笔记时，相对日期（今天/周四/17号）按「基准日」算，而不是按今天 */
@@ -4778,7 +4784,7 @@ function seedHTML(it, info){
       ${spine}
       <div class="meta">
         ${pri ? `<span class="chip prichip p${pri}">${pri === 2 ? '紧急' : '重要'}</span>` : ''}
-        ${sparks.length ? `<span class="chip">${sparks.length} 步</span>` : ''}
+        ${sparks.length ? `<span class="chip">${sparks.length} 个子想法</span>` : ''}
         ${kidCount ? `<span class="chip kidchip" title="从这里还长出了 ${kidCount} 条">↳ ${kidCount}</span>` : ''}
         ${sugN ? `<span class="chip suggestchip" data-act="suggestopen" data-id="${esc(it.id)}" role="button" tabindex="0" title="AI 觉得它可能该挂在别的想法下面">✦ ${sugN}</span>` : ''}
         ${sleeping ? `<span class="chip sleepchip" title="最后动过是 ${sleepDays} 天前">${sleepDays} 天前</span>` : ''}
@@ -5401,7 +5407,7 @@ function reviewDrawerHTML(){
     return `<div class="review-item" data-id="${esc(it.id)}">
       <div class="ri-why">${esc(reviewWhy(it))}</div>
       <div class="ri-title">${esc(it.title)}</div>
-      <div class="ri-sub">${(Array.isArray(it.sparks) ? it.sparks.length : 0)} 步${kids ? ' · ↳ ' + kids : ''}</div>
+      <div class="ri-sub">${(Array.isArray(it.sparks) ? it.sparks.length : 0)} 个子想法${kids ? ' · ↳ ' + kids : ''}</div>
       <div class="ri-acts">
         <button type="button" class="mini" data-act="sparkadd" data-rev="1" data-id="${esc(it.id)}">＋ 续写</button>
         <button type="button" class="mini" data-act="promote" data-rev="1" data-id="${esc(it.id)}">↙ 立项</button>
@@ -5577,7 +5583,7 @@ function treeMapHTML(list){
       <div class="tn-title">${esc(n.it.title)}</div>
       ${sparks}
       <div class="tn-meta">
-        ${stepN ? `<span class="tn-chip">${stepN} 步</span>` : ''}
+        ${stepN ? `<span class="tn-chip">${stepN} 个子想法</span>` : ''}
         ${(Array.isArray(n.it.bornFrom) && n.it.bornFrom.length)
           ? `<span class="tn-chip lin" title="由 ${n.it.bornFrom.length} 条合并而来">血缘 ${n.it.bornFrom.length}</span>` : ''}
         ${n.kids ? `<button type="button" class="tn-fold${col ? ' col' : ''}" data-act="tnfold"
@@ -6224,12 +6230,14 @@ function taskToSeed(it, quiet){
      就靠它（见 seedHTML 的 pushTask）。清掉它，那条待办就再也加不上后续内容了 ——
      一个字段的清理不该顺手剪掉一条功能。判空的入口本来就有（find 不到就不画那颗 ↑）。
      这一列必须与 openItemEditor 保存分支里种子方向的清理**完全一致**（0B.5 的验收点）。 */
-  /* 只有"原文比标题更长"时才把原文当第一步 —— 否则标题和第一步一模一样，看着像重复 */
-  if (!Array.isArray(it.sparks) || !it.sparks.length){
-    const extra = String(it.raw || '').trim();
-    it.sparks = (extra && extra !== String(it.title || '').trim())
-      ? [{ at: ymd(new Date()), text: extra }] : [];
-  }
+  /* ★ 2B（用户 2026-10-08 真机截图三条卡）：**不再自动把原文加成第一步**。
+     旧规则是"原文比标题长就加成第一步"，在解析器不改写标题的年代基本不成立；
+     2A 把标题交给模型改写之后这条**每次都成立** —— 录一句大白话变想法，必然多出一条
+     "原文"步骤（用户截图里「记一下车险价格 / 喝冰箱里的酸奶 / 给小调准备生日礼物」
+     三条全是这个机制造出来的，他以为是 AI 在拆步骤，还觉得"过度拆解"）。
+     原文一个字都没丢：它一直在 `it.raw` 里，编辑弹层的「原文」栏看得到。
+     时间轴上的子想法从此只有两个来源：用户点「续写」，或 AI 判定真能拆 ≥2 步。 */
+  if (!Array.isArray(it.sparks)) it.sparks = [];
   if (!Array.isArray(it.suggest)) it.suggest = [];
   if (it.reviewedAt === undefined) it.reviewedAt = null;
   if (it.aiUse === undefined) it.aiUse = null;
@@ -6301,11 +6309,11 @@ function seedFromTask(it){
   const t = String(it.raw || it.title || '').trim();
   if (!t){ toast('这条待办没内容'); return null; }
   /* 第一步只在"原文确实比标题多出东西"时才写 —— 否则标题和第一步一模一样，看着像重复 */
-  const hasExtra = t !== String(it.title || '').trim();
+  /* ★ 2B：同 taskToSeed —— 不自动把原文加成一步（1 步不算"能拆开"，走的是同一个口径） */
   return newSeed(it.title || t, {
     raw: t, tags: [...(it.tags || [])], pri: it.pri || 0,
     bornFrom: [it.id],
-    sparks: hasExtra ? [{ at: ymd(new Date()), text: t }] : []
+    sparks: []
   });
 }
 /* 立项后的双向活链（1.13）中的**读**这一半：谁是从这条待办立项出来的 */
@@ -7134,7 +7142,9 @@ function sanitizeHotwordSeen(v){
     const keys = Object.keys(v).slice(0, 200);
     for (const k of keys){
       const n = Number(v[k]);
-      if (k && Number.isFinite(n) && n > 0) out[k] = Math.min(99, Math.floor(n));
+      /* ★ 2B：计数带小数权重（手动改标题 = 1、AI 纠错 = 0.5）—— 这里原来是 Math.floor，
+         会把 0.5 直接抹成 0、AI 那一路的印记全丢。改成保留一位小数。 */
+      if (k && Number.isFinite(n) && n > 0) out[k] = Math.min(99, Math.round(n * 10) / 10);
     }
   }
   return out;
@@ -7711,13 +7721,20 @@ function hotwordAdd(w){
   save();
   return true;
 }
-function hotwordObserve(before, after){
+/* 记一次"某个词被改对了"。**权重分两档**（用户 2026-10-08 定）：
+     · 用户自己把标题改对 → 1 分（他的原话：AI 纠错的"权重肯定是不如用户自己手动录入编辑的那些"）
+     · AI 纠错层改对        → 0.5 分
+   凑够 HOTWORD_ASK_AT（2 分）才问一次。于是：手动改 2 次、或 AI 改 4 次、或 1 手动 + 2 次 AI。
+   判定用"**跨过**阈值"而不是"等于阈值" —— 带小数之后 `n === 2` 会漏掉 1.5 + 0.5 这一档。 */
+function hotwordObserve(before, after, weight){
   const d = hotwordDiff(before, after);
   if (!d) return null;
+  const w = (Number(weight) > 0) ? Number(weight) : 1;
   if (!S.hotwordSeen || typeof S.hotwordSeen !== 'object') S.hotwordSeen = {};
-  const n = (Number(S.hotwordSeen[d.to]) || 0) + 1;
-  S.hotwordSeen[d.to] = Math.min(99, n);
-  if (n !== HOTWORD_ASK_AT) return d;                 // 只在**第 2 次**问一次
+  const n0 = Number(S.hotwordSeen[d.to]) || 0;
+  const n = n0 + w;
+  S.hotwordSeen[d.to] = Math.min(99, Math.round(n * 10) / 10);
+  if (n0 >= HOTWORD_ASK_AT || n < HOTWORD_ASK_AT) return d;   // 只在**第一次跨过**门槛时问
   if (S.hotwords.indexOf(d.to) >= 0) return d;
   if (S.hotwords.length >= HOTWORDS_MAX) return d;
   hideToast();
@@ -9214,6 +9231,15 @@ async function commitEntry(){
   }
   const made = aiCommitPlan(plan, v);
   const it = made[0] || null;
+  /* ★ 2B（用户 2026-10-08）：把 AI **纠错后的整句**也留下来。
+     为什么：用户真机录「我大后天要去图书馆还从图书馆借的书」，本地识别吐的是
+     "我大要去图书馆还长图书馆借的书"，AI 其实能纠回来，但这个字段一直没人接，
+     他只能自己去猜"AI 到底听懂没有"。
+       · 存进 `it.heard`，编辑弹层在「原文」下面多一行「AI 听成 …」（原文一个字不动，需求 A5）
+       · 同时按 **0.5 权重**喂纠错层的常用词采集 —— 用户定的口径是"AI 纠错的权重
+         不如用户自己手动改标题的"，手动改一次记 1 分。 */
+  const heard = String((plan && plan.corrected) || '').trim();
+  if (heard && heard !== v) made.forEach(x => { x.heard = heard; });
   /* 录入区手选的标签（可多选）优先加在最前面，再跟上正文里写的 #标签，去重后截断。
      多条目时**每条都套用** —— 用户是给这一整句选的标签，不是只给第一条。 */
   if (made.length && entryTagSet.size){
@@ -9268,6 +9294,9 @@ async function commitEntry(){
     if (reply.via === 'aiSay') aiSay(reply.msg, tActs, 6000);
     else if (reply.via === 'aiFail') aiFail(reply.msg, tActs, 8000);
     else toast(reply.msg, tActs, 6000);
+    /* 纠错层的采集排在提示之后：hotwordObserve 自己会 hideToast 再问，
+       所以先让"已加入…"（带撤销）活一下，再轮到"是你的常用词吗"。 */
+    if (heard && heard !== v) hotwordObserve(v, heard, 0.5);
     // 新增后把看板滚进视野，避免"存了但没看见"
     const sec = document.getElementById('view');
     if (sec && sec.getBoundingClientRect().top > window.innerHeight * 0.6)
@@ -11402,6 +11431,8 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
     </div>
     <div class="field"><label>原文</label>
       <div class="modal-note raw-ro" id="m_raw">${esc(it.raw || it.title)}</div>
+      ${(it.heard && String(it.heard).trim() && String(it.heard).trim() !== String(it.raw || '').trim())
+        ? `<div class="modal-note raw-ro" id="m_heard"><b>AI 听成</b>　${esc(it.heard)}</div>` : ''}
     </div>
     <div class="field"><label>重要程度</label><div class="sel" id="m_pri"></div></div>
     <div class="field"><label>标签（可多选，也可以不选）</label>
@@ -11665,6 +11696,16 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
     /* 新建：原文栏只读，所以 parseSmart 的结果（分区/标签/重要程度）在 openEditNew 里就已落成初值，
        这里不再重解析 —— 否则用户在弹层里手动改的分区/优先级会被原文静默盖掉。 */
     if (isNew) S.items.push(it);   // 新建：先入库存，再统一 save/refresh（编辑则本来就在库里）
+    /* ★ 2B：右滑「进入编辑」这条也会带来"早中晚"（本地 parseSmart 或 AI 给了 dayParts）。
+       口径与 addItem 完全一致：父条目**之后**按 08:00 / 12:00 / 19:00 的顺序插子任务
+       （逐个 unshift 会把钟点渲染成倒序）。想法不参与这套，所以先排掉 isSeed。 */
+    const dpKids = (isNew && !isSeed(it) && it.dayParts && it.dayParts.length >= 2)
+      ? dayPartKids(it, it.dayParts) : [];
+    if (dpKids.length){
+      S.items.splice(S.items.indexOf(it) + 1, 0, ...dpKids);
+      dpKids.forEach(k => notifyFire(k));
+    }
+    delete it.dayParts;            // 用完就摘，别在条目上留一个只在建的时候有意义的字段
     /* ★ 2A 纠错层：用户把某个词改对了 → 记一次账；同一个词第 2 次就**问一次**
        要不要收进常用词。带按钮的提示不会被下面那句"已保存"顶掉（toast 的老规矩），
        所以这里排在收尾提示之前。 */
@@ -11761,13 +11802,18 @@ function openParentPicker(it, isNew, getCur, onPick){
   openMask();
 }
 /* 语言 / 快捷录入"进入编辑"分支：拿识别结果（或空串）先解析成草稿，再让用户改标签 / 日期 / 优先级 / 分区，确定才入库。 */
-function openEditNew(rawText){
-  const p = parseSmart(rawText || '');
+/* 新建：原文栏只读，所以解析结果（分区/标签/重要程度）在这里就已落成初值。
+   ★ 2B：第二个参数是**预解析结果**（形状同 parseSmart 的返回值），
+   与 addItem 共用同一条口子 —— 语音「右滑进入编辑」那条路会先把 AI 的理解结果传进来，
+   这样编辑页里看到的标题跟落库结果一致（以前只跑 parseSmart，用户看到的是识别原文的错字）。 */
+function openEditNew(rawText, preset){
+  const p = preset || parseSmart(rawText || '');
   const it = { id: uid(), raw: (rawText || '').trim(), title: p.title || (rawText || '').trim(),
     date: p.date, dateEnd: p.dateEnd, monthOnly: p.monthOnly, time: p.time,
     zone: p.zone || 'short', tags: p.tags || [], done: false, doneAt: null,
     createdAt: Date.now(), hw: null, repeat: p.repeat || null, pri: p.pri || 0, timeMode: 'once',
-    parent: null, goal: !!p.goal };
+    parent: null, goal: !!p.goal, dayParts: p.dayParts || null,
+    heard: p.heard || null };   // AI 纠错后的整句（调用方塞在 preset 上，见 voiceRight）
   /* ★ 0A.4：这条路以前**不消费** `p.path` —— 「论文> 查文献」里的父级被整段丢掉，
      和 addItem（粘贴/回车那条路）行为不一致。现在照 addItem 的写法逐级挂靠。
      种子不参与复合目标的父子关系（见 addItem 的说明），所以 idea 分区跳过。 */
@@ -12625,12 +12671,35 @@ function voiceLeft(){
     toast('点键盘上的麦克风说话');
   }
 }
-function voiceRight(){
+/* ★ 2B（用户 2026-10-08）：右滑「进入编辑」也要**先过一遍理解内核**。
+   以前这条路只跑 parseSmart，于是"左滑直接录入"拿到的是 AI 改写过的干净标题，
+   "右滑进入编辑"却是本地解析识别原文的结果 —— 同一个入口两套待遇，用户原话：
+   "我真不确定，录入的时候 AI 能不能给我翻译得当"。现在两条路共用一个理解结果。
+   多条目时编辑页只能编第一条，所以顺手把"AI 听成了几条"说清楚（不静默丢）。 */
+async function voiceRight(){
   const text = (voicePending || '').trim();
   voiceHandled = true;
   if (text) voiceConsumed = text;
   cancelVoice();
-  openEditNew(text);                             // 进入编辑：改标签 / 日期 / 优先级 / 分区，确定才入库
+  if (!text){ openEditNew(''); return; }
+  let plan;
+  try {
+    plan = await aiUnderstand(text);
+  } catch (e){
+    plan = smartLocalPlan(text);
+    plan.reason = 'error';
+  }
+  const list = (plan && Array.isArray(plan.items)) ? plan.items : [];
+  const first = list[0] || null;
+  /* 本地条目的 items[i].preset 就是 parseSmart 的完整返回值（含 path / repeat / goal / dayParts）；
+     模型条目没有 preset，才用 aiPlanPreset 拼一份 —— 与 aiCommitPlan 同一条规矩。 */
+  const preset = first ? (first.preset || aiPlanPreset(first)) : null;
+  const heard = String((plan && plan.corrected) || '').trim();
+  if (preset && heard && heard !== text) preset.heard = heard;
+  openEditNew(text, preset);
+  const reply = aiEntryReply(plan, '进入编辑');
+  if (reply.via === 'aiFail') aiFail(reply.msg, null, 6000);
+  if (list.length > 1) toast('AI 听成了 ' + list.length + ' 条，这里先编辑第 1 条', null, 6000);
 }
 
 fab.addEventListener('pointerdown', e => {
