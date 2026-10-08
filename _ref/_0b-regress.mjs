@@ -90,6 +90,7 @@ const TREE_MAX_DEPTH = constNum(html, 'TREE_MAX_DEPTH');
 /* 纯逻辑函数（应用层按名取） */
 const appFnNames = ['isSeed', 'uid', 'sanitizeParents', 'spawnNextCycle', 'spawnDailyKids',
   'incompleteDescendants', 'ancestorIds', 'parentAutoDone', 'taskToSeed', 'statDoneItems', 'streak',
+  'statTreeOf',
   'aiIsDescendant', 'toggleDone', 'tickWithFeedback', 'tickParentOnly', 'tickWithSubtree'];
 const appSrc = appFnNames.map(n => extractFn(html, n)).join('\n\n');
 
@@ -155,7 +156,7 @@ function makeEnv(items){
     'ordered', 'cmpItem', 'esc', 'rv', 'rvd', 'tagActsHTML', 'itemHTML',
     'save', 'refresh', 'refreshAfterChange', 'toast', 'Date',
     'exitPending', 'reduceMotion', 'EXIT_MS',
-    pure + '\n' + appSrc + '\n' + pad2Src + '\n' + ymdSrc + '\n' + today0Src + '\n' + zoneSrc + '\n' + 'return { renderZoneBody, isSeed, incompleteDescendants, ancestorIds, parentAutoDone, taskToSeed, statDoneItems, streak, aiIsDescendant, spawnNextCycle, spawnDailyKids, uid, tickParentOnly, tickWithSubtree, toggleDone };'
+    pure + '\n' + appSrc + '\n' + pad2Src + '\n' + ymdSrc + '\n' + today0Src + '\n' + zoneSrc + '\n' + 'return { renderZoneBody, isSeed, incompleteDescendants, ancestorIds, parentAutoDone, taskToSeed, statDoneItems, streak, statTreeOf, aiIsDescendant, spawnNextCycle, spawnDailyKids, uid, tickParentOnly, tickWithSubtree, toggleDone };'
   )(S, view, collapsed, PARENT_GUARD, TREE_MAX_DEPTH, ordered, cmpItem, esc, rv, rvd, tagActsHTML, itemHTML,
     save, refresh, refreshAfterChange, toast, Date, exitPending, reduceMotion, EXIT_MS);
   return { S, view, collapsed, env, itemHTML, ui };
@@ -231,18 +232,32 @@ console.log('\n[3] 0B.1  勾父任务：子任务不升格为根条目（跟着�
     [S.items[1].foldedByParent, S.items[2].foldedByParent], ['p', 'p']);
   out = env.renderZoneBody();
   tOk('分区列表里一条都不剩（子任务不升格、不留在栏里）', idsIn(out).length === 0, idsIn(out).join(','));
-  tOk('「已完成」收纳区出现了', /class="glass zone done-zone/.test(out));
-  tOk('收纳区默认收起（没有展开时的卡片）', /done-zone folded/.test(out));
-  tOk('收纳区标题带"含 N 条子任务"', /含 2 条子任务/.test(out), (out.match(/含 \d+ 条子任务/) || [''])[0]);
+  /* ★ 0F 补（0E→0F 移交单第 一 节点名指派）：0E 把「已完成」收纳区整块搬去统计页之后，
+     这三条查的是**已经不存在的东西**。改成 0E 之后的形态：清单页只剩一行入口
+     `.done-entry[data-statentry]`，N 与统计页「今日完成」同一口径。 */
+  tOk('清单页不再出现「已完成」收纳区（0E 已整块搬去统计页）', !/done-zone/.test(out));
+  t('清单页底部那行入口的 N = 今天完成的条数（p + 两条子任务）',
+    (out.match(/class="de-n mono">(\d+)</) || [])[1], '3');
+  tOk('入口指向统计页「今日完成」子页（data-statentry + aria 说明）',
+    /data-statentry="1"/.test(out) && /aria-label="今天已完成 3 条/.test(out),
+    (out.match(/aria-label="[^"]*"/) || [''])[0]);
   tOk('已完成根条目不再占分区列表（长期/短期/循环三栏里都找不到 p）',
     !/data-z="(long|short|repeat)"[^]*?<div class="item[^"]*" data-id="p"/.test(out));
-  /* 展开收纳区：已完成父卡 + 它的子任务要能画出来 */
-  S.doneOpen = true;
-  const outOpen = env.renderZoneBody();
-  tOk('展开后已完成父卡画出来了', /data-id="p"/.test(outOpen));
-  tOk('展开后它的子任务挂在父卡下面（.goal-kids 里能看到 k1/k2）',
-    /data-id="k1"/.test(outOpen) && /data-id="k2"/.test(outOpen));
-  S.doneOpen = false;
+  /* 0B.4 的承诺（完成之后父卡 + 子任务仍然画得出来、子任务仍带 .done）在 0E 之后
+     落在统计页「今日完成」子页里（清单页不再画已完成）。这里用同一条渲染接缝取证：
+     statTreeOf = 子页把命中集合折成"根 + 挂在根下面的子任务"的那一步（与 .goal-kids 同形）。
+     端到端渲染（真 DOM 里点入口进子页）在 _0b-dom.mjs [2] 与 _0e-dom.mjs [1][2]。 */
+  {
+    const todayHits = S.items.filter(i => i.done && i.kind !== 'seed' && i.doneAt &&
+      new Date(i.doneAt).toDateString() === new Date().toDateString());
+    const tree = env.statTreeOf(todayHits);
+    t('（前置）今天完成的都进了「今日完成」的命中集合', todayHits.map(x => x.id).sort(), ['k1', 'k2', 'p']);
+    tOk('已完成父卡在子页里当根画出来', tree.roots.map(x => x.id).indexOf('p') >= 0,
+      tree.roots.map(x => x.id).join(','));
+    tOk('它的子任务挂在父卡下面（.goal-kids 同形的 kids 表）',
+      ((tree.kids.get('p') || []).map(x => x.id).sort().join(',')) === 'k1,k2',
+      (tree.kids.get('p') || []).map(x => x.id).join(','));
+  }
   /* ★ 决策 B：只显示**今天**完成的 —— 昨天做完的不许占位 */
   {
     const { env: e3, S: S3 } = makeEnv([
@@ -250,16 +265,15 @@ console.log('\n[3] 0B.1  勾父任务：子任务不升格为根条目（跟着�
       mk({ id: 'now', title: '今天做完的', zone: 'short', done: true, doneAt: Date.now() }),
     ]);
     const o3 = e3.renderZoneBody();
-    /* ⚠️ 默认收起时收纳区里**不画卡片**（只有标题栏），所以"列了哪几条"不能靠扫整段 HTML；
-       按 done-zone 的起始位置切到文档尾，再在有卡片的前提下看 —— 这里显式展开一次。 */
-    S3.doneOpen = true;
-    const o3open = e3.renderZoneBody();
-    const sec3 = o3open.slice(o3open.indexOf('done-zone'));
-    tOk('今天完成的进收纳区', /今天做完的/.test(sec3));
-    t('收纳区里只列今天的这一条（昨天的被排除）',
-      [...sec3.matchAll(/class="item[^"]*" data-id="([^"]+)"/g)].map(m => m[1]), ['now']);
-    S3.doneOpen = false;
-    tOk('昨天完成的**不**进收纳区（第二天这行自然清空）', !/昨天做完的/.test(o3));
+    /* 0E 之后那行入口没有"展开"这一步：它按"今天完成的条数"渲染一行文字，
+       所以"列了哪几条"要问统计页的取数（statTreeOf 就是子页的取数接缝）。 */
+    t('今天完成的进「今日完成」（N = 1，昨天的被排除）',
+      (o3.match(/class="de-n mono">(\d+)</) || [])[1], '1');
+    const hits3 = S3.items.filter(i => i.done && i.kind !== 'seed' && i.doneAt &&
+      new Date(i.doneAt).toDateString() === new Date().toDateString());
+    t('「今日完成」子页里只列今天的这一条',
+      e3.statTreeOf(hits3).roots.map(x => x.id), ['now']);
+    tOk('昨天完成的**不**进今天那行入口（第二天 N 自然归零）', !/昨天做完的/.test(o3));
     tOk('昨天完成的也没被删（数据还在库里）', S3.items.find(x => x.id === 'yes').done === true);
   }
   tOk('子任务仍挂在原父下（parent 没被改）', S.items.filter(x => x.parent === 'p').length === 2);
@@ -272,7 +286,11 @@ console.log('\n[3] 0B.1  勾父任务：子任务不升格为根条目（跟着�
       mk({ id: 'qk', title: '子', parent: 'q' }),
     ]);
     const o = e2.renderZoneBody();
-    tOk('父进已完成收纳区', /done-zone/.test(o) && /含 1 条子任务/.test(o), (o.match(/含 \d+ 条子任务/) || [''])[0]);
+    /* 0E 之后的口径：清单页**不画**已完成的父（已完成归统计页），但未完成的子任务
+       仍按 0B 的根判定上浮到分区列表 —— 两边都不画才会"凭空消失"，这里恰好是一边一处。 */
+    tOk('清单页不画已完成的父（0E 口径：已完成归统计页）', !/data-id="q"/.test(o));
+    tOk('完成的父仍能在统计页找到（没有凭空消失）',
+      e2.statDoneItems().some(x => x.id === 'q'));
     tOk('没做完的子任务仍然看得见（上浮到分区列表，不在父卡里）',
       /<div class="item" data-id="qk"/.test(o), o.slice(0, 120));
   }
@@ -416,8 +434,18 @@ console.log('\n[8b] 0B.8  统计口径加 !isSeed');
   ]);
   t('doneItems 只剩真待办（种子被排除）', env.statDoneItems().map(x => x.id), ['t1']);
   tOk('streak() 改了同一个口径', /statDoneItems\(\)/.test(extractFn(html, 'streak')));
-  tOk('renderStat 四处口径都带 !isSeed（今日完成/逾期/作业未交/历史完成）',
-    /const doneItems = statDoneItems\(\);/.test(html) && /!i\.done && !isSeed\(i\) && i\.date/.test(html) && /!i\.done && !isSeed\(i\) && i\.hw\.status/.test(html));
+  /* ★ 0F 补：0E 把 renderStat 里四处内联 filter 收进了 statPageHits()，
+     原来那两条正则对不上了（口径没变，是**取数收口**了）。改成查新的唯一真相源：
+     「已完成」两个子页走 statDoneItems()（!isSeed 在它里面），另两个子页各自显式排除想法。 */
+  {
+    const sph = extractFn(html, 'statPageHits');
+    tOk('取数已收口到 statPageHits（renderStat 里不再各写一遍 filter）',
+      /function statPageHits/.test(html) && !/const doneItems = statDoneItems\(\);/.test(html));
+    t('「今日完成 / 历史完成」两个子页都走 statDoneItems（口径同源）',
+      (sph.match(/statDoneItems\(\)/g) || []).length, 2);
+    t('「已逾期 / 作业未交」两个子页各自显式排除了想法（!isSeed）',
+      (sph.match(/!isSeed\(i\)/g) || []).length, 2);
+  }
 }
 
 /* ---------- 11. 0B.5 改分区对称清理 ---------- */
