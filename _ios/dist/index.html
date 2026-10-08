@@ -1463,8 +1463,11 @@ html.soft-render .mask .modal{
 #toast.at-top.on{transform:translateX(-50%) translateY(0)}
 #toast button{border:0;background:transparent;color:var(--accent);font:inherit;font-weight:800;cursor:pointer;white-space:nowrap}
 
-/* ---------- 页脚（原站 .pdaim-footer） ---------- */
-.pdaim-footer{position:relative;z-index:2;padding:40px 24px 56px;text-align:center;color:var(--faint);font-size:12.5px}
+/* ---------- 页脚（原站 .pdaim-footer） ----------
+   ★ 0F.3：全文件**只有这一处**顶层定义（原先底部内边距还另有一条 .pdaim-footer 覆盖规则，
+   那份"避开通栏"的意图已经并进这条 padding 简写，别再拆回去：一个选择器只留一处真相源）。
+   底部 = 118px + 安全区（env() 不支持或安全区为 0 时就是 118px，安卓/桌面零影响）。 */
+.pdaim-footer{position:relative;z-index:2;padding:40px 24px calc(118px + env(safe-area-inset-bottom));text-align:center;color:var(--faint);font-size:12.5px}
 /* 同一句话在电脑上和在手机上不可能都对 ——「数据只在这台电脑的浏览器里」
    放进安卓 App 里就是错的（那儿的运行环境根本不是浏览器）。
    这里用 pointer/hover 媒体查询分设备，而不是宽度断点：把窗口拖窄的台式机依然是鼠标、
@@ -1815,8 +1818,7 @@ body[data-help="off"] .set-row .set-txt > span:not([data-keephelp]){
 .capture-wrap{top:0}
 /* v3.32：提示已改为固定在**顶部**（见 #toast 主规则），这条底部偏移作废 —— 保留会把它拉回底部。 */
 #toast{top:calc(var(--sat,12px) + 12px);bottom:auto}
-/* 页脚同样要避开通栏，正文/版权字才不会被胶囊挡住 */
-.pdaim-footer{padding-bottom:calc(118px + env(safe-area-inset-bottom))}
+/* 页脚避开通栏的底部留白已并进 .pdaim-footer 的主规则（0F.3：一个选择器只留一处真相源） */
 .hero{padding-left:calc(24px + env(safe-area-inset-left));padding-right:calc(24px + env(safe-area-inset-right))}
 
 /* ==========================================================================
@@ -10109,8 +10111,12 @@ function teParseTime(str){
   let pm = null, am = null;
   if (/下午|晚上|傍晚|夜里/.test(s)) pm = true;
   if (/凌晨|早上|上午/.test(s)) am = true;
-  s = s.replace(/[点時时]/g, ':').replace(/[分]/g, '').replace(/[^\d:]/g, '');
-  if (!s) return null;
+  /* ★ 0F.1：「半」必须在「点→冒号」之后、剥非数字之前换掉。
+     以前没有这一步时，`9点半` 走成 `9:半` → 被 [^\d:] 连"半"一起剥成 `9:` → 分钟取空 = 0，
+     半小时被丢掉（现象：打 9点半 存成 09:00）。 */
+  s = s.replace(/[点時时]/g, ':').replace(/半/g, '30').replace(/[分]/g, '').replace(/[^\d:]/g, '');
+  /* 归一化后一个数字都没有的（例如只打了"点半"）不是时刻：返回 null，而不是编出 00:30 */
+  if (!/\d/.test(s)) return null;
   let h = null, mi = 0;
   if (/^\d{3,4}$/.test(s)){
     /* 930 → 9:30；0930 → 9:30；1730 → 17:30 */
@@ -11225,7 +11231,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.4.0';
+const APP_VERSION = '5.4.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：

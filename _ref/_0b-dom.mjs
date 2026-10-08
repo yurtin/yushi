@@ -175,14 +175,21 @@ await sleep(1200);
     var p = S.items.find(function(x){ return x.id === 'p'; });
     var k1 = S.items.find(function(x){ return x.id === 'k1'; });
     var k2 = S.items.find(function(x){ return x.id === 'k2'; });
-    var sec = document.querySelector('.done-zone');
+    var entry = document.querySelector('#view .done-entry');
     return { pDone: p.done, pDoneAt: !!p.doneAt,
       k1Done: k1.done, k1Parent: k1.parent, k1Fold: k1.foldedByParent,
       k2Done: k2.done, k2Fold: k2.foldedByParent,
       winErr: window.__winErr, pending: exitPending.has('p'),
-      liveCols: [].slice.call(document.querySelectorAll('#view .zone:not(.done-zone) .item')).map(function(el){ return el.dataset.id; }),
-      doneZone: !!sec, doneHint: sec ? (sec.querySelector('.done-hint') || {}).textContent : null,
-      doneFolded: sec ? sec.classList.contains('folded') : null };`);
+      liveCols: [].slice.call(document.querySelectorAll('#view .zone .item')).map(function(el){ return el.dataset.id; }),
+      /* ★ 0F.2 脚本漂移修复：0E 把「已完成」收纳区整块从清单页搬去了统计页，
+         这里改成验它的替代物 —— 清单页底部那一行入口（.done-entry[data-statentry]）。 */
+      noDoneZone: !document.querySelector('.done-zone'),
+      entry: !!entry, entryN: entry ? entry.querySelector('.de-n').textContent : null,
+      /* N 的**真相源**：0E 定的是"卡片数字 / 子页「共 N 条」/ 这行入口的 N 三处同源"。
+         所以这里断言它与 statPageHits('today') 相等，而不是钉一个魔法数字
+         （钉死数字的话，0E 那条"根级还是全部"的口径分歧会把断言变成假红）。 */
+      expectedN: String(statPageHits('today').length),
+      entryAria: entry ? entry.getAttribute('aria-label') : null };`);
   if (process.env.REG_DEBUG) console.log('DBG=' + JSON.stringify(r));
   tOk('父被勾上', r.pDone === true, String(r.pDone));
   tOk('两条没做完的子任务跟着被收起', r.k1Done === true && r.k2Done === true,
@@ -192,9 +199,12 @@ await sleep(1200);
   tOk('子任务的 parent 一字未动', r.k1Parent === 'p', String(r.k1Parent));
   tOk('三栏里没有残留的已完成条目（p/k1/k2 都不在）',
     ['p', 'k1', 'k2'].every(id => r.liveCols.indexOf(id) < 0), r.liveCols.join(','));
-  tOk('出现「已完成」收纳区', r.doneZone === true);
-  tOk('收纳区默认收起', r.doneFolded === true);
-  tOk('收纳区写着「含 2 条子任务」', /含 2 条子任务/.test(r.doneHint || ''), r.doneHint);
+  tOk('清单页不再有「已完成」收纳区（0E 把它搬去了统计页）', r.noDoneZone === true);
+  tOk('清单页底部出现那一行入口', r.entry === true);
+  tOk('入口的 N 与 statPageHits("today") 同源（不是各算一遍）', r.entryN === r.expectedN,
+    'entry=' + r.entryN + ' 期望 ' + r.expectedN);
+  tOk('入口的 aria-label 说清了条数与去向',
+    new RegExp('今天已完成 ' + r.expectedN + ' 条').test(r.entryAria || ''), r.entryAria);
   tOk('全程没有窗口错误', (r.winErr || []).length === 0, (r.winErr || []).join(' | '));
 }
 {
@@ -218,13 +228,12 @@ await sleep(1200);
   await sleep(1200);
   const r2 = await ev(`var p = S.items.find(function(x){ return x.id === 'p'; });
     var k1 = S.items.find(function(x){ return x.id === 'k1'; });
-    var doneSec = document.querySelector('.done-zone');
+    var entry2 = document.querySelector('#view .done-entry');
     return { pDone: p.done, k1Done: k1.done, k1Parent: k1.parent, k1Fold: k1.foldedByParent,
-      liveCols: [].slice.call(document.querySelectorAll('#view .zone:not(.done-zone) .item')).map(function(el){ return el.dataset.id; }),
-      doneZone: !!doneSec,
-      doneFolded: doneSec ? doneSec.classList.contains('folded') : null,
-      doneItems: doneSec ? doneSec.querySelectorAll('.item').length : null,
-      doneHint: doneSec ? (doneSec.querySelector('.done-hint') || {}).textContent : null,
+      liveCols: [].slice.call(document.querySelectorAll('#view .zone .item')).map(function(el){ return el.dataset.id; }),
+      noDoneZone: !document.querySelector('.done-zone'),
+      entry: !!entry2, entryN: entry2 ? entry2.querySelector('.de-n').textContent : null,
+      expectedN: String(statPageHits('today').length),
       labels: [].slice.call(document.querySelectorAll('#toast button')).map(function(b){ return b.textContent; }),
       winErr: window.__winErr || [] };`);
   tOk('父被勾上（走真实元素的确认流，不再抛异常）', r2.pDone === true, JSON.stringify(r2.pDone));
@@ -233,28 +242,37 @@ await sleep(1200);
   tOk('子任务的 parent 一字未动', r2.k1Parent === 'p', String(r2.k1Parent));
   tOk('三栏里没有残留的已完成条目（p/k1 都不在）',
     ['p', 'k1'].every(id => r2.liveCols.indexOf(id) < 0), r2.liveCols.join(','));
-  tOk('出现「已完成」收纳区', r2.doneZone === true);
-  tOk('收纳区默认收起（只有标题栏，一张卡都没有）', r2.doneFolded === true && r2.doneItems === 0,
-    'folded=' + r2.doneFolded + ' items=' + r2.doneItems);
-  tOk('收纳区标题写着「含 N 条子任务」', /含 \d+ 条子任务/.test(r2.doneHint || ''), r2.doneHint);
+  tOk('清单页不再有「已完成」收纳区（0E 之后它只在统计页）', r2.noDoneZone === true);
+  tOk('那行入口的 N 跟着数据走（= statPageHits("today").length）',
+    r2.entry === true && r2.entryN === r2.expectedN,
+    'entry=' + r2.entry + ' N=' + r2.entryN + ' 期望 ' + r2.expectedN);
   tOk('提示带「撤销」', r2.labels.indexOf('撤销') >= 0, r2.labels.join(','));
-  /* 展开收纳区：父卡 + 子任务都要画出来（0B.4 的承诺在已完成区里同样成立） */
-  await ev(`document.querySelector('.done-zone > header').click(); return 1;`);
-  await sleep(650);
+  /* ★ 0F.2：0B 当时是"展开清单页的收纳区看父卡 + 子任务"；0E 之后同一条承诺落在
+     统计页的「今日完成」子页里 —— 点那行入口进去、照样看得到父卡与挂在它下面的子任务。 */
+  await ev(`document.querySelector('#view .done-entry').click(); return 1;`);
+  await sleep(620);
   {
-    const r4 = await ev(`var sec = document.querySelector('.done-zone');
-      var k2 = sec ? sec.querySelector('.item[data-id="k2"]') : null;
-      return { folded: sec ? sec.classList.contains('folded') : null,
-        p: !!(sec && sec.querySelector('.item[data-id="p"]')),
-        k1: !!(sec && sec.querySelector('.item[data-id="k1"]')),
-        k2: !!k2,
-        k1InKids: !!(sec && sec.querySelector('.goal-kids .item[data-id="k1"]')),
-        k2Done: k2 ? k2.classList.contains('done') : null };`);
-    tOk('点标题栏后展开', r4.folded === false);
-    tOk('展开后看得到刚做完的父任务', r4.p === true);
-    tOk('展开后子任务挂在父卡下面（不是光杆父卡）', r4.k1 && r4.k2 && r4.k1InKids,
-      'k1=' + r4.k1 + ' k2=' + r4.k2 + ' inKids=' + r4.k1InKids);
-    tOk('子任务在已完成区里也是划线态', r4.k2Done === true, String(r4.k2Done));
+    const r4 = await ev(`var p = document.querySelector('#view .item[data-id="p"]');
+      var k1 = document.querySelector('#view .goal-kids .item[data-id="k1"]');
+      var k2 = document.querySelector('#view .goal-kids .item[data-id="k2"]');
+      return { title: (document.querySelector('.stat-sub-title') || {}).textContent,
+        n: (document.querySelector('.stat-sub-n') || {}).textContent,
+        p: !!p, k1: !!k1, k2: !!k2,
+        cardH: p ? Math.round(p.getBoundingClientRect().height) : 0,
+        k2Done: k2 ? k2.classList.contains('done') : null,
+        k2Deco: k2 ? getComputedStyle(k2.querySelector('.t')).textDecorationLine : null,
+        noZone: !document.querySelector('.done-zone') };`);
+    t('点那行入口 → 落在统计页「今日完成」子页', r4.title, '今日完成');
+    tOk('　子页标题栏写着「共 N 条」', /共 \d+ 条/.test(r4.n || ''), r4.n);
+    tOk('　完成的父卡画出来了', r4.p === true);
+    tOk('　子任务挂在父卡下面（不是光杆父卡）', r4.k1 === true && r4.k2 === true,
+      'k1=' + r4.k1 + ' k2=' + r4.k2);
+    tOk('　子任务在子页里同样是划线态', r4.k2Done === true && /line-through/.test(r4.k2Deco || ''),
+      'done=' + r4.k2Done + ' deco=' + r4.k2Deco);
+    tOk('　子页里的卡片有真实高度', (r4.cardH || 0) > 0, String(r4.cardH));
+    /* 返回统计首页，再回清单页继续后面的用例（goView 是唯一入口，顺带清掉 statPage） */
+    await ev(`document.querySelector('.stat-back').click(); return 1;`);
+    await sleep(300);
   }
   tOk('全程没有窗口错误', (r2.winErr || []).length === 0, (r2.winErr || []).join(' | '));
   /* 点撤销 → done / doneAt / 标记一起还原。
@@ -272,7 +290,7 @@ await sleep(1200);
     var _t2 = toast;
     toast = function(m, l, f){ window.__toastLog2.push({ msg: String(m), labels: Array.isArray(l) ? l.map(function(a){ return a.label; }) : String(l || '') }); return _t2(m, l, f); };
     return 1;`);
-  await ev(`hideToast(); S.items.forEach(function(x){ if (['p','k1','k2'].indexOf(x.id) >= 0){ x.done = false; x.doneAt = null; delete x.foldedByParent; } }); S.doneOpen = false; save(); S.view='list'; refresh(); return 1;`);
+  await ev(`hideToast(); S.items.forEach(function(x){ if (['p','k1','k2'].indexOf(x.id) >= 0){ x.done = false; x.doneAt = null; delete x.foldedByParent; } }); save(); S.view='list'; refresh(); return 1;`);
   await sleep(400);
   /* 单测这条路：直接调 tickParentOnly，然后点它自己那条 toast 的「撤销」 */
   const solo1 = await ev(`var p = S.items.find(function(x){ return x.id === 'p'; });
@@ -292,14 +310,14 @@ await sleep(1200);
       var k1 = S.items.find(function(x){ return x.id === 'k1'; });
       return { pDone: p.done, k1Done: k1.done, k1Fold: k1.foldedByParent,
         undoErr: window.__undoErr,
-        doneZone: !!document.querySelector('.done-zone'),
-        cols: [].slice.call(document.querySelectorAll('#view .zone:not(.done-zone) .item')).map(function(el){ return el.dataset.id; }) };`);
+        entry: !!document.querySelector('#view .done-entry'),
+        cols: [].slice.call(document.querySelectorAll('#view .zone .item')).map(function(el){ return el.dataset.id; }) };`);
     if (process.env.REG_DEBUG) console.log('DBG undo=' + JSON.stringify(r3));
     tOk('撤销链没有抛异常', !r3.undoErr, String(r3.undoErr));
     t('撤销后父回到未完成', r3.pDone, false);
     t('撤销后子任务回到未完成', r3.k1Done, false);
     tOk('撤销后 foldedByParent 被清掉', r3.k1Fold === undefined, String(r3.k1Fold));
-    tOk('撤销后没有已完成收纳区了', r3.doneZone === false);
+    tOk('撤销后那行入口也消失了（N 回到 0，不显示）', r3.entry === false);
     tOk('撤销后子树整棵回到分区列表', r3.cols.indexOf('p') >= 0 && r3.cols.indexOf('k1') >= 0, r3.cols.join(','));
   }
 }
@@ -351,9 +369,13 @@ await ev(`document.getElementById('m_parent').click(); return 1;`);
 await sleep(320);
 {
   const r = await ev(`return { rows: [].slice.call(document.querySelectorAll('#pp_list .pp-row')).map(function(b){ return b.textContent; }),
-    title: document.getElementById('modalTitle').textContent,
+    title: (document.getElementById('pp_title') || {}).textContent,
+    editorTitle: document.getElementById('modalTitle').textContent,
     bg: getComputedStyle(document.getElementById('pp_list')).backgroundColor };`);
-  tOk('选择列表打开了', /挂/.test(r.title || ''), r.title);
+  /* 0C 之后面板是**盖在编辑器上的一层**：编辑器的标题栏仍是「编辑」，
+     面板自己的标题在 #pp_title（0F.2：原断言查的是 modalTitle，属脚本漂移）。 */
+  tOk('选择列表打开了（面板标题在 #pp_title）', /挂/.test(r.title || ''), r.title);
+  tOk('编辑器标题栏没被顶掉', r.editorTitle === '编辑', r.editorTitle);
   tOk('候选里有「另一个父」', r.rows.indexOf('另一个父') >= 0, r.rows.join(','));
   tOk('候选里**没有**自己（k1）', r.rows.indexOf('查文献') < 0, r.rows.join(','));
   tOk('新浮层是不透明底色（硬约定 1）',
@@ -379,8 +401,11 @@ await sleep(320);
   await ev(`document.getElementById('pp_ok').click(); return 1;`);
   await sleep(600);
   const post = await ev(`return { maskOn: document.getElementById('mask').classList.contains('on'),
+    panel: !!document.getElementById('pp_panel'),
     rows: document.querySelectorAll('#pp_list .pp-row').length };`);
-  tOk('确定后整个弹层关掉了（挂靠列表收进编辑器同一套关闭流程）', post.maskOn === false && post.rows === 0, JSON.stringify(post));
+  /* 0C 改变了形态：「确定」只收起面板一层（0B 当时是连编辑器一起关）。
+     对的期望是**编辑器还在**（maskOn 为 true）、面板已消失（0F.2 把断言反过来）。 */
+  tOk('确定后编辑器还在、只收掉面板', post.maskOn === true && post.panel === false && post.rows === 0, JSON.stringify(post));
 }
 {
   /* ---- 改挂的数据落地：改完 parentVal 后按保存，条目的 parent 必须跟着变 ---- */
@@ -728,83 +753,96 @@ console.log('\n[13] 「已完成」区：深色主题 + 窄屏（新 UI 区自�
   await sleep(420);
   await ev(`tickParentOnly(null, S.items.find(function(x){ return x.id === 'p'; })); return 1;`);
   await sleep(500);
-  await ev(`S.doneOpen = true; refresh(); return 1;`);
+  /* 0E 之后不存在"展开收纳区"这一步：入口是一行常显的按钮，N=0 时才整行不渲染 */
+  await ev(`refresh(); return 1;`);
   await sleep(520);
-
   /* ① 浅色 + 400px 基线 */
   {
     const r = await ev(`${lum}
-      var sec = document.querySelector('.done-zone');
-      if (!sec) return { missing: true };
-      var h3 = sec.querySelector('h3'), hint = sec.querySelector('.done-hint'), head = sec.querySelector('header');
-      var card = sec.querySelector('.item');
-      var other = document.querySelector('.zone:not(.done-zone) > header h3');
-      var oh3 = other ? getComputedStyle(other).color : null;
-      return { hintFg: getComputedStyle(hint).color, hintBg: _bgOf(hint),
-        hintRatio: _ratio(getComputedStyle(hint).color, hint),
-        h3Fg: getComputedStyle(h3).color, otherH3Fg: oh3,
-        h3SameAsOthers: !!oh3 && getComputedStyle(h3).color === oh3,
-        cardVisible: card ? Math.round(card.getBoundingClientRect().height) : 0,
-        secW: Math.round(sec.getBoundingClientRect().width), vw: innerWidth,
+      var entry = document.querySelector('#view .done-entry');
+      if (!entry) return { missing: true };
+      var n = entry.querySelector('.de-n'), chev = entry.querySelector('.de-chev');
+      var k1 = document.querySelector('#view .zone .item[data-id="k1"]');
+      return { nFg: getComputedStyle(n).color, nBg: _bgOf(entry),
+        /* 入口的**主文案**（"今天已完成 … 条"）用的是 --fg —— 它不是装饰、是文字，
+           所以这里仍按 0B 当时的门槛查对比度；数字是次要小字，单独看有没有用 token。 */
+        entryRatio: _ratio(getComputedStyle(entry).color, entry),
+        nRatio: _ratio(getComputedStyle(n).color, entry),
+        nText: n ? n.textContent : null,
+        expectedN: String(statPageHits('today').length),
+        entryVisible: Math.round(entry.getBoundingClientRect().height),
+        chevW: chev ? Math.round(chev.getBoundingClientRect().width) : 0,
+        /* 收纳区没了之后，已完成条目在清单页**一条都不该剩**（这正是 0B.4 与 0E 的合流：
+           已完成回统计页看，"活着"的条目里不再混着划线的卡片） */
+        doneCards: [].slice.call(document.querySelectorAll('#view .zone .item.done')).length,
+        otherH3Fg: (function(){ var o = document.querySelector('#view .zone > header h3'); return o ? getComputedStyle(o).color : null; })(),
+        entryW: Math.round(entry.getBoundingClientRect().width), vw: innerWidth,
         overflow: document.documentElement.scrollWidth > innerWidth + 1 };`);
-    tOk('（前置）收纳区在页面上', r.missing !== true);
-    /* 分区标题的配色是**全站共用**的一套（.zone>header h3）：这里断言"已完成"这一栏
-       跟别的分区**同色**，而不是另立一个更高的门槛 —— 把整站标题都改深不在本卡范围。 */
-    tOk('浅色下：标题颜色与其它分区完全一致（没有偷偷调淡）',
-      r.h3SameAsOthers === true, r.h3SameAsOthers + ' ' + r.h3Fg + ' vs ' + r.otherH3Fg);
-    tOk('浅色下：「含 N 条子任务」那行小字 ≥ 3.0', (r.hintRatio || 0) >= 3.0, String(r.hintRatio));
-    tOk('浅色下：展开后子卡片有真实高度', (r.cardVisible || 0) > 0, String(r.cardVisible));
-    tOk('浅色下：收纳区没有横向溢出', r.overflow === false, 'secW=' + r.secW + ' vw=' + r.vw);
+    tOk('（前置）清单页那行入口在页面上', r.missing !== true);
+    /* 原来这里断言"收纳区标题与其它分区同色"。0E 之后这一行不是分区、是入口，
+       于是换成两条更要紧的：①主文案的对比度仍按 3:1 门槛（它用 --fg，不是次要色）；
+       ②数字走的是 --muted 这个 token（源码级断言），不是临场调淡的一串色值。 */
+    tOk('浅色下：入口主文案对比度 ≥ 3.0', (r.entryRatio || 0) >= 3.0,
+      String(r.entryRatio) + ' bg=' + r.nBg);
+    tOk('浅色下：数字用的是 --muted token（与全站次要小字同一套，没有临场调淡）',
+      /\.done-entry \.de-n\{[^}]*color:var\(--muted\)/.test(html),
+      '数字实测对比度 ' + r.nRatio);
+    tOk('浅色下：入口数字 = 今天完成数，且有真实高度',
+      r.nText === r.expectedN && (r.entryVisible || 0) > 0,
+      'n=' + r.nText + ' 期望 ' + r.expectedN + ' h=' + r.entryVisible);
+    tOk('浅色下：右侧的 › 箭头画出来了（点得进去的暗示）', (r.chevW || 0) > 0, String(r.chevW));
+    tOk('浅色下：清单页里一条已完成的划线卡片都不剩（已完成归统计页）', r.doneCards === 0, String(r.doneCards));
+    tOk('浅色下：入口没有横向溢出', r.overflow === false, 'w=' + r.entryW + ' vw=' + r.vw);
   }
   /* ② 深色 + 400px */
   {
     await ev(`applyTheme('dark', true); return 1;`);
     await sleep(460);
     const r = await ev(`${lum}
-      var sec = document.querySelector('.done-zone');
-      var h3 = sec.querySelector('h3'), hint = sec.querySelector('.done-hint');
-      var card = sec.querySelector('.item');
-      var t = card ? card.querySelector('.t') : null;
-      var other = document.querySelector('.zone:not(.done-zone) > header h3');
-      var oh3 = other ? getComputedStyle(other).color : null;
+      var entry = document.querySelector('#view .done-entry');
+      if (!entry) return { missing: true };
+      var n = entry.querySelector('.de-n');
       return { bodyBg: getComputedStyle(document.body).backgroundColor,
-        hintRatio: _ratio(getComputedStyle(hint).color, hint),
-        h3Fg: getComputedStyle(h3).color, otherH3Fg: oh3,
-        h3SameAsOthers: !!oh3 && getComputedStyle(h3).color === oh3,
-        cardDeco: t ? getComputedStyle(t).textDecorationLine : null,
-        cardDone: card ? card.classList.contains('done') : null };`);
+        nRatio: _ratio(getComputedStyle(n).color, entry),
+        nText: n ? n.textContent : null,
+        expectedN: String(statPageHits('today').length),
+        entryVisible: Math.round(entry.getBoundingClientRect().height) };`);
     tOk('（前置）此刻是深色（背景近黑）',
       Number((r.bodyBg || 'rgb(0').match(/\d+/)[0]) < 60, r.bodyBg);
-    tOk('深色下：收纳区标题与其它分区同色', r.h3SameAsOthers === true, String(r.h3SameAsOthers));
-    tOk('深色下：「含 N 条子任务」小字 ≥ 3.0', (r.hintRatio || 0) >= 3.0, String(r.hintRatio));
-    /* 已完成的标题是"划线 + 变灰"的既有表达（全站 .item.done 那一套），本来就低对比；
-       这里只断言它跟浅色下**同一套处理**（都带 .done、都划线），不另立门槛。 */
-    tOk('深色下：已完成卡片仍是 .done + 划线（与浅色同一套表达）',
-      r.cardDone === true && /line-through/.test(r.cardDeco || ''),
-      'done=' + r.cardDone + ' deco=' + r.cardDeco);
+    tOk('（前置）深色下那行入口仍在', r.missing !== true && (r.entryVisible || 0) > 0,
+      'h=' + r.entryVisible);
+    tOk('深色下：入口数字与今日完成数一致（深浅两套 token 下都跟着数据走）',
+      r.nText === r.expectedN, 'n=' + r.nText + ' 期望 ' + r.expectedN + ' 数字对比度 ' + r.nRatio);
+    /* 已完成卡片的"划线 + 变灰"是既有表达（全站 .item.done）——0E 之后它只出现在
+       统计子页里，那条链路由 [2] 段（点入口进子页）与 _0e-dom 覆盖；
+       这里只断言清单页那行入口在深色下仍然可读、数字照旧。 */
+    t('深色下：入口数字仍是今天完成数', r.nText, r.expectedN);
   }
   /* ③ 深色 + 360px（最窄机型） */
   {
     await send('Emulation.setDeviceMetricsOverride', { width: 360, height: 780, deviceScaleFactor: 3, mobile: true });
     await sleep(520);
     const r = await ev(`${lum}
-      var sec = document.querySelector('.done-zone');
-      if (!sec) return { missing: true };
-      var head = sec.querySelector('header');
-      var hint = sec.querySelector('.done-hint');
-      var hr = head.getBoundingClientRect();
+      var entry = document.querySelector('#view .done-entry');
+      if (!entry) return { missing: true };
+      var n = entry.querySelector('.de-n');
+      var er = entry.getBoundingClientRect();
+      var nr = n ? n.getBoundingClientRect() : null;
       return { overflow: document.documentElement.scrollWidth > innerWidth + 1,
-        headRight: Math.round(hr.right), vw: innerWidth,
-        hintWrapped: hint ? Math.round(hint.getBoundingClientRect().height) : 0,
-        hintText: hint ? hint.textContent : '',
-        visible: hr.height > 0 };`);
-    tOk('（前置）360px 下收纳区还在', r.missing !== true && r.visible === true);
-    tOk('360px 下整页没有横向溢出', r.overflow === false, 'headRight=' + r.headRight + ' vw=' + r.vw);
-    tOk('360px 下标题栏内容没有被裁掉（有真实高度）', (r.hintWrapped || 0) > 0, String(r.hintWrapped));
-    /* 收尾：还原窄屏、暗色、数据与折叠态，后面的断言别被带偏 */
+        right: Math.round(er.right), vw: innerWidth,
+        entryH: Math.round(er.height),
+        nW: nr ? Math.round(nr.width) : 0, nH: nr ? Math.round(nr.height) : 0,
+        visible: er.height > 0 };`);
+    tOk('（前置）360px 下那行入口还在', r.missing !== true && r.visible === true);
+    tOk('360px 下整页没有横向溢出', r.overflow === false, 'right=' + r.right + ' vw=' + r.vw);
+    tOk('360px 下入口没有超出视口右边缘', (r.right || 0) <= (r.vw || 0) + 1,
+      r.right + ' vs ' + r.vw);
+    tOk('360px 下入口里的数字没有被压成 0（文案没被裁掉）',
+      (r.nW || 0) > 0 && (r.nH || 0) > 0, 'w=' + r.nW + ' h=' + r.nH);
+    /* 收尾：还原窄屏、暗色、数据（0E 之后 S.doneOpen 这个字段已经不存在，别再写它） */
     await send('Emulation.setDeviceMetricsOverride', { width: 400, height: 888, deviceScaleFactor: 3, mobile: true });
     await sleep(300);
-    await ev(`applyTheme('light', true); S.doneOpen = false;
+    await ev(`applyTheme('light', true);
       S.items.forEach(function(x){ if (['p','k1','k2'].indexOf(x.id) >= 0){ x.done = false; x.doneAt = null; delete x.foldedByParent; } });
       save(); S.view='list'; refresh(); return 1;`);
     await sleep(420);
