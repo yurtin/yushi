@@ -3510,6 +3510,27 @@ function parseSmart(input){
   text = text.replace(/^[☐☑☒□√✓✗×]\s*/, '').trim();
   text = text.replace(/[\-—–·、,，。;；:：\s]+$/, '').trim();
 
+  /* ★ 0C：中文输入法默认吐**全角**符号（＞＃！），而语法只认半角 —— 等于用户白写
+     （用户真机实测：打 `论文＞查文献 921` 不成父子，整行变成标题）。
+     在入口做一次归一化，而不是往每条正则里各补一次全角：下次再加语法就不会又漏一个。
+     规则刻意写窄，只动"当语法用"的位置，其余（正文里的全角符号）一律不动：
+       · ＞ → > ：至少一侧是空白（与下面路径正则同形），或**两侧都是汉字**
+         （`论文＞查文献`：中文里这个形状不可能是"大于号"，补一个空格让它与半角语法同形）。
+         两侧是数字/字母的**不动** —— 那是 `5＞3`，属于正文（Bug 3 就是从这里漏出来的）。
+       · ＃ → # ：后面紧跟中文/字母/数字/下划线（与下面标签正则同形）
+       · ！ → ! ：只在行首连续 1~2 个（`！！交作业`）；句中的「太棒了！」不动
+     已知取舍：归一化后若没被语法消费掉，标题里可能出现半角的 > / # / !；标题为空时
+     仍回落到用户的原始输入（见下面的 fallback），所以不会丢字。 */
+  text = text.replace(/＞/g, (m, off, s) => {
+    const L = off > 0 ? s[off - 1] : '', R = off + 1 < s.length ? s[off + 1] : '';
+    const blankL = !L || /\s/.test(L), blankR = !R || /\s/.test(R);
+    if (blankL || blankR) return (R && !blankR) ? '> ' : '>';
+    if (/[\u4e00-\u9fff]/.test(L) && /[\u4e00-\u9fff]/.test(R)) return '> ';
+    return m;
+  });
+  text = text.replace(/＃(?=[\u4e00-\u9fa5A-Za-z0-9_])/g, '#');
+  text = text.replace(/^(\s*)！{1,2}/, (m, sp) => sp + '!'.repeat(m.length - sp.length));
+
   // 重要程度：行首 ! = 重要，!! = 紧急
   let pri = 0;
   {
@@ -3531,7 +3552,7 @@ function parseSmart(input){
 
   // 复合目标：「目标 写论文」建大目标；「写论文> 搜材料 925」挂子任务；
   // 「写论文> 第一周> 查文献」多层嵌套。父级不存在会自动创建。
-  let goal = false, path = [];
+  let goal = false, path = [], pathBlocked = false;
   text = text.replace(/^目标\s+/, () => { goal = true; return ''; }).trim();
   {
     /* ★ 0A.8：`A> B` 这个语法保留，但要**挡住两种情况**（旧正则 `\s*>\s*` 前后空格都可省，
@@ -3551,9 +3572,19 @@ function parseSmart(input){
     if (pm && !/[^\s]>[^\s]/.test(junc) && !/[-–—=+<→]\s*>/.test(pm[1])){
       path = pm[1].split('>').map(s => s.trim()).filter(Boolean);
       if (path.length) text = pm[2].trim();
+    } else if (pm || /[>＞]/.test(text)){
+      /* ★ 0C（Bug 3）：这一行含 `>`/`＞`，却**没被接受成路径** —— 它是正文
+         （`5>3 比较`、`A -> B`）。这时后面的日期剥离必须整段让路：
+         用户实测 `5>3` 得到标题「5>」+ 一个日期，真凶就是"行尾数字规则"把被拒的那句
+         末尾的 `3` 当成日期剥掉了。判据取宽一点：`pm` 命中但被约束拒，或者有 `>` 却没
+         匹配到路径（比如前面还有别的字），都算。 */
+      pathBlocked = true;
     }
   }
 
+  /* ★ 0C（Bug 3）：`pathBlocked` 为真时（这一行含 `>` 却不是路径），**整段时间和日期剥离都跳过** ——
+     "整句当标题、不给日期"。下面这一段故意不重新缩进，让 diff 只落在首尾两行上。 */
+  if (!pathBlocked){
   // 时间点：下午5点 / 5点半 / 晚上
   const tpat = /(凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|晚)?\s*(\d{1,2})\s*[点时](半|\d{1,2}\s*分)?\s*(之?[前后])?/;
   const tm = text.match(tpat);
@@ -3710,6 +3741,7 @@ function parseSmart(input){
       }
     }
   }
+  }  /* ★ 0C：pathBlocked 的时间/日期剥离区到此为止 */
 
   // 循环任务：每天 / 每2天 / 每隔3天 —— 打勾后自动生成下一次（见 toggleDone）
   let repeat = null;
@@ -10258,9 +10290,12 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
   const parentOf = id => (id ? S.items.find(x => x.id === id) || null : null);
   /* ★ 0B 顺手修的缺陷（实测）：这里原来无条件读 `selValue('m_zone')` ——
      而 selValue 是 `document.getElementById(id).dataset.value`，取不到元素就抛 TypeError。
-     挂靠列表是**另一个弹层**：它的确定/移出回调跑起来时，编辑弹层的内容早就被换掉了，
-     `#m_zone` 根本不在 DOM 里 —— 一抛就把 onPick 后面的东西全带走（列不关、编辑页不回来）。
-     现在把"要不要顺带判分区"交给调用点：挂靠列表的回调传 false，只更新那一行文案。 */
+     挂靠列表是**另一层**：它的确定/移出回调跑起来时，编辑器的内容可能已经不在 DOM 里
+     （0B 那版是 `modal.innerHTML` 换掉整页，`#m_zone` 直接没了）—— 一抛就把 onPick
+     后面的东西全带走（列不关、编辑页不回来）。
+     现在把"要不要顺带判分区"交给调用点：挂靠列表的回调传 false，只更新那一行文案。
+     ★ 0C 注：挂靠列表已改成"盖一层"，回调跑起来时 `#m_zone` 其实还在；这里仍传 false，
+     保持行为不变（分区那一栏由 syncZone 自己管，选择器只负责父标题那一行）。 */
   function renderParentRow(showIdeaToggle){
     const txt = document.getElementById('m_parenttxt');
     const btn = document.getElementById('m_parent');
@@ -10462,7 +10497,17 @@ function openEdit(it){ openItemEditor(it, false); }
    本项目在浮层层序上踩过坑（.glass 里面的浮层再高的 z-index 也出不去）。
    候选过滤与 aiSuggestApply 同一条规矩：自己、自己的后代都排除（挂上去就是环）。
    选择结果由调用方落进弹层自己的临时变量，**保存时才动数据** —— 这条路上没有撤销，
-   因为"取消了就等于没改过"比"改了再撤回"更简单也更符合弹层里别的东西的语义。 */
+   因为"取消了就等于没改过"比"改了再撤回"更简单也更符合弹层里别的东西的语义。
+
+   ★ 0C（Bug 1）：这里以前是 `modal.innerHTML = ...`，把编辑器那一页**整个替换掉**了，
+   而「确定」做的是 `onPick(...); closeModal();` —— closeModal 关的是编辑器所在的那个弹层。
+   用户真机实测：点一条 → 确定 → 整个弹层关掉、编辑器没了、前面改的一起丢、数据还没变。
+   现在改成"在编辑器之上盖一层面板"：
+     · 面板 appendChild 进 .modal（.modal 是 .glass，自带 position:relative）→ inset:0 正好盖住；
+     · DOM 在后 + 有定位 + **实底 var(--bg)**（本项目硬规则：浮层禁止靠半透明底兜底）→ 天然压住编辑器；
+     · 「确定 / 移出到顶层」= onPick(...) + **只撤这一层**，编辑器与它里面所有未保存的修改原样还在；
+     · 补一个「取消」出口（同样只撤面板），Escape 也只关这一层（拦在面板的捕获阶段，
+       否则全局那个 Escape 会把整个编辑器一起收掉 —— 那就是同一个 bug 的另一条路）。 */
 function openParentPicker(it, isNew, getCur, onPick){
   const cur = getCur();
   /* 后代判定用现成的 aiIsDescendant（它按 parent 链上溯、带 64 步 guard） */
@@ -10470,30 +10515,57 @@ function openParentPicker(it, isNew, getCur, onPick){
     .filter(x => !isSeed(x) && !x.done && x.id !== it.id && x.zone !== 'idea')
     .filter(x => !aiIsDescendant(x, it))
     .sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'zh'));
-  modal.innerHTML =
-    `<h3 id="modalTitle">挂在…下面</h3>
+  /* 面板锚在 .modal 的 padding box 上，会跟着弹层内容一起滚 —— 打开时先把编辑器滚回顶部，
+     关掉时再还回去，免得面板与"看到的那一屏"错位。 */
+  const prevScroll = modal.scrollTop, prevLabel = modal.getAttribute('aria-labelledby');
+  modal.scrollTop = 0;
+  const panel = document.createElement('div');
+  panel.id = 'pp_panel';
+  panel.tabIndex = -1;
+  panel.style.cssText = 'position:absolute;inset:0;z-index:2;background:var(--bg);overflow:auto;' +
+    'overscroll-behavior:contain;padding:clamp(22px,3vw,34px);display:flex;flex-direction:column;';
+  panel.innerHTML =
+    `<h3 id="pp_title">挂在…下面</h3>
      <div class="field"><label>搜标题</label>
        <input type="text" id="pp_q" placeholder="打两个字筛一下（${pool.length} 条可选）" autocomplete="off"></div>
      <div class="pp-list" id="pp_list"></div>
      <div class="foot">
        <button class="btn" id="pp_top">移出到顶层</button>
        <div class="spacer"></div>
+       <button class="btn" id="pp_cancel">取消</button>
        <button class="btn primary" id="pp_ok">确定</button>
      </div>`;
-  const listEl = document.getElementById('pp_list');
+  modal.appendChild(panel);
+  modal.setAttribute('aria-labelledby', 'pp_title');
+  const listEl = panel.querySelector('#pp_list');
   let picked = cur || null;
   const render = () => {
-    const q = (document.getElementById('pp_q').value || '').trim().toLowerCase();
+    const q = (panel.querySelector('#pp_q').value || '').trim().toLowerCase();
     const rows = pool.filter(x => !q || String(x.title || '').toLowerCase().includes(q));
     listEl.innerHTML = rows.length
       ? rows.map(x => `<button type="button" class="pp-row${picked === x.id ? ' on' : ''}" data-pid="${esc(x.id)}" aria-pressed="${picked === x.id ? 'true' : 'false'}">${esc(x.title)}</button>`).join('')
       : '<div class="empty">没有匹配的条目。</div>';
     listEl.querySelectorAll('.pp-row').forEach(b => b.onclick = () => { picked = b.dataset.pid; render(); });
   };
+  const closePanel = () => {
+    if (panel.parentNode) panel.parentNode.removeChild(panel);
+    modal.scrollTop = prevScroll;
+    if (prevLabel) modal.setAttribute('aria-labelledby', prevLabel);
+    else modal.removeAttribute('aria-labelledby');
+    /* 焦点回到编辑器容器上（不抢到某个输入框：那会弹键盘）。弹层已经关掉时不动焦点。 */
+    if (mask.classList.contains('on') && !modal.contains(document.activeElement)) modal.focus({ preventScroll: true });
+  };
   render();
-  document.getElementById('pp_q').oninput = render;
-  document.getElementById('pp_top').onclick = () => { onPick(null); closeModal(); };
-  document.getElementById('pp_ok').onclick = () => { onPick(picked); closeModal(); };
+  panel.querySelector('#pp_q').oninput = render;
+  panel.querySelector('#pp_top').onclick = () => { onPick(null); closePanel(); };
+  panel.querySelector('#pp_ok').onclick = () => { onPick(picked); closePanel(); };
+  panel.querySelector('#pp_cancel').onclick = closePanel;
+  panel.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();                    // 只关这一层
+    closePanel();
+  }, true);
+  panel.focus({ preventScroll: true });
   openMask();
 }
 /* 语言 / 快捷录入"进入编辑"分支：拿识别结果（或空串）先解析成草稿，再让用户改标签 / 日期 / 优先级 / 分区，确定才入库。 */
@@ -10922,7 +10994,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.3.0';
+const APP_VERSION = '5.3.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
