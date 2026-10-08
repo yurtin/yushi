@@ -64,10 +64,27 @@ public class MainActivity extends Activity {
 
     /** 运行时申请 RECORD_AUDIO 的请求码（只这一个，不需要位运算）。 */
     private static final int REQ_VOICE = 1;
+    /** 运行时申请 POST_NOTIFICATIONS 的请求码（Android 13+ 才有这条权限）。 */
+    private static final int REQ_NOTIFY = 2;
+
+    /* ---- 阶段1 提醒：到点通知的关键常量 ---- */
+    /** 排期表的 SharedPreferences 名。**这是原生侧自己那份持久化副本** ——
+     *  {@link NotifyReceiver} 在开机广播里只能读它，见下面 notifyPut 的说明。 */
+    private static final String N_PREF = "yushi_notify";
+    /** 是否已经弹过系统授权框（用来把"没问过"和"用户拒绝"分开，见 notifyPermState）。 */
+    private static final String N_ASKED = "asked";
+    /** 通知渠道 id。Android 8.0+ 不建渠道的通知会被**静默丢掉**。 */
+    private static final String N_CH = "yushi_notify_ch";
+    /** 到点那一刻由 AlarmManager 派发的自定义 action（组件是显式的，action 只是给日志看）。 */
+    static final String ACTION_FIRE = "com.yushi.app.NOTIFY_FIRE";
 
     private WebView web;
     /** 语音桥实例（持有它以便 onRequestPermissionsResult 里继续开始识别）。 */
     private YuShiBridge bridge;
+    /** 通知点击带进来、但**页面还没准备好**的那一条 id。
+     *  App 冷启动时 onCreate 早就跑完了，那时 evaluateJavascript 打在空页面上会丢掉 ——
+     *  所以先存下来，等 onPageFinished（或那道延时兜底）再发。 */
+    private String pendingNotify = null;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -175,6 +192,20 @@ public class MainActivity extends Activity {
         } else {
             web.loadUrl(ENTRY);
         }
+        /* ★ 阶段1 提醒：App 被通知点开时 Intent 里带着条目 id —— 先存下来，
+           等页面加载完（onPageFinished）再交给它（见 flushNotify 的说明）。 */
+        deliverNotify(getIntent());
+        /* 兜底那一次：web.restoreState 这条路上 onPageFinished 不一定会再来。
+           flushNotify 是幂等的（发过就清空），多发无害。 */
+        web.postDelayed(this::flushNotify, 2500);
+    }
+
+    /** App 已经在跑时又点了一条通知：系统走这里（launchMode=singleTop + SINGLE_TOP）。 */
+    @Override
+    protected void onNewIntent(android.content.Intent it) {
+        super.onNewIntent(it);
+        setIntent(it);
+        deliverNotify(it);
     }
 
     @Override
@@ -484,6 +515,15 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        /* ★ 阶段1：通知权限（Android 13+）。批下来 → 把排期表里那些"当时没排上"的全部补排；
+           拒了 → 回传状态，设置页显示「未授权 + 去设置」。两条路都不崩、不卡住。 */
+        if (requestCode == REQ_NOTIFY){
+            boolean ok = grantResults.length > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (ok) rearmAll(this);
+            emitNotifyPerm(ok ? "granted" : "denied");
+            return;
+        }
         if (requestCode != REQ_VOICE) return;
         if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             // 只有在用户没提前松手取消时才开麦（授权框期间可能已取消手势）
@@ -498,6 +538,186 @@ public class MainActivity extends Activity {
             if (bridge != null) bridge.wantListening = false;
             emit("error", null, "permission_denied");   // 页面据此提示「没给录音权限」
         }
+    }
+
+    /* ================================================================== */
+    /*  通知排期（阶段1）：页面 → 原生 的排期表 + 到点弹通知 + 开机重排    */
+    /* ================================================================== */
+
+    /* ★ 阶段1 硬约定 8：排期表必须由**原生自己**持久化。
+       为什么：开机广播（BOOT_COMPLETED）进来的那一刻 WebView 还没跑、页面读不到
+       localStorage —— 只靠页面侧重排 = 重启后提醒全丢（真机验收第 3 项抓的就是它）。
+       所以每次排期都往 SharedPreferences 写一行：`t:<id>` = 标题、`a:<id>` = 触发时刻。
+       不用嵌套 JSON：键值对够用，增删一行就是一进一出，也不怕半截 JSON 写坏。
+
+       注意这一整块都是**静态**的（static）—— NotifyReceiver 会在 App 进程根本没起来的
+       情况下被系统拉起，那种时候连 MainActivity 实例都没有。 */
+
+    private static String nKeyTitle(String id){ return "t:" + id; }
+    private static String nKeyAt(String id){ return "a:" + id; }
+
+    /** PendingIntent 的请求码：从条目 id 派生一个**稳定**的整数。
+     *  必须稳定 —— 若用"当前排了几行"这类计数器，取消时要算出另一个码，旧闹钟永远撤不掉。 */
+    static int nReq(String id){
+        return id == null ? 0 : (id.hashCode() & 0x7fffffff);
+    }
+
+    /** 通知能不能发。API &lt; 33 没有 POST_NOTIFICATIONS 这条权限（装了就允许）；
+     *  33+ 走运行时权限。用**字符串常量**而不是 Manifest.permission.POST_NOTIFICATIONS ——
+     *  后者在旧的 android.jar 里不存在，会让整个工程编不过。 */
+    static boolean notifyAllowed(android.content.Context ctx){
+        try {
+            if (Build.VERSION.SDK_INT < 33) return true;
+            return ctx.checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                    == PackageManager.PERMISSION_GRANTED;
+        } catch (Throwable t) { return true; }
+    }
+
+    static boolean notifyAsked(android.content.Context ctx){
+        try {
+            return ctx.getSharedPreferences(N_PREF, android.content.Context.MODE_PRIVATE)
+                    .getBoolean(N_ASKED, false);
+        } catch (Throwable t) { return false; }
+    }
+
+    static void markNotifyAsked(android.content.Context ctx){
+        try {
+            ctx.getSharedPreferences(N_PREF, android.content.Context.MODE_PRIVATE)
+               .edit().putBoolean(N_ASKED, true).apply();
+        } catch (Throwable t) { }
+    }
+
+    static void notifyDrop(android.content.Context ctx, String id){
+        if (id == null || id.length() == 0) return;
+        try {
+            ctx.getSharedPreferences(N_PREF, android.content.Context.MODE_PRIVATE).edit()
+               .remove(nKeyTitle(id)).remove(nKeyAt(id)).apply();
+        } catch (Throwable t) { }
+        cancelAlarm(ctx, id);
+    }
+
+    /** 通知正文：日期 + 钟点。任务卡决策 7 把这个形状定死了（不写"还剩几条"）。
+     *  从触发时刻反推 —— 页面只传标题，桥的签名保持三个参数。 */
+    static String notifyBody(long ts){
+        try {
+            java.util.Calendar c = java.util.Calendar.getInstance();
+            c.setTimeInMillis(ts);
+            return (c.get(java.util.Calendar.MONTH) + 1) + "月"
+                 + c.get(java.util.Calendar.DAY_OF_MONTH) + "日 "
+                 + String.format("%02d:%02d",
+                       c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE));
+        } catch (Throwable t) { return ""; }
+    }
+
+    static void cancelAlarm(android.content.Context ctx, String id){
+        try {
+            android.app.AlarmManager am = (android.app.AlarmManager)
+                    ctx.getSystemService(android.content.Context.ALARM_SERVICE);
+            if (am == null) return;
+            android.app.PendingIntent pi = fireIntent(ctx, id, null, 0L);
+            am.cancel(pi);
+            pi.cancel();
+        } catch (Throwable t) { }
+    }
+
+    /** 到点派发的 PendingIntent。FLAG_IMMUTABLE 是 API 31+ 的硬要求（可变 PendingIntent
+     *  在 12 上直接抛 IllegalArgumentException）。
+     *  ts 跟着 intent 走，是为了通知正文里写的时刻 = **当初排的那个时刻**，
+     *  而不是"闹钟实际响的那一刻"（set() 允许系统推迟几分钟，两者会差开）。 */
+    private static android.app.PendingIntent fireIntent(android.content.Context ctx,
+            String id, String title, long ts){
+        android.content.Intent i = new android.content.Intent(ctx, NotifyReceiver.class);
+        i.setAction(ACTION_FIRE);
+        i.putExtra("id", id);
+        i.putExtra("title", title == null ? "" : title);
+        i.putExtra("ts", ts);
+        return android.app.PendingIntent.getBroadcast(ctx, nReq(id), i,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                        | android.app.PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /** 真正排一个闹钟。★ 只用 set()，**绝不**用 setExact* ——
+     *  任务卡红线 2：不申请 SCHEDULE_EXACT_ALARM、不做真闹钟档。
+     *  set() 允许系统在低电 / 空闲时把它推迟几分钟，这正是"提醒"该有的量级；
+     *  换来的代价是可能晚到一会儿，但不必向用户要那个吓人的精确闹钟权限。 */
+    static void armAlarm(android.content.Context ctx, String id, String title, long ts){
+        try {
+            if (!notifyAllowed(ctx)) return;              // 没权限就先只留在排期表里（授权后统一重排）
+            if (ts <= System.currentTimeMillis()) return;  // 过去的时刻不排，否则立刻炸一串
+            android.app.AlarmManager am = (android.app.AlarmManager)
+                    ctx.getSystemService(android.content.Context.ALARM_SERVICE);
+            if (am == null) return;
+            am.set(android.app.AlarmManager.RTC_WAKEUP, ts, fireIntent(ctx, id, title, ts));
+        } catch (Throwable t) { }
+    }
+
+    /** 写一行排期并尽力上闹钟。页面每次改一条都调它 —— 幂等：同一个 id 覆盖。 */
+    static void notifyPut(android.content.Context ctx, String id, String title, long ts){
+        if (id == null || id.length() == 0) return;
+        try {
+            ctx.getSharedPreferences(N_PREF, android.content.Context.MODE_PRIVATE).edit()
+               .putString(nKeyTitle(id), title == null ? "" : title)
+               .putLong(nKeyAt(id), ts)
+               .apply();
+        } catch (Throwable t) { }
+        armAlarm(ctx, id, title, ts);
+    }
+
+    /** 按持久化排期表把**全部**闹钟重排一遍。两条路都走它：开机广播、以及"刚被授权"。
+     *  返回重排成功的条数（只打日志用）。 */
+    static int rearmAll(android.content.Context ctx){
+        int n = 0;
+        try {
+            android.content.SharedPreferences sp =
+                    ctx.getSharedPreferences(N_PREF, android.content.Context.MODE_PRIVATE);
+            long now = System.currentTimeMillis();
+            /* getAll() 返回的是快照，所以循环里 notifyDrop 改 prefs 是安全的 */
+            for (java.util.Map.Entry<String, ?> en : sp.getAll().entrySet()){
+                String k = en.getKey();
+                if (!k.startsWith("t:")) continue;
+                String id = k.substring(2);
+                long ts = sp.getLong(nKeyAt(id), 0L);
+                if (ts <= 0) continue;
+                if (ts <= now){ notifyDrop(ctx, id); continue; }   // 已经过去的一次性排期：清掉
+                armAlarm(ctx, id, String.valueOf(en.getValue()), ts);
+                n++;
+            }
+        } catch (Throwable t) { }
+        return n;
+    }
+
+    /** 到点弹通知。渠道必须显式建一个（8.0+ 不建就被静默丢弃）。 */
+    static void showNotif(android.content.Context ctx, String id, String title, long ts){
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager)
+                    ctx.getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            if (Build.VERSION.SDK_INT >= 26){
+                android.app.NotificationChannel ch = new android.app.NotificationChannel(
+                        N_CH, "提醒", android.app.NotificationManager.IMPORTANCE_HIGH);
+                ch.setDescription("到点的待办提醒");
+                nm.createNotificationChannel(ch);
+            }
+            /* 点通知 → 回到 MainActivity，并带上条目 id（页面据此滚到那一条）。
+               SINGLE_TOP：App 已经在跑时走 onNewIntent 而不是再起一个。 */
+            android.content.Intent open = new android.content.Intent(ctx, MainActivity.class);
+            open.setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                    | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            open.putExtra("notifyId", id);
+            android.app.PendingIntent pi = android.app.PendingIntent.getActivity(
+                    ctx, nReq(id), open,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                            | android.app.PendingIntent.FLAG_IMMUTABLE);
+            android.app.Notification.Builder b = (Build.VERSION.SDK_INT >= 26)
+                    ? new android.app.Notification.Builder(ctx, N_CH)
+                    : new android.app.Notification.Builder(ctx);
+            b.setSmallIcon(android.R.drawable.ic_popup_reminder)
+             .setContentTitle(title == null || title.isEmpty() ? "鱼事提醒" : title)
+             .setContentText(notifyBody(ts))
+             .setAutoCancel(true)
+             .setContentIntent(pi);
+            nm.notify(nReq(id), b.build());
+        } catch (Throwable t) { }
     }
 
     /* ------------------------------------------------------------------ */
@@ -524,6 +744,15 @@ public class MainActivity extends Activity {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
             return handleUrl(Uri.parse(url));
+        }
+
+        /** ★ 阶段1：页面每次加载完，补发一次"待处理的通知点击"。
+         *  为什么不直接在 onCreate 里发：App 被通知点开时，onCreate 那一刻 WebView 还是空的，
+         *  evaluateJavascript 打在空页面上会静默丢掉；而页面脚本注册监听要等它自己跑起来。
+         *  onPageFinished 是"页面脚本已经跑过一遍"的第一个可靠信号。 */
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            flushNotify();
         }
     }
 
@@ -623,6 +852,46 @@ public class MainActivity extends Activity {
         if (web != null) web.post(() -> web.evaluateJavascript(js, null));
     }
 
+    /* ---- 阶段1：通知相关的原生 → 页面回传（形状与 emit() 完全同源，见 NOTIFY-BRIDGE.md）---- */
+
+    /** 记下"用户点了通知、要跳到哪一条"。存起来而不是直接发 —— 冷启动时页面还没跑起来。 */
+    private void deliverNotify(android.content.Intent it){
+        if (it == null) return;
+        String id = it.getStringExtra("notifyId");
+        if (id == null || id.length() == 0) return;
+        /* 取走就删：rotate / 重建 / 再次 onNewIntent 时不该重放同一个跳转。
+           注意它和 web.restoreState 的关系 —— 重建时 Intent 还是原来那个，删掉 extra 才能免疫。 */
+        it.removeExtra("notifyId");
+        pendingNotify = id;
+        flushNotify();
+    }
+
+    /** 页面准备好了就把待发的跳转发出去。**幂等**：发过就清空，重复调用什么都不做。 */
+    private void flushNotify(){
+        final String id = pendingNotify;
+        if (id == null || id.length() == 0) return;
+        pendingNotify = null;
+        /* 再等一小会儿：onPageFinished 的那一刻页面脚本可能刚跑到一半（清单还没画出来），
+           而"滚到某一条"要求它已经在 DOM 里。260ms 足够，且这是用户主动点通知，
+           慢半拍看不出来。 */
+        if (web != null) web.postDelayed(() -> emitNotify(id), 260);
+    }
+
+    /** 通知点击 → 页面。detail: {type:'open', id}（与 yushi:speech 同一套机制）。 */
+    void emitNotify(String id){
+        final String js = "window.dispatchEvent(new CustomEvent('yushi:notify',{detail:{type:'open',id:"
+                + jsStr(id) + "}}));";
+        if (web != null) web.post(() -> web.evaluateJavascript(js, null));
+    }
+
+    /** 权限结果 → 页面。detail: {type:'perm', state}。
+     *  设置页那行「未授权 + 去设置」据此当场刷新（用户刚从系统框回来）。 */
+    void emitNotifyPerm(String state){
+        final String js = "window.dispatchEvent(new CustomEvent('yushi:notify',{detail:{type:'perm',state:"
+                + jsStr(state) + "}}));";
+        if (web != null) web.post(() -> web.evaluateJavascript(js, null));
+    }
+
     /** 给 JS 字符串加引号并转义，避免在 text 里出现引号 / 换行时把 CustomEvent 的 detail 弄断。 */
     private static String jsStr(String v) {
         StringBuilder sb = new StringBuilder("\"");
@@ -712,6 +981,69 @@ public class MainActivity extends Activity {
         @android.webkit.JavascriptInterface
         public void startVoice() {
             runOnUiThread(this::startVoiceUi);
+        }
+
+        /* ---------------- ★ 阶段1 提醒（到点弹通知） ----------------
+           四个方法与事件形状见 _android/NOTIFY-BRIDGE.md。
+           共同点：它们只做"记下来 + 排 / 撤 / 报告状态"，不做任何判断 ——
+           "这一条该不该提醒、什么时候提醒"全由页面侧的 syncNotify 算好再传进来
+           （页面侧的唯一真相源，见任务卡硬约定 7）。 */
+
+        /** 排期：到 ts（毫秒）时给这一条弹通知。同一个 id 重复调 = 覆盖（幂等）。
+         *  排期表由**原生自己**写进 SharedPreferences，开机重排靠它（硬约定 8）。 */
+        @android.webkit.JavascriptInterface
+        public void notifySchedule(String id, String title, long ts) {
+            if (id == null || id.length() == 0) return;
+            notifyPut(MainActivity.this, id, title, ts);
+            /* Android 13+ 的运行时权限：**第一次真的要排提醒**时才弹系统框 ——
+               与语音同一条约定（用到才问），不在开屏时打扰。
+               用户拒了也不影响排期表：那一行照旧留在 SharedPreferences 里，
+               以后在系统设置里放开、或者下次授权通过时，rearmAll 会一次补上。 */
+            if (!notifyAllowed(MainActivity.this) && !notifyAsked(MainActivity.this)) {
+                markNotifyAsked(MainActivity.this);
+                try {
+                    requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIFY);
+                } catch (Throwable t) { }
+            }
+        }
+
+        /** 撤销这一条的排期（勾完 / 删除 / 清掉日期 / 总开关关掉，页面侧都调到这儿）。 */
+        @android.webkit.JavascriptInterface
+        public void notifyCancel(String id) {
+            if (id == null || id.length() == 0) return;
+            notifyDrop(MainActivity.this, id);
+        }
+
+        /** "granted" / "denied" / "unknown"。
+         *  unknown = 安卓 13+ 且**还没弹过**系统授权框 —— 页面据此决定要不要显示「未授权」：
+         *  "没问过"和"用户拒绝"是两回事，不能混着说。 */
+        @android.webkit.JavascriptInterface
+        public String notifyPermState() {
+            if (notifyAllowed(MainActivity.this)) return "granted";
+            return notifyAsked(MainActivity.this) ? "denied" : "unknown";
+        }
+
+        /** 跳系统的「本应用详情」页。用户在系统框里点了拒绝（甚至"不再询问"）之后，
+         *  只有从那里才能重新打开通知开关 —— 这是唯一的补救入口。 */
+        @android.webkit.JavascriptInterface
+        public void openNotifySettings() {
+            runOnUiThread(() -> {
+                try {
+                    android.content.Intent i = new android.content.Intent(
+                            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            android.net.Uri.fromParts("package", getPackageName(), null));
+                    i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                } catch (Throwable t) {
+                    /* 少数 ROM 没有应用详情页 —— 退回系统设置首页，别让按钮点了没反应。 */
+                    try {
+                        android.content.Intent i2 = new android.content.Intent(
+                                android.provider.Settings.ACTION_SETTINGS);
+                        i2.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(i2);
+                    } catch (Throwable t2) { }
+                }
+            });
         }
 
         /** 结束识别。同样回主线程。 */
@@ -893,6 +1225,53 @@ public class MainActivity extends Activity {
             @Override public void onBufferReceived(byte[] buffer) { }
             @Override public void onRmsChanged(float rmsdB) { }
             @Override public void onEvent(int eventType, Bundle params) { }
+        }
+    }
+
+    /* ================================================================== */
+    /*  到点弹通知 + 开机重排（同一个 BroadcastReceiver）                 */
+    /* ================================================================== */
+
+    /**
+     * 阶段1：提醒的**原生落点**。两件事都在这里：
+     *   ① 到点（AlarmManager 派发 ACTION_FIRE）→ 弹一条通知，并把这一行从排期表里去掉；
+     *   ② BOOT_COMPLETED / MY_PACKAGE_REPLACED → 按 SharedPreferences 里的排期表重排全部闹钟。
+     *
+     * <p>★ 为什么它是 **static 嵌套类** 而不是单独一个文件：任务卡把本轮的写入范围
+     * 限定在 MainActivity.java 一个 Java 文件里。manifest 里声明成
+     * {@code com.yushi.app.MainActivity$NotifyReceiver}。
+     *
+     * <p>★ 为什么这里绝不碰 WebView / 绝不读 localStorage：开机广播进来时 App 进程可能
+     * 根本没起来，页面的数据（存在 WebView 的 localStorage 里）此刻是**读不到的**。
+     * 能用的只有 SharedPreferences 与 AlarmManager —— 这正是硬约定 8 要原生自己存一份的原因。
+     */
+    public static class NotifyReceiver extends android.content.BroadcastReceiver {
+        @Override
+        public void onReceive(android.content.Context ctx, android.content.Intent it) {
+            if (ctx == null || it == null) return;
+            try {
+                String a = it.getAction();
+                /* 开机 / 应用被更新之后：闹钟全没了，按持久化排期表重排。
+                   QUICKBOOT_POWERON 是部分国产 ROM 的"快速开机"广播，多收一个不吃亏。 */
+                if (android.content.Intent.ACTION_BOOT_COMPLETED.equals(a)
+                        || android.content.Intent.ACTION_MY_PACKAGE_REPLACED.equals(a)
+                        || "android.intent.action.QUICKBOOT_POWERON".equals(a)) {
+                    rearmAll(ctx);
+                    return;
+                }
+                String id = it.getStringExtra("id");
+                if (id == null || id.length() == 0) return;
+                String title = it.getStringExtra("title");
+                /* 正文写的是**当初排的那个时刻**（set() 是非精确闹钟，实际响的时刻可能晚几分钟）。
+                   老 PendingIntent / 手工构造的 intent 没带 ts 时回落到"现在"。 */
+                long ts = it.getLongExtra("ts", System.currentTimeMillis());
+                showNotif(ctx, id, title, ts);
+                /* 一次性提醒：弹过就从排期表里删掉。
+                   不删的话，下次开机 rearmAll 会看到一行"时刻已过"的记录 ——
+                   虽然那里会把它清掉，但万一关机期间开机广播没到（比如没授权开机启动），
+                   它就会一直留在表里。弹完即删最干净。 */
+                notifyDrop(ctx, id);
+            } catch (Throwable t) { }
         }
     }
 }

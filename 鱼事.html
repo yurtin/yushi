@@ -1747,6 +1747,15 @@ body[data-help="off"] .set-row .set-txt > span:not([data-keephelp]){
 }
 .switch[aria-checked="true"]{background:var(--accent);border-color:transparent}
 .switch[aria-checked="true"]::after{transform:translateX(24px)}
+/* ★ 阶段1 提醒：开关右侧那一列（开关 + 「未授权 / 去设置」）。竖着排、右对齐 ——
+   授权提示是开关的补充说明，横着摆会在手机上把「提醒」那行标题挤成两行。
+   ⚠️ `[hidden]` 必须自己写回 display:none：下面给了 .notify-perm 一个 display:flex，
+   会把浏览器默认的 [hidden]{display:none} 盖掉（条件显示的老坑）。 */
+.notify-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.notify-perm{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;
+  color:var(--muted);white-space:nowrap}
+.notify-perm[hidden]{display:none}
+.notify-perm .pill{padding:3px 10px;font-size:12px}
 
 /* 时间轴：条数 / 逾期这类事实数字单独一行常显，和上面那段可关掉的说明文案分开。
    放在列表正上方 —— 它说的是这份列表的事，本来就该挨着列表。
@@ -3571,6 +3580,40 @@ function cnNum(s){
   return null;
 }
 
+/* 早 / 中 / 晚 三个分段的钟点表。数值是用户 2026-10-08 拍定的默认值。 */
+const DAYPART_TIMES = ['08:00', '12:00', '19:00'];
+/* ★ 阶段1 · 决策 3「早中晚用本地规则，不走 AI」：
+   在一行字里认出"早中晚"这类**连写**的分段，返回命中的钟点数组（1 个以上按顺序）。
+   只认"分段词**紧挨着**排列"的形状（中间只允许空白/顿号/逗号/斜杠/和与及跟），据此：
+     ✓ 早中晚吃药 / 早上中午晚上吃药 / 早上、中午、晚上吃药 / 早晚吃药 / 中晚吃药
+     ✗ 晚上吃药（只有一个分段 —— 这是既有的"只有钟点"写法，标题不能被吃）
+     ✗ 早期晚会（中间夹了「期」，不是分段列表）
+   返回 { start, end, times }，times 是钟点字符串数组；没命中返回 null。 */
+function parseDayParts(text){
+  const s = String(text || '');
+  const MARKS = [
+    /^(?:早上|早晨|上午|清晨|早)/,
+    /^(?:中午|午间|正午|中)/,
+    /^(?:晚上|傍晚|夜里|夜间|晚)/,
+  ];
+  const SEP = /^[\s、,，\/\\和与及跟]*/;
+  for (let i = 0; i < s.length; i++){
+    let j = i, times = [], first = true;
+    for (let k = 0; k < MARKS.length; k++){
+      let at = j;
+      if (!first) at += s.slice(at).match(SEP)[0].length;   // 分段之间只允许分隔符
+      const m = s.slice(at).match(MARKS[k]);
+      if (!m) continue;                                     // 这一段可以缺（早晚 / 中晚）
+      times.push(DAYPART_TIMES[k]);
+      j = at + m[0].length;
+      first = false;
+    }
+    /* 时间数组是按 早→中→晚 顺序 push 的，所以"至少两个"就是合法列表 */
+    if (times.length >= 2) return { start: i, end: j, times: times };
+  }
+  return null;
+}
+
 /* ---------------- 核心：一行字 → {title,date,dateEnd,time,tags,zone,done} ---------------- */
 function parseSmart(input){
   let text = String(input || '').trim();
@@ -3653,6 +3696,19 @@ function parseSmart(input){
          末尾的 `3` 当成日期剥掉了。判据取宽一点：`pm` 命中但被约束拒，或者有 `>` 却没
          匹配到路径（比如前面还有别的字），都算。 */
       pathBlocked = true;
+    }
+  }
+
+  /* ★ 阶段1 · 决策 3：「早中晚吃药」—— 认出**连写**的分段词，剥掉并记下钟点。
+     位置有讲究：放在路径 / 标签 / 重要程度之后（那些语法已经消费干净），
+     又必须早于下面的时刻与日期剥离 —— 否则 `早上` 会先被"裸时段词"那条分支吃掉，
+     只剩一个中性的标题，分段的痕迹就没了。 */
+  let dayParts = null;
+  {
+    const dp = parseDayParts(text);
+    if (dp){
+      dayParts = dp.times;
+      text = (text.slice(0, dp.start) + ' ' + text.slice(dp.end)).replace(/\s+/g, ' ').trim();
     }
   }
 
@@ -3846,6 +3902,7 @@ function parseSmart(input){
     date, dateEnd, monthOnly, time, tags, zone, repeat: repeat || null,
     pri,           // 0 无 / 1 重要(!) / 2 紧急(!!)
     goal,          // 「目标」前缀：显式标记为目标卡（有子任务也会按目标渲染）
+    dayParts,      // ★ 阶段1：「早中晚」这类分段的钟点数组，null = 不是这种条目（addItem 消费）
     path           // 「写论文> 搜材料」的祖先链，addItem 里解析挂靠
   };
   /* 这里原来还返回过一个 `done: /^[☑☒√✓]/.test(fallback)`，是**死字段** ——
@@ -3915,6 +3972,30 @@ function esc(s){
   return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
+/* ---------------- 提醒层的调用口（能力探测） ----------------
+   ★ 阶段1：页面侧算提醒时间的**唯一**入口是应用层的 syncNotify(it)（硬约定 7）。
+   解析层这几个函数（addItem / toggleDone / remove）要在"条目变了"时叫它，
+   但不能直接引用 —— 两个原因，都不是洁癖：
+
+     ① 提醒层属于**应用层**，可能整块缺席：网页版 / iPhone 上没有通知桥，老壳的桥也没有
+        通知方法。缺席时正确的行为是"不排期"，而不是抛异常（与语音那条路的降级约定一致）。
+     ② 已有的纯 Node 回归脚本（_ref/_0b-regress.mjs）是把 toggleDone 这类函数
+        **按名整段切出来**、在一个隔离的 new Function 环境里跑的 —— 那个环境里没有提醒层。
+        直接引用 syncNotify 会让它那 108 条本来全绿的断言整体崩掉，而任务卡明令
+        不许改 _ref/ 下已有脚本。
+
+   所以这两个转发口写在**解析层切片里**（回归脚本总会把这个切片喂进隔离环境），
+   并且用 `typeof x === 'function'` 判存在 —— 未声明的标识符只有放在 typeof 里才不会抛。
+   它们本身**不算时间**，只是转手给 syncNotify，唯一真相源没有变。 */
+function notifyFire(it){
+  if (typeof syncNotify === 'function') return syncNotify(it);
+  return false;
+}
+function notifyFireMany(ids){
+  if (typeof syncNotifyMany === 'function') return syncNotifyMany(ids);
+  return 0;
+}
+
 /* =============================== 应用层 =============================== */
 const LS = 'daibanji.v2';
 const LS_OLD = 'daibanji.v1';
@@ -3961,7 +4042,12 @@ const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', t
                  三个都关＝不显示日期（调用点就不渲染 .sp-at）。
        haptic    震动档位 'off' | 'low' | 'std' | 'high'，默认 'std'。全 App 的震动
                  统一走 buzz()，档位只在那里乘系数（见 buzz 的说明）。 */
-  dateShow: { y: true, m: true, d: true }, haptic: 'std' };
+  dateShow: { y: true, m: true, d: true }, haptic: 'std',
+  /* ★ 阶段1 提醒：到点弹系统通知的总开关。默认**开** —— 这个 App 的定位就是"会提醒你的清单"，
+     装好还得先去设置里打开一次没有道理。真正会打扰人的那次系统授权框仍然推迟到
+     "第一次真的排出提醒"那一刻才弹（与语音权限同一条约定：用到才问）。
+     关掉 = 页面侧一条排期都不发，并且把已经排出去的**全部撤掉**（见 notifyReconcile）。 */
+  notify: true };
 /* 清单页的四个分区（渲染顺序见 renderList）。折叠状态存的就是这几个键，
    load() 拿它当白名单过滤 —— 不让数据里的任意字符串混进 class 名。 */
 /* ★ v5.0：「考虑」已并入想法（行尾 ? 直接建种子），分区里不再有 consider。
@@ -4144,6 +4230,10 @@ function load(){
       /* ★ 0B.2：新开关。老存档没有这个字段 → 保持默认关（不能写成 !!o.autoDoneParent 之外的花样，
          也别因为缺字段就打开 —— 这是"自动替你动数据"的开关，默认必须是关） */
       S.autoDoneParent = o.autoDoneParent === true;
+      /* ★ 阶段1 提醒：总开关。老存档没有这个字段 → 默认**开**。
+         写成 `o.notify !== false` 而不是 `!!o.notify` —— 后者会让"用户显式关掉提醒"
+         在下次启动被静默打开（与 showHelp / dateShow 同一个坑）。 */
+      S.notify = o.notify !== false;
     }
   } catch (e){}
   syncTags();
@@ -4169,6 +4259,8 @@ function save(){
       /* ★ v5.1.2：日期显示口径 + 震动档位 */
       dateShow: S.dateShow, haptic: S.haptic,
       voiceVersion: 2,   /* 语音默认值只迁移一次，之后用户自己的开关说了算（见 load 的说明） */
+      /* ★ 阶段1 提醒：总开关进存档 —— 换设备 / 重装后行为一致 */
+      notify: !!S.notify,
       /* ★ 0B.2：勾完最后一个子任务是否自动完成父任务（默认关） */
       autoDoneParent: !!S.autoDoneParent
     }));
@@ -4198,10 +4290,132 @@ function snapshot(){
     setOpen: S.setOpen,
     /* ★ v5.1.2：日期显示口径 + 震动档位也进备份 —— 换手机/换电脑后不用再调一遍 */
     dateShow: S.dateShow, haptic: S.haptic,
+    /* ★ 阶段1 提醒：总开关也进备份 —— 换设备恢复后不用再调一遍 */
+    notify: !!S.notify,
     /* ★ 0B.2：这个开关也进备份 —— 换设备后行为保持一致 */
     autoDoneParent: !!S.autoDoneParent
   };
 }
+
+/* =============================== 提醒（阶段1） ===============================
+   这一块只做三件事：**算什么时候提醒**、**把结果交给原生桥**、**把原生的事件收回来**。
+
+   两条硬约定（任务卡里写死的，改这里之前先读）：
+     ★ 约定 7「排期只留一个真相源」：全页面**只有 syncNotify(it) 这一个函数**会算
+       "这一条要不要提醒、什么时候提醒"。新增 / 编辑保存 / 勾选 / 删除 / 恢复备份 / 启动
+       六个入口一律调它，谁都不许自己再算一遍时间（算两份 = 迟早不一致）。
+     ★ 约定 8「原生侧自己持久化排期表」：开机广播（BOOT_COMPLETED）来的那一刻 WebView
+       还没跑、页面读不到 localStorage，所以排期表由**原生**写进 SharedPreferences，
+       开机按它重排。页面侧只负责"告诉你该排哪些"。
+
+   桥（window.YuShiNative）只在安卓壳里有；PWA / iPhone / 桌面浏览器上整块静默降级 ——
+   没有桥就没有排期，也不会报错（与语音那条路同一个约定）。 */
+
+/* 提醒触发时刻 = 条目 date（没有 date 就用**今天**）+ 钟点（没有钟点就用 09:00）。
+   返回毫秒时间戳；返回 null = 这一条不排。
+   为什么"只有日期、没有钟点"默认早上 9 点：用户 2026-10-08 拍定的默认值 ——
+   写了日期就说明这天有事，早上 9 点是一个不早不晚的兜底钟点。
+   为什么"时刻已经过去"也不排：AlarmManager 遇到过去的时刻会**立刻**触发，
+   清单里几十条逾期条目会在开机那一刻一起炸出来。过期的不提醒，是"提醒"该有的语义。 */
+function notifyTimeOf(it, now){
+  if (!it || it.done) return null;
+  const t0 = Number.isFinite(now) ? now : Date.now();
+  const hasDate = typeof it.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(it.date);
+  const time = (typeof it.time === 'string' && /^\d{2}:\d{2}$/.test(it.time)) ? it.time : null;
+  if (!hasDate && !time) return null;                       // 没日期也没钟点 → 不排
+  const day = hasDate ? it.date : ymd(new Date(t0));        // 只有钟点 → 算今天
+  const d = dateFrom(day);
+  d.setHours(time ? +time.slice(0, 2) : 9, time ? +time.slice(3, 5) : 0, 0, 0);
+  const ts = d.getTime();
+  return ts > t0 ? ts : null;
+}
+
+/* 当前该排的全部提醒（**纯函数**：喂 items + now 就能断言，不读全局、不碰 DOM、不调桥）。
+   这也是 _ref/_1-regress.mjs 断言的那条接缝 —— 任务卡把过滤规则钉在这里：
+     无 date 无 time 不进 / 只有 date 进（09:00）/ 有 time 进（该钟点）/ 已完成不进 /
+     zone === 'long' 且有 date 的要进（长期条目也是有日期的，照样提醒）。 */
+function notifyTargets(items, now){
+  const out = [];
+  (Array.isArray(items) ? items : []).forEach(it => {
+    if (!it || !it.id) return;
+    const ts = notifyTimeOf(it, now);
+    if (ts) out.push({ id: it.id, title: it.title || it.raw || '', ts: ts });
+  });
+  return out;
+}
+
+/* 拿桥。**必须判方法本身在不在** —— 老版本的 APK 里桥对象存在但没有通知方法，
+   只判 `window.YuShiNative` 会调出一个 undefined 然后抛异常。 */
+function notifyBridge(){
+  const b = window.YuShiNative;
+  return (b && typeof b.notifySchedule === 'function' && typeof b.notifyCancel === 'function') ? b : null;
+}
+
+/* 通知权限：'granted' | 'denied' | 'unknown'（没有桥时取 'unknown'）。
+   'unknown' = 安卓 13+ 且**还没弹过**系统授权框 —— 页面据此决定要不要显示「未授权」，
+   "没问过"和"用户拒绝"是两回事，不能混着说。 */
+function notifyPerm(){
+  const b = notifyBridge();
+  if (!b || typeof b.notifyPermState !== 'function') return 'unknown';
+  try {
+    const s = String(b.notifyPermState() || '');
+    return (s === 'granted' || s === 'denied') ? s : 'unknown';
+  } catch (_){ return 'unknown'; }
+}
+
+/* 设置页那行「未授权 + 去设置」的显隐。三个条件缺一不可：有桥、总开关开着、用户明确拒过。 */
+function refreshNotifyPerm(){
+  const box = document.getElementById('notifyPerm');
+  if (!box) return;
+  box.hidden = !(notifyBridge() && S.notify && notifyPerm() === 'denied');
+}
+
+/* ★ 约定 7 里那个"唯一入口"。
+   方向由数据自己决定，调用方不用说要排还是要撤：
+     还在库里 + 没完成 + 有日期或钟点 + 时刻还没到 → 排期；其余一律 → 取消。
+     （删除、勾完、清掉日期、时刻已过、总开关关掉，全都是后一条路 —— 不需要各写一遍。） */
+function syncNotify(it){
+  const b = notifyBridge();
+  if (!b || !it || !it.id) return false;
+  const live = S.items.indexOf(it) >= 0;                    // 已经删掉的条目只撤不排
+  const ts = (S.notify && live) ? notifyTimeOf(it, Date.now()) : null;
+  try {
+    if (ts) b.notifySchedule(it.id, it.title || it.raw || '', ts);
+    else b.notifyCancel(it.id);
+  } catch (_){ return false; }
+  return !!ts;
+}
+
+/* 一次处理一批 id（循环任务打勾时会一次生成一整轮子任务）。
+   它**不算时间** —— 逐个转手给 syncNotify，仍然只有那一个真相源。 */
+function syncNotifyMany(ids){
+  (ids || []).forEach(id => {
+    const x = S.items.find(i => i.id === id);
+    if (x) syncNotify(x);
+  });
+}
+
+/* 全量对账。只在"整体变了"的三个时刻调：启动、恢复备份、总开关切换。
+   ① 该排的排（走 syncNotify，不另算时间）；
+   ② 库里其余的一律撤掉 —— 这一步是"旧排期不残留"的唯一出口：备份恢复会把整批 id 换掉，
+      上一批的闹钟如果不撤，到点会弹出一条指向已不存在条目的通知。 */
+function notifyReconcile(){
+  const b = notifyBridge();
+  if (!b) return 0;
+  const targets = S.notify ? notifyTargets(S.items, Date.now()) : [];
+  const live = new Set(targets.map(t => t.id));
+  targets.forEach(t => {
+    const it = S.items.find(x => x.id === t.id);
+    if (it) syncNotify(it);
+  });
+  S.items.forEach(it => {
+    if (it && it.id && !live.has(it.id)){
+      try { b.notifyCancel(it.id); } catch (_){}
+    }
+  });
+  return targets.length;
+}
+
 /* 去空白、去空串、去重（保留先后顺序） */
 function normTagList(list){
   const out = [];
@@ -4235,6 +4449,21 @@ function findOrCreateGoal(title, zone){
     createdAt: Date.now(), hw: null, repeat: null, parent: null, goal: true, pri: 0
   };
   S.items.unshift(g); return g;
+}
+
+/* ★ 阶段1 · 决策 3 的第二半：「早中晚吃药」→ 1 条父任务 + N 条带钟点的子任务。
+   子任务**不带 date** —— 这样它跟着父任务走：循环（每天 / 每 N 天）排下一轮时，
+   spawnNextCycle 里"无 date 的清单型子任务跟着复制"那条规则会把它们一起重生，
+   与 0A 定下的语义一致（带 date 的子任务是独立、不随轮重置的阶段型）。
+   这里是**纯**的：只按父条目造对象、不入库、不调桥 —— 纯 Node 回归可以直接断言形状。 */
+function dayPartKids(parent, times){
+  return (times || []).map(tm => ({
+    id: uid(), raw: parent.raw, title: parent.title,
+    date: null, dateEnd: null, monthOnly: false, time: tm,
+    zone: parent.zone, tags: (parent.tags || []).slice(),
+    done: false, doneAt: null, createdAt: Date.now(),
+    hw: null, repeat: null, parent: parent.id, goal: false, pri: 0, timeMode: 'once'
+  }));
 }
 
 function addItem(text){
@@ -4284,8 +4513,17 @@ function addItem(text){
   });
   syncTags();
   S.items.unshift(it);
+  /* ★ 阶段1：「早中晚吃药」→ 在父条目**后面**按 08:00 / 12:00 / 19:00 的顺序插子任务。
+     ⚠️ 顺序靠的是数组位置（S.items 的顺序就是渲染顺序），所以这里用 splice 插在父条目之后；
+     对三条子任务逐个 unshift 会把钟点渲染成 19 / 12 / 08 的倒序。 */
+  const dpKids = (p.dayParts && p.dayParts.length >= 2) ? dayPartKids(it, p.dayParts) : [];
+  if (dpKids.length) S.items.splice(1, 0, ...dpKids);
   justAdded = { id: it.id, t: Date.now() };   // 渲染时给这一条挂 .just-added，播一次落位
-  save(); return it;
+  save();
+  /* ★ 约定 7：新增也要过排期对账 —— 页面侧算时间只有 syncNotify 这一处。 */
+  notifyFire(it);
+  dpKids.forEach(k => notifyFire(k));
+  return it;
 }
 
 /* ---------------- 渲染 ---------------- */
@@ -7152,6 +7390,23 @@ function renderSettings(){
           <button class="switch" data-set="voice" role="switch" aria-label="语音输入"
                   aria-checked="${S.voice ? 'true' : 'false'}"></button>
         </div>
+        <!-- ★ 阶段1 提醒：到点弹系统通知。总开关放在这里（决策 8：与语音输入同一张卡）。
+             未授权那行是**条件显示**的 —— 渲染完由 refreshNotifyPerm() 收口，不在模板里拼条件
+             （拼条件会让"刚进设置页"与"刚授权回来"两条路各写一遍判断，迟早不一致）。 -->
+        <div class="set-row">
+          <div class="set-txt">
+            <b>提醒</b>
+            <span>写了日期或钟点的条目，到点弹一条系统通知；点通知会打开鱼事并滚到那一条。
+              只写日期、没写钟点的，默认当天早上 9 点提醒。关掉就一条通知都不发，
+              已经排出去的提醒也会一起取消。</span>
+          </div>
+          <div class="notify-side">
+            <button class="switch" data-set="notify" role="switch" aria-label="提醒"
+                    aria-checked="${S.notify ? 'true' : 'false'}"></button>
+            <span class="notify-perm" id="notifyPerm" hidden>未授权
+              <button type="button" class="pill" data-act="notifyopen">去设置</button></span>
+          </div>
+        </div>
         <!-- v3.18：原来的「系统语音（可能联网）」开关已删除 —— 语音改成**内置本地模型**
              （Vosk 中文小模型跟包走），不联网、不弹输入法。
              ⚠️ v5.0 第 3 批的口径修正：**语音**仍然不联网，但从这一版起「AI」那一栏是可选联网的
@@ -7340,6 +7595,9 @@ function renderSettings(){
       </section>
     </div>`;
   setFoldInit();
+  /* ★ 阶段1 提醒：模板里那行「未授权 + 去设置」一律先渲染成 hidden，
+     真正的显隐由这里按桥的权限状态收口（三个条件：有桥、总开关开着、用户明确拒过）。 */
+  refreshNotifyPerm();
 }
 
 /* ★ v5.0：设置页的折叠 —— 在上面那份 markup 渲染完之后**原地加工**，不改各栏自己的写法。
@@ -8643,6 +8901,18 @@ view.addEventListener('click', e => {
       el.setAttribute('aria-checked', S.autoDoneParent ? 'true' : 'false');
       toast(S.autoDoneParent ? '开着：子任务做完，父任务会跟着打勾' : '关着：子任务归子任务，父任务要自己勾');
     }
+    /* ★ 阶段1 提醒总开关。关掉 = 把已经排出去的**全部**撤掉（notifyReconcile 里那条
+       "库里其余的一律撤掉"），打开 = 按当前数据全量重排。两个方向都只走这一个入口 ——
+       页面侧算时间的地方只有 syncNotify（硬约定 7）。 */
+    else if (el.dataset.set === 'notify'){
+      S.notify = !S.notify; save();
+      el.setAttribute('aria-checked', S.notify ? 'true' : 'false');
+      refreshNotifyPerm();
+      const n = notifyReconcile();
+      if (!notifyBridge()) toast('这个壳没有通知桥：网页版 / iPhone 上不弹系统通知');
+      else if (S.notify) toast(n ? ('已打开提醒 · 排了 ' + n + ' 条') : '已打开提醒 · 现在还没有写了日期的条目');
+      else toast('已关闭提醒，排出去的都取消了');
+    }
     /* v3.4 系统语音（备用路线）：只在设备端离线不可用时才会真的被走到。 */
     else if (el.dataset.set === 'voiceSystem'){
       S.voiceSystem = !S.voiceSystem; save();
@@ -8920,17 +9190,17 @@ view.addEventListener('click', e => {
   if (act === 'gototask' && it){
     const t = it.promoted && S.items.find(x => x.id === it.promoted);
     if (!t){ toast('那条待办已经删掉了，想法还在'); return; }
-    /* ★ 审查修复（2026-10-04）：跳过去还得**找得到**它 —— 清掉清单页的搜索词
-       （否则它可能正好被筛掉），滚到那一条并闪一下。 */
-    S.q = ''; goView('list');
-    setTimeout(() => {
-      const node = view.querySelector('[data-fk="t:' + t.id + '"]');
-      const row = node && node.closest ? node.closest('.item') : null;
-      if (!row) return;
-      try { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e){}
-      row.classList.add('jump-hl');
-      setTimeout(() => row.classList.remove('jump-hl'), 1700);
-    }, 80);
+    /* ★ 阶段1：滚动定位那段抽成了 jumpToTask()（通知点击走同一份实现，不另写一套）。 */
+    jumpToTask(t.id);
+    return;
+  }
+  /* ★ 阶段1：通知权限被明确拒绝之后，唯一能把提醒救回来的入口 —— 跳系统「本应用详情」页。
+     这里只负责转发给原生桥；没有桥（网页版 / iPhone）时给一句人话，不静默也不报错。 */
+  if (act === 'notifyopen'){
+    const b = notifyBridge();
+    if (b && typeof b.openNotifySettings === 'function'){
+      try { b.openNotifySettings(); } catch (_){}
+    } else toast('这个壳没有通知设置入口');
     return;
   }
   if (act === 'sparkok'){ const inp = document.getElementById('sp_in'); if (inp && it && seedAddSpark(it, inp.value)) refresh(); return; }
@@ -9405,6 +9675,10 @@ function toggleDone(it){
       const made = spawnNextCycle(parent, st, en);
       const nx = made.length ? S.items.find(x => x.id === made[0]) : null;
       if (nx){
+        /* ★ 阶段1：这一条勾完了 → 撤掉它的提醒（它已经 done）；
+           新排出来那一轮（含跟着复制的子任务）按同一套规则排上。 */
+        notifyFire(it);
+        notifyFireMany(made);
         save(); refreshAfterChange(320);
         toast('这一轮做完了 · ' + teDateLabelFromStr(nx.date) + '再来一轮', '撤销', () => {
           const kill = new Set(made);
@@ -9414,6 +9688,11 @@ function toggleDone(it){
       }
     }
   }
+  /* ★ 阶段1：勾选会改变"要不要提醒" —— 勾完这一条撤掉，撤销回来再排上；
+     循环排出的下一轮（含跟着复制的子任务）按同一套规则排上。
+     一律走 syncNotify / syncNotifyMany，页面侧算时间只有那一处（约定 7）。 */
+  notifyFire(it);
+  notifyFireMany(cycle.ids);
   save(); refreshAfterChange(320);
   /* ★ 0B：tickSilence 是给 tickParentOnly 用的"这一路上的话由我说"开关 ——
      它调用本函数后会紧接着弹自己那条更贴切的提示（含子任务一起收起的说明），
@@ -9424,6 +9703,8 @@ function toggleDone(it){
       const kill = new Set(cycle.ids);
       S.items = S.items.filter(x => !kill.has(x.id));
     }
+    /* ★ 阶段1：撤销「完成」= 这一条又活了 → 提醒要排回来 */
+    notifyFire(it);
     save(); refreshAfterChange(320);
   });
 }
@@ -9518,8 +9799,15 @@ function remove(it, el){
     /* ★ 0A.1：删掉的可能是别人的父节点 → 立刻收口（悬空置 null、断环），
        不留到下次启动才自愈 —— 否则这一屏里就有条目挂在一个不存在的父上。 */
     sanitizeParents();
+    /* ★ 阶段1：删掉的条目还在 S.items 里就已经被剔除了 —— syncNotify 判"还在不在库里"
+       得出"只撤不排"，正好是删除该做的事（约定 7 里唯一那个入口）。 */
+    notifyFire(it);
     save(); refresh();
-    toast('已删除「' + it.title + '」', '撤销', () => { S.items.splice(idx, 0, it); save(); refresh(); });
+    toast('已删除「' + it.title + '」', '撤销', () => {
+      S.items.splice(idx, 0, it);
+      notifyFire(it);          // 撤销 = 这一条又回来了 → 提醒排回来
+      save(); refresh();
+    });
   };
   if (!row || reduceMotion()){ commit(); return; }
   exitPending.add(it.id);
@@ -10697,6 +10985,9 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
     /* 新建：原文栏只读，所以 parseSmart 的结果（分区/标签/重要程度）在 openEditNew 里就已落成初值，
        这里不再重解析 —— 否则用户在弹层里手动改的分区/优先级会被原文静默盖掉。 */
     if (isNew) S.items.push(it);   // 新建：先入库存，再统一 save/refresh（编辑则本来就在库里）
+    /* ★ 阶段1 提醒：编辑保存后按新的日期 / 钟点重排这一条（约定 7 的唯一入口）。
+       排在这里而不是上面各字段赋值处 —— 无论改了哪几个字段，收口都只有这一次。 */
+    notifyFire(it);
     /* ★ v5.0：只有**保存**这条路上才带"去程"方向 —— 取消不该走方向性退场、
        也不该让目标页签亮（什么都没送出去）。所以方向在这里设，不在打开弹层时设。 */
     if (exitOnSave) modalExit = exitOnSave;
@@ -10960,10 +11251,15 @@ window.addEventListener('drop', e => {
           /* ★ 0B.2：勾完最后一个子任务是否自动完成父任务 —— 也要跟着备份回来，
              否则同一份备份恢复两次结果不同 */
           if (typeof o.autoDoneParent === 'boolean') S.autoDoneParent = o.autoDoneParent;
+          /* ★ 阶段1 提醒：总开关跟着备份回来（否则同一份备份恢复两次结果不同） */
+          if (typeof o.notify === 'boolean') S.notify = o.notify;
           /* ★ 0A.1：备份里的 parent 同样可能悬空或成环（备份可能来自旧版本、也可能被手改过）——
              落盘前收口，判据与启动加载完全一致。 */
           sanitizeParents();
           save(); applyHelp(); refresh();
+          /* ★ 阶段1 提醒：整批 id 都换了 —— 必须做一次全量对账，把上一批的排期撤干净、
+             按新数据重排（这是"旧排期不残留"的唯一出口）。 */
+          notifyReconcile();
           toast('已从备份恢复 ' + S.items.length + ' 条');
         });
       return;
@@ -11211,7 +11507,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.4.1';
+const APP_VERSION = '5.5.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
@@ -11795,18 +12091,51 @@ function stopVoiceIfActive(){
     try { window.YuShiNative.stopVoiceOffline(); } catch (_){}
   }
 }
+/* ★ 阶段1 · 决策 4：单字连续重复的白名单。
+   这一档当年之所以"完全不管单字重复"，就是因为 `看看 / 刚刚 / 妈妈` 是正常词 ——
+   现在补这一档，靠的就是把那些正常词一个个列出来（**表里全是"同一个字连两次"的形状**，
+   判定就是"这一段与表里的词完全相等"，不做词性分析，简单可核）。
+   收词口径：口语重叠式（看看/试试/想想）、亲属称呼（妈妈/爸爸/奶奶）、
+   副词型（刚刚/常常/渐渐/慢慢/悄悄/轻轻）、量词型（天天/年年/人人/个个）。 */
+const SPEECH_KEEP = new Set([
+  '看看','试试','想想','聊聊','问问','说说','走走','坐坐','歇歇','等等','笑笑','听听',
+  '拍拍','摸摸','揉揉','擦擦','洗洗','翻翻','查查','读读','写写','算算','数数','点点',
+  '妈妈','爸爸','爷爷','奶奶','哥哥','姐姐','弟弟','妹妹','宝宝','娃娃','太太',
+  '刚刚','常常','渐渐','慢慢','悄悄','轻轻','好好','多多','早早','天天','年年','人人','个个',
+]);
+/* ★ 阶段1（决策 4）：把同一个字连续 3 次以上压成 1 次；连续 2 次查白名单，不在表里也压成 1 次。
+   真机上的叠字恰恰是**单字**形态（`代代代办级籍`），原来那一档不管单字，所以一直漏。
+   ⚠️ 只处理汉字 / 字母 / 数字的连续段：标点整段放行 ——
+   中文省略号是「……」（两个 U+2026）、破折号是「——」，把它们压掉就是新的坏输入。 */
+function collapseRuns(s){
+  let out = '', i = 0;
+  while (i < s.length){
+    let j = i;
+    while (j < s.length && s[j] === s[i]) j++;
+    const c = s[i], n = j - i;
+    if (!/[\u4e00-\u9fffA-Za-z0-9]/.test(c)) out += s.slice(i, j);        // 标点原样
+    else if (n >= 3) out += c;                                            // 3 次以上 → 1 次
+    else if (n === 2) out += SPEECH_KEEP.has(c + c) ? c + c : c;          // 2 次 → 查表
+    else out += c;
+    i = j;
+  }
+  return out;
+}
 /* ★ v3.36（用户："语音输入的时候，有时候总是出现叠字…比如我说明天种树，它就出现了
    两个名字、两个数字"）：本机识别是流式的，端点/解码偶发重复片段时，吐出来的整句会
    正好是两段相同内容（或同一个片段连着说两遍）。这里做**保守**去重，只处理确定性很高的形态：
      ① 整句 = 两段完全相同的内容；
-     ② 同一个 2 字及以上的片段连续重复（"明天明天种树" → "明天种树"）。
-   刻意**不**处理单个字的重复："看看 / 刚刚 / 常常 / 妈妈"本来就是正常词，
-   为了一次误识别把它们砍掉，代价比留着叠字大得多。 */
+     ② 同一个字连续 3 次以上 → 压成 1 次；连续 2 次 → 查 SPEECH_KEEP，不在表里就压成 1 次
+        （★ 阶段1 决策 4 新增的这一档，原来这里只注释说"不管单字"，但真机的叠字恰恰是单字）；
+     ③ 同一个 2 字及以上的**片段**连续重复（"明天明天种树" → "明天种树"）。
+   ②③ 的顺序不能反：片段那一档会把白名单里 2 字以上的词一起吃掉（`刚刚刚刚` → `刚刚` 对，
+   但 `刚刚` 单独出现时它不动，所以先跑②、再跑③是安全的）。 */
 function normalizeSpeech(s){
   let t = String(s || '').trim();
   if (!t) return '';
   const half = t.length / 2;
   if (Number.isInteger(half) && half >= 2 && t.slice(0, half) === t.slice(half)) t = t.slice(0, half);
+  t = collapseRuns(t);
   t = t.replace(/(.{2,12}?)\1{1,2}/g, '$1');
   return t.replace(/\s{2,}/g, ' ').trim();
 }
@@ -11861,6 +12190,22 @@ window.addEventListener('yushi:speech', e => {
   if (voiceActive) setVoiceStatus();          // 识别文字实时铺到栏体正上方那一行
 });
 
+/* ---------------- 原生通知桥（阶段1） ----------------
+   桥的方法与事件形状见 _android/NOTIFY-BRIDGE.md。两件事：
+     ① `open`：用户点了通知 → 打开鱼事并滚到那一条（复用 jumpToTask，与想法卡的
+        「已立项」走同一份实现 —— 任务卡步骤 5 明确要求不要另写一套定位逻辑）；
+     ② `perm`：权限结果回传。用户在系统框里允许/拒绝之后，设置页那行「未授权 + 去设置」
+        要当场变；正在设置页就重渲染一次（不在就等下次进来再看，不做后台打扰）。
+   没有桥的壳（网页版 / iPhone）上这个事件永远不派发，整块是死代码但不报错。 */
+window.addEventListener('yushi:notify', e => {
+  const d = e.detail || {};
+  if (d.type === 'open' && d.id){ jumpToTask(String(d.id)); return; }
+  if (d.type === 'perm'){
+    if (S.view === 'settings') refresh();
+    else refreshNotifyPerm();
+  }
+});
+
 /* ---------------- 换页面：**唯一入口** ----------------
    ★ 2026-10-06 审查修复（状态收敛）：换页面原来是 9 处各写一遍 `S.view = 'xxx'`，
    每处都得自己记得"要不要顺手清临时态、要不要收敛副作用类"。tree-full 那次死路
@@ -11890,6 +12235,25 @@ function goEntry(){
   goView('entry');
   const el = document.getElementById('entry');
   if (el) requestAnimationFrame(() => el.focus());
+}
+/* ★ 阶段1：跳到清单页并滚到某一条 + 闪一下。
+   它原来是写在想法卡「已立项」那个 `data-act="gototask"` 分支里的一段内联代码；
+   通知点击（yushi:notify）要的是同一件事 —— 抽成一个函数，两条路共用同一份实现，
+   不另写一套（任务卡步骤 5 明确要求复用）。
+   两个细节照旧：先清掉清单页的搜索词（否则那一条可能正好被筛掉，滚过去什么都没有），
+   再等 80ms 让 goView → refresh 那一帧把 DOM 建出来。 */
+function jumpToTask(tid){
+  const t = tid && S.items.find(x => x.id === tid);
+  if (!t){ toast('那条待办已经删掉了'); return; }
+  S.q = ''; goView('list');
+  setTimeout(() => {
+    const node = view.querySelector('[data-fk="t:' + t.id + '"]');
+    const row = node && node.closest ? node.closest('.item') : null;
+    if (!row) return;
+    try { row.scrollIntoView({ behavior:'smooth', block:'center' }); } catch (e){}
+    row.classList.add('jump-hl');
+    setTimeout(() => row.classList.remove('jump-hl'), 1700);
+  }, 80);
 }
 /* 外观切换（v2.5 起长在页面右上角，原来是顶栏里那枚）：浅 → 深 → 跟随系统 三档循环。
    图标与文案都由 applyTheme 统一同步，这里只需推进档位。 */
@@ -12114,6 +12478,11 @@ backupNudge();
   box.addEventListener('toggle', () => { S.hintOpen = box.open; save(); });
 })();
 refresh();
+/* ★ 阶段1 提醒：启动时做一次**全量对账** —— 重装 / 换机 / 改过系统时间 / 上次排期失败，
+   全靠这一次补上（硬约定 8：开机广播那一刻页面还没跑，所以"重启也不丢"真正靠的是
+   原生侧自己持久化的排期表；这一次对账是把页面里的真相再同步回去）。
+   排在 refresh 之后：它不需要 DOM，让首帧先出来，别跟开屏抢那一帧。 */
+notifyReconcile();
 /* ★ v5.0 第 3 批：AI 的静默关联扫描。**排在 refresh 之后**，而且只在
    开关打开 + 有 key + 距上次 > 24h 三条同时成立时才排那一次请求
    （函数内部自己判断，关着的时候这里什么都不做 —— 页面零外部请求）。 */

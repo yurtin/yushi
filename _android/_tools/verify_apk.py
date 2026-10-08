@@ -3,7 +3,8 @@
 
 构建脚本说「成功」不算数，这个脚本只信 APK 文件里实际有什么：
     包名 / 版本 / minSdk / targetSdk
-    权限（RECORD_AUDIO + VIBRATE；纯净版绝不含 INTERNET，联网版必须含）
+    权限（RECORD_AUDIO / VIBRATE / POST_NOTIFICATIONS / RECEIVE_BOOT_COMPLETED；
+          纯净版绝不含 INTERNET，联网版必须含）
     应用名（中文，得单独按 UTF-8 读，不能被控制台编码带歪）
     签名是否通过
     里面的 assets/www/index.html 是否和项目里的 鱼事.html 逐字节一致
@@ -127,7 +128,13 @@ for l in perms.splitlines():
         e = l.index("'", s)
         perm_names.append(l[s:e])
 say('  原始权限列表: ' + (', '.join(perm_names) if perm_names else '（空）'))
-EXPECT_PERMS = {'android.permission.RECORD_AUDIO', 'android.permission.VIBRATE'}
+EXPECT_PERMS = {'android.permission.RECORD_AUDIO', 'android.permission.VIBRATE',
+                # ★ 阶段1 提醒：到点弹通知 + 重启后重排。
+                # 两条都是普通权限；POST_NOTIFICATIONS 在 Android 13+ 还要运行时申请
+                # （用户可拒，拒绝只是不弹通知，App 不崩）。仍然**没有** SCHEDULE_EXACT_ALARM
+                # ——「不做真闹钟档」是这一版的红线。
+                'android.permission.POST_NOTIFICATIONS',
+                'android.permission.RECEIVE_BOOT_COMPLETED'}
 if AI_PKG:
     EXPECT_PERMS = EXPECT_PERMS | {'android.permission.INTERNET'}
 got = set(perm_names)
