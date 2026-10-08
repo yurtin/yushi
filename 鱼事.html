@@ -826,16 +826,26 @@ body:not([data-view="settings"]) .pdaim-footer{display:none}
 .zone.folded>:not(header){display:none}
 .empty{color:var(--faint);font-size:13px;padding:16px 2px;text-align:center}
 
-/* ★ 0B：分区列表底部的「已完成」收纳区。
-   它是 .zone 的一种（复用标题栏、折叠、高度过渡那一整套）。
-   与别的分区只有两处区别：那颗圆点降一点亮度、标题右侧多一句「含 N 条子任务」。
-   ⚠️ 这里**不降文字颜色**：第一版把 h3 写成 var(--muted)、小字写成 var(--faint)，
-   实测（_0b-dom.mjs 的对比度断言，底色按整条背景栈合成）浅色下 2.67 / 1.89、
-   深色下 3.22 / 1.94 —— 都低于"次要信息 3:1"的下限。分区标题是文字不是装饰，
-   所以沿用别的分区同一套 --fg / --muted。"更轻"只由那颗圆点承担。 */
-.done-zone>header .dot{opacity:.45}
-.done-hint{margin-left:8px;font-size:12px;font-weight:600;color:var(--fg);opacity:.72;white-space:nowrap}
-.done-zone .item .udot{opacity:.35}
+/* ★ 0E（用户原话："静态页面在功能定位上就是'还没完成的事'，那为什么要加'已完成'？"）：
+   清单页底部那块可折叠的「已完成」收纳区**整块撤掉**，换成一行入口 —— 点它去统计页的
+   「今日完成」子页看明细（数据和渲染都在那边，一份不多一份不少）。
+   形态沿用分区标题栏（同样的玻璃圆角 + 圆点 + 右侧箭头），但只有一行、不可折叠。
+   ⚠️ 配色仍用 --fg：0B 实测过降成 --muted/--faint 会掉到"次要信息 3:1"以下
+   （对比度断言见 _0b-dom.mjs），分区标题是文字不是装饰 —— 这一行同理。 */
+.done-entry{
+  appearance:none;-webkit-appearance:none;border:0;width:100%;
+  display:flex;align-items:center;gap:9px;
+  padding:16px 20px;border-radius:32px;text-align:left;
+  font:inherit;font-size:13px;font-weight:900;letter-spacing:.06em;color:var(--fg);
+  cursor:pointer;
+}
+.done-entry:hover{color:var(--accent)}
+.done-entry .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:var(--accent);opacity:.45}
+.done-entry .de-n{font-size:12px;color:var(--muted)}
+.done-entry .de-chev{margin-left:auto;opacity:.45;font-weight:800}
+/* 五张卡现在是可点的入口（role="button"）：给键盘用户一个看得见的焦点环 */
+.feature-card[data-statpage]{cursor:pointer}
+.feature-card[data-statpage]:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
 
 /* ---------- 条目 ---------- */
 /* flex-wrap:wrap + row-gap:0 是给 0D.1 准备的：子任务那棵 .goal-kids 现在是 .item 的
@@ -1492,6 +1502,23 @@ html.soft-render .feature-card:hover{transform:none}
   width:min(100%,1180px);margin:clamp(20px,2.8vw,34px) auto 0;
 }
 .stat-toolbar .len{font-size:12px;font-weight:800;letter-spacing:.08em;color:var(--faint)}
+
+/* ---------- ★ 0E：统计页的「内部子页」----------
+   用户拍定：不新增浮层、不新增 S.view —— 子页就在统计页内部**就地替换**
+   （同一个 S.view === 'stat'）。本项目在浮层层序上踩过多次坑，能就地替换就不新造浮层。
+   所以这里没有任何 position:fixed / z-index，只是一段普通的页面内容。 */
+.stat-sub{width:min(100%,1180px);margin:0 auto}
+.stat-sub-top{display:flex;align-items:center;gap:12px;padding:4px 2px 16px}
+.stat-sub-title{margin:0;font-size:clamp(19px,2.3vw,26px);font-weight:900;color:var(--fg)}
+.stat-sub-n{margin-left:auto;font-size:12.5px;font-weight:800;color:var(--faint)}
+/* 明细卡：复用 .zone 的玻璃卡（同一套圆角/内边距），只是里面装的是统计页的条目 */
+.stat-list{width:100%}
+/* 统计页是**回看**的地方：勾选框和标题仍可点（取消勾选 / 跳详情），删除按钮不画
+   （itemHTML 的第 5 个参数负责不生成它，"误删代价高"是用户拍的） */
+.stat-day{display:flex;align-items:baseline;gap:10px;padding:11px 2px;border-bottom:1px solid var(--line)}
+.stat-day:last-child{border-bottom:0}
+.stat-day .dd{font-size:13.5px;font-weight:800;color:var(--fg)}
+.stat-day .dn{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--muted)}
 .seg{
   display:inline-flex;gap:3px;padding:4px;border-radius:999px;
   background:var(--pill);border:1px solid color-mix(in srgb,var(--glass-edge) 55%,transparent);
@@ -3895,9 +3922,6 @@ const LS_OLD = 'daibanji.v1';
    这两个都随备份持久化 —— 换手机恢复后，主题偏好和"上次看的是时间轴还是分区"也要跟着过来。 */
 const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', tags: TAGS_DEFAULT.slice(),
   statLayout: 'card', hintOpen: false, showHelp: true, foldedZones: [], theme: 'auto', listMode: 'zone',
-  /* ★ 0B：分区列表底部那条「已完成」是否展开。默认收起（做完的东西不占第一屏），
-     会话级就够 —— 不必进存档，重开回到收起态是期望行为。 */
-  doneOpen: false,
   voice: true,
   /* v3.4：设备端离线识别不可用时的备用方案（用户拍板加的开关，默认关） */
   voiceSystem: false,
@@ -4455,7 +4479,7 @@ function seedHTML(it, info){
   </div>`;
 }
 
-function itemHTML(it, kidsHTML, goalInfo, extraHTML){
+function itemHTML(it, kidsHTML, goalInfo, extraHTML, noDel){
   if (isSeed(it)) return seedHTML(it);
   /* 标签名和 id 都必须转义：标签名来自用户输入（重命名时 normTagList 只去 # 和空白），
      id 来自备份 json（外部数据）。不转义的话，名字里带一个英文引号就会把属性截断 ——
@@ -4498,7 +4522,7 @@ function itemHTML(it, kidsHTML, goalInfo, extraHTML){
     </div>
     <div class="acts">
       <button class="mini" data-act="edit" title="编辑">✎</button>
-      <button class="mini" data-act="del" title="删除">✕</button>
+      ${noDel ? '' : '<button class="mini" data-act="del" title="删除">✕</button>'}
     </div>
     ${kidsHTML || ''}
   </div>`;
@@ -4769,30 +4793,26 @@ function renderZoneBody(){
 
   /* 三栏顺序＝「要管的程度」从松到紧：长期（最没期限）→ 短期（有死线）→ 循环（节奏固定）。
      「考虑」不算待办，只在这儿暂存想法，铺满整行收在最后，不挤进这三栏。 */
-  /* ★ 0B：「收进已完成区」这个说法以前没有对应的东西 —— 勾完（或按「只勾父任务」收起）
-     的条目数据还在库里，但分区列表里根本不再出现，所以"收进哪儿了"是个空头承诺。
-     这里给它一个真实的落点：分区列表最下面一条可折叠的「已完成 N 条」。
-     只收**根级**已完成条目，它们的子任务挂在各自卡的 .goal-kids 里 —— 与分区列表同构。
-     默认收起：今天做完的东西不该继续占着第一屏。
-     **只显示今天完成的**（用户拍 B）：昨天做完的沉下去，不给长期占位 ——
-     所以这行数字每天自然清空，跟统计页「今日完成」是同一个口径。
-     前两天刚做完想回看，走时间轴或统计（数据一条都没删）。
-     ⚠️ 已完成父卡的子任务必须**单独补进 kids**：kids 是从 ordered() 建的，而 ordered() 里
-     这些子任务已经 done，不会进来 —— 不补的话父卡在已完成区里是一张光杆卡，
-     用户会以为"收起来"把子任务弄丢了（0B.4 的承诺也就断了）。 */
+  /* ★ 0E（用户原话："静态页面在功能定位上就是'还没完成的事'，那为什么要加'已完成'？"）：
+     0B 在这里挂过一整块可折叠的「已完成」收纳区 —— 那个位置本身就是错位的，清单页只管
+     "还没做的"。现在**整块撤掉**（折叠头、列表、把子任务补进 kids 的那段、S.doneOpen
+     一起删），只留**一行入口**去统计页的「今日完成」子页：数据和渲染都在那边，
+     一份不多、一份不少，也不再需要"把已完成子任务补进 kids"那种两套渲染的补丁。
+     N 与统计页「今日完成」卡同一个口径（排除想法 + doneAt 落在今天）。
+     ⚠️ 这里**不调用** statPageHits，而是直接用 statDoneItems 拼同一个谓词：0B 的纯 Node
+     回归脚本是把 renderZoneBody 整段切出来喂桩跑的，引用一个新增的全局函数会让那份脚本
+     直接 ReferenceError 崩掉、把它本来绿的断言一起带走。两处口径一致由 _0e-regress.mjs
+     的**运行时等式断言**钉住（同时渲染入口行与统计卡，比 N 必须相等）。 */
   const todayYmd = ymd(today0());
-  const doneRoots = S.items.filter(i => i.done && !isSeed(i) && !i.repeat &&
-    ymd(new Date(i.doneAt || i.createdAt || 0)) === todayYmd &&
-    !(i.parent && byId.has(i.parent))).sort(cmpItem);
-  doneRoots.forEach(r => {
-    const mine = S.items.filter(x => x.parent === r.id && !isSeed(x));
-    if (mine.length){
-      const cur = kids.get(r.id) || [];
-      const seen = new Set(cur.map(x => x.id));
-      mine.forEach(x => { if (!seen.has(x.id)) cur.push(x); });
-      kids.set(r.id, cur.sort(cmpItem));
-    }
-  });
+  const doneTodayN = statDoneItems().filter(i => i.doneAt && ymd(new Date(i.doneAt)) === todayYmd).length;
+  if (doneTodayN){
+    bh += `<button class="glass zone-wide done-entry${rv()}" data-statentry="1"${rvd(40)}
+      aria-label="今天已完成 ${doneTodayN} 条，点开看明细">
+      <span class="dot" aria-hidden="true"></span>今天已完成 <b class="de-n mono">${doneTodayN}</b> 条
+      <span class="de-chev" aria-hidden="true">›</span>
+    </button>`;
+  }
+
   cols.forEach((c, zi) => {
     /* ★ 0B：分区列表**不收已完成的根条目** —— 它们沉到下面那条「已完成」里。
        不排除的话，一个做完了的父任务会继续占着分区列表（数据上它是根），
@@ -4808,21 +4828,8 @@ function renderZoneBody(){
     </section>`;
   });
 
-  /* ★ 0B：已完成收纳区（默认收起）。整条压在分区列表脚下 ——
-     它是"今天做完的东西"，不该继续占第一屏；但也不能让用户以为做完就没了。 */
-  if (doneRoots.length){
-    const open = !!S.doneOpen;
-    const kidN = doneRoots.reduce((n, x) => n + ((byParent.get(x.id) || []).length), 0);
-    bh += `<section class="glass zone done-zone${open ? '' : ' folded'}${rv()}" data-z="done"${rvd(40)}>
-      <header data-donefold="1" role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}">
-        <span class="dot"></span><h3>已完成</h3>
-        <span class="n mono">${doneRoots.length}</span>
-        <span class="done-hint">${kidN ? '含 ' + kidN + ' 条子任务' : ''}</span>
-        <i class="z-chev" aria-hidden="true"></i>
-      </header>
-      ${open ? doneRoots.map(x => renderTree(x)).join('') : ''}
-    </section>`;
-  }
+  /* ★ 0E：0B 那块「已完成」收纳区就长在这里，现在整块删掉了（见上面那行入口）。
+     清单页只有"还没做的"—— 做完的东西回统计页看。 */
 
   /* 考虑区：这里放的是「还没决定要不要做」的事，不是待办 —— 不占三栏之一，
      靠 grid-column:1/-1 铺满整行落在所有栏目脚下，绿点跟上面三栏的蓝点分开。
@@ -6337,14 +6344,144 @@ function openSeedPrompt(title, label, placeholder, onOk){
   });
 }
 
+/* ==================== ★ 0E：统计页的「内部子页」（就地替换，不新增浮层） ====================
+   用户原话："静态页面在功能定位上就是'还没完成的事'，那为什么要加'已完成'？"
+   —— 清单页管"还没做的"，做完的东西回统计页看。于是两件事一起做：
+     ① 清单页那块「已完成」折叠区撤掉，只留一行入口（见 renderZoneBody 末尾）；
+     ② 统计页原来只是五张点不进去的数字卡，现在每张都能点开看明细。
+   形态（用户拍定）：**不新增浮层、不新增 S.view** —— 子页就在统计页内部就地替换，
+   还是同一个 S.view === 'stat'。本项目在浮层层序上踩过多次坑，能就地替换就不新造浮层。
+   statPage 是**这一屏的临时状态**：故意不进 S、不进备份，换页 / 重开一律回统计首页
+   （清理点只有一处 —— goView）。 */
+let statPage = null;                       // null | 'today' | 'streak' | 'overdue' | 'hw' | 'history'
+
+/* 五个子页的标题 / 单位 / 空态只有一份。统计卡、清单页那行入口、子页标题栏都从这里取。 */
+const STAT_PAGES = {
+  today:   { title: '今日完成', unit: '条', empty: '今天还没有打勾完成的事。' },
+  streak:  { title: '连续打勾', unit: '天', empty: '还没有打勾记录。' },
+  overdue: { title: '已逾期',   unit: '条', empty: '没有已经过期还没做的事。' },
+  hw:      { title: '作业未交', unit: '项', empty: '没有还没交的作业。' },
+  history: { title: '历史完成', unit: '条', empty: '还没有打过勾。' },
+};
+
+/* 子页取数 —— **唯一真相源**：卡片上的大数字、子页标题栏的「共 N 条」、清单页那行入口的 N
+   全都走这一个函数（三处各写一遍 filter，迟早对不上）。口径与统计卡原先完全一致：
+   今日完成 = doneAt 落在今天；历史完成 = 全部已完成；已逾期 = 有日期且 daysFromToday<0；
+   作业未交 = 标了作业且状态没到已交。排除想法（种子）那条在 statDoneItems 里（0B.8）。 */
+function statPageHits(key){
+  if (key === 'today'){
+    const today = ymd(today0());
+    return statDoneItems().filter(i => i.doneAt && ymd(new Date(i.doneAt)) === today);
+  }
+  if (key === 'history') return statDoneItems().slice();
+  if (key === 'overdue') return S.items.filter(i => !i.done && !isSeed(i) && i.date && daysFromToday(i.date) < 0);
+  if (key === 'hw') return S.items.filter(i => i.hw && !i.done && !isSeed(i) && i.hw.status !== 'submitted');
+  return [];
+}
+/* 明细页要"根级条目 + 挂在它们下面的子任务"（与清单页同构，用户不用学新东西）。
+   做法：命中集合里，有"命中的祖先"的挂到最近那一级下面，没有的当根。这么定有两个好处：
+   ① 与 0B 的已完成区同一套父子语义；② **一条都不会消失** —— 子任务命中了、父任务没命中
+   （父没逾期、子逾期）时它自己当根画出来，而不是因为"父卡不在这一页"就凭空不见。
+   PARENT_GUARD 与全站其它祖先遍历一致，parent 成环也不会转死。 */
+function statTreeOf(hits){
+  const byId = new Map(S.items.map(i => [i.id, i]));
+  const hit = new Set(hits.map(i => i.id));
+  const roots = [], kids = new Map();
+  hits.forEach(i => {
+    let cur = i, owner = null, guard = 0;
+    while (cur.parent && byId.has(cur.parent) && guard++ < PARENT_GUARD){
+      const p = byId.get(cur.parent);
+      if (hit.has(p.id)){ owner = p.id; break; }
+      cur = p;
+    }
+    if (owner){ if (!kids.has(owner)) kids.set(owner, []); kids.get(owner).push(i); }
+    else roots.push(i);
+  });
+  kids.forEach(arr => arr.sort(cmpItem));
+  return { roots: roots.sort(cmpItem), kids };
+}
+/* 明细列表的 HTML。复用清单页那一套 itemHTML + .goal-kids 结构。
+   统计页是**回看**的地方，所以不折叠（不传 goalInfo → 没有 ▾ 角标），全部展开。 */
+function statItemsHTML(hits){
+  const t = statTreeOf(hits);
+  const seen = new Set();          // 环路兜底：同一条最多画一次（脏 parent 也不至于转死）
+  function walk(it){
+    if (seen.has(it.id)) return '';
+    seen.add(it.id);
+    const ch = t.kids.get(it.id) || [];
+    const kidsHTML = ch.length
+      ? `<div class="goal-kids" data-kids="${esc(it.id)}">` + ch.map(walk).join('') + `</div>`
+      : '';
+    /* itemHTML 第 5 个参数 = 「这一行不画删除按钮」：统计页误删代价高（用户拍定）。
+       勾选框与标题照旧可点（取消勾选 / 跳详情）。 */
+    return itemHTML(it, kidsHTML, null, '', true);
+  }
+  return t.roots.map(walk).join('');
+}
+/* 「连续打勾」子页不是条目列表，而是按天。**只列有打勾记录的那天** ——
+   没有记录的日子列出来只会是一串"没打勾"的灰字噪音（这个取舍写在回报里）。 */
+function statStreakDays(limit){
+  const days = new Map();
+  statDoneItems().forEach(i => {
+    if (!i.doneAt) return;
+    const d = ymd(new Date(i.doneAt));
+    days.set(d, (days.get(d) || 0) + 1);
+  });
+  return [...days.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0))
+    .slice(0, limit || 30);
+}
+/* 子页整段：返回 HTML 片段、不写 #view —— 与 renderZoneBody 同一形态，
+   纯 Node 回归脚本（_0e-regress.mjs）能把整段切出来喂桩。 */
+function renderStatSub(key){
+  const meta = STAT_PAGES[key];
+  if (!meta) return '';
+  const hits = statPageHits(key);
+  let body, n;
+  if (key === 'streak'){
+    const days = statStreakDays(30);
+    n = '共 ' + days.length + ' 天';
+    body = `<section class="glass zone stat-list${rv()}">` + (days.length
+      ? days.map(d => `<div class="stat-day">
+          <span class="dd">${esc(teDateLabelFromStr(d[0]))}</span>
+          <span class="dn mono">当天完成 ${d[1]} 条</span>
+        </div>`).join('')
+      : `<div class="empty">${meta.empty}</div>`) + `</section>`;
+  } else {
+    n = '共 ' + hits.length + ' 条';
+    body = `<section class="glass zone stat-list${rv()}">` + (hits.length
+      ? statItemsHTML(hits)
+      : `<div class="empty">${meta.empty}</div>`) + `</section>`;
+  }
+  return `<div class="stat-sub">
+    <div class="stat-sub-top${rv()}">
+      <button class="btn ghost stat-back" type="button" data-statback="1">← 返回</button>
+      <h2 class="stat-sub-title">${meta.title}</h2>
+      <span class="stat-sub-n mono">${n}</span>
+    </div>
+    ${body}
+  </div>`;
+}
+/* 进 / 出统计子页 —— 与 goView 同样的思路：只留一个入口，别让调用点各自为政。 */
+function statGo(page){
+  statPage = (page && STAT_PAGES[page]) ? page : null;
+  ANIM = true;                     // 子页是新的一屏，播一次入场
+  renderStat();
+  /* 0D.3 的 __syncBarFit 只把"装得下"的页面偏移归零；装不下的子页得自己回到顶部 */
+  if (window.scrollY > 0) window.scrollTo(0, 0);
+}
+
 function renderStat(){
-  const today = ymd(today0());
-  /* ★ 0B.8：一律排除想法（种子）——见 statDoneItems 的说明 */
-  const doneItems = statDoneItems();
-  const doneTodayList = doneItems.filter(i => i.doneAt && ymd(new Date(i.doneAt)) === today);
-  const overdue = S.items.filter(i => !i.done && !isSeed(i) && i.date && daysFromToday(i.date) < 0).length;
-  const hwOpen = S.items.filter(i => i.hw && !i.done && !isSeed(i) && i.hw.status !== 'submitted').length;
+  /* ★ 0E：统计页现在有"内部子页"。statPage 是这一屏的临时状态（换页即清，见 goView），
+     所以在最前面分流：有子页就画子页，没有再画五张卡。 */
+  if (statPage && STAT_PAGES[statPage]){ view.innerHTML = renderStatSub(statPage); return; }
+  /* ★ 0E：取数只有一处 —— 卡片数字 / 子页「共 N 条」/ 清单页那行入口的 N，全走 statPageHits。
+     （0B.8 的"一律排除想法"在 statDoneItems 里，而它现在只被 statPageHits 调。） */
+  const doneTodayList = statPageHits('today');
+  const doneItems = statPageHits('history');
   const doneAll = doneItems.length;
+  const overdue = statPageHits('overdue').length;
+  const hwOpen = statPageHits('hw').length;
   const st = streak();
   const tile = S.statLayout === 'tile';
 
@@ -6385,15 +6522,18 @@ function renderStat(){
      我把它并进第一张卡的 sub 里，用户直接指出"连续打勾统计怎么没有了，我之前不是说
      连续打勾占第二个吗"）
      ③ 已逾期  ④ 作业未交  ⑤ 历史完成
-     其中原来「已逾期 + 作业未交」并排在一张 .pair 卡里，用户说"太挤了" → 各占一张。 */
+     其中原来「已逾期 + 作业未交」并排在一张 .pair 卡里，用户说"太挤了" → 各占一张。
+     ★ 0E：五张卡各自挂 page —— 卡片从"只能看的数字"变成"能点进去看明细的入口"。
+     data-statpage 的值就是子页 key，数字本身仍取自 statPageHits，所以卡上的数字
+     与点进去那一页的「共 N 条」必然是同一个数。 */
   const cards = [
-    { k: '今日完成', v: doneTodayList.length, s: '条', cls: 'accent big',
+    { k: '今日完成', v: doneTodayList.length, s: '条', cls: 'accent big', page: 'today',
       sub: breakdown(doneTodayList) },
-    { k: '连续打勾', v: st, s: '天没断', cls: 'big',
+    { k: '连续打勾', v: st, s: '天没断', cls: 'big', page: 'streak',
       tip: '连着多少天，每天都至少打勾一次。今天还没打勾不算断，从昨天往前数。' },
-    { k: '已逾期', v: overdue, s: '条', tip: '截止日已经过去、还没打勾的条数。' },
-    { k: '作业未交', v: hwOpen, s: '项', tip: '标了「作业」、状态还没到「已交」的条数。' },
-    { k: '历史完成', v: doneAll, s: '条', sub: breakdown(doneItems) }
+    { k: '已逾期', v: overdue, s: '条', page: 'overdue', tip: '截止日已经过去、还没打勾的条数。' },
+    { k: '作业未交', v: hwOpen, s: '项', page: 'hw', tip: '标了「作业」、状态还没到「已交」的条数。' },
+    { k: '历史完成', v: doneAll, s: '条', page: 'history', sub: breakdown(doneItems) }
   ];
 
   /* 「布局 横条/方块」这一行原来没挂揭示类：整页别的东西都在淡入去模糊，
@@ -6443,7 +6583,14 @@ function renderStat(){
         `<div class="v" data-fk="v:${ci}:${xi}">${x.v}</div>` +
         `<div class="s" data-fk="s:${ci}:${xi}">${x.s}</div>` +
         `</div>` + (x.sub || '')).join('');
-      return `<div class="glass feature-card ${c.cls}${rv()}"${rvd(60 + ci * 50)}${tip} data-fk="c:${ci}">
+      /* ★ 0E：卡片可点（进对应子页）。语义交给 role="button" + aria-label ——
+         卡里还有大数字和药丸，用真的 <button> 把它整块包起来会破坏 .pcol 的排版。
+         键盘可达靠 tabindex + view 的 keydown 分流（Enter / 空格）。 */
+      const pageAttr = c.page
+        ? ` data-statpage="${c.page}" role="button" tabindex="0"`
+          + ` aria-label="${c.k}：${c.v}${c.s}，点开看明细"`
+        : '';
+      return `<div class="glass feature-card ${c.cls}${rv()}"${rvd(60 + ci * 50)}${tip} data-fk="c:${ci}"${pageAttr}>
         ${inner}
       </div>`;
     }).join('') + `</div>`;
@@ -8313,27 +8460,21 @@ view.addEventListener('keydown', e => {
     e.preventDefault();
     zf.click();
   }
+  /* ★ 0E：统计页五张卡与清单页那行入口同样是 role="button"（卡里还有大数字和药丸，
+     不能用真的 <button> 包整块），Enter / 空格 要能进去。写法与上面分区标题一致。 */
+  const sp = e.target.closest && e.target.closest('[data-statpage],[data-statentry]');
+  if (sp && (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar')){
+    e.preventDefault();
+    sp.click();
+  }
 });
 
 view.addEventListener('click', e => {
-  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-donefold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart]');
+  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart],[data-statpage],[data-statback],[data-statentry]');
   if (!el) return;
 
-  /* ★ 0B：分区列表底部「已完成」那条的展开 / 收起。
-     与分区折叠同一个手感（.zone 高度过渡），但它不进 S.foldedZones ——
-     分区折叠是"我把长期收起来了"的长期偏好，已完成区是"我现在想不想看"的临时动作，
-     所以用会话级的 S.doneOpen，重开回到收起。 */
-  if (el.dataset.donefold !== undefined){
-    S.doneOpen = !S.doneOpen;
-    const sec = el.closest('.zone');
-    if (!sec){ refresh(); return; }
-    const wasFolded = sec.classList.contains('folded');
-    el.setAttribute('aria-expanded', wasFolded ? 'false' : 'true');
-    if (reduceMotion()){ refresh(); return; }
-    /* 展开要走 refresh（收起态下子卡片根本没有 DOM，没有可展开的东西） */
-    refresh();
-    return;
-  }
+  /* ★ 0E：清单页底部那块「已完成」折叠区整块撤掉了 —— 连它的展开 / 收起分支一起删。
+     （原来这里读写的 S.doneOpen 也一并清掉了，不留"字段还在但没人读"的孤儿。） */
 
   /* 分区折叠（长期 / 短期 / 循环 / 考虑）：复用 .zone 高度过渡（foldZoneWithMotion），
      就地切换、不走 refresh()。走 refresh() 的话整页重建会闪、滚动位置也会跳，
@@ -8445,6 +8586,14 @@ view.addEventListener('click', e => {
     }
     return;
   }
+  /* ★ 0E：统计页的五张卡 → 进对应子页；子页的「← 返回」→ 回统计首页。
+     都是**就地替换**（不新增浮层、不新增 S.view），统一走 statGo 这一个入口。 */
+  if (el.dataset.statpage !== undefined){ statGo(el.dataset.statpage); return; }
+  if (el.dataset.statback !== undefined){ statGo(null); return; }
+  /* ★ 0E：清单页那行「今天已完成 N 条」→ 统计页的「今日完成」子页。
+     它真的换了视图（list → stat），所以走 goView 这个唯一入口；子页由 opts.statPage
+     点名 —— goView 里"每次换页都回统计首页"那条兜底才不会把它一起抹掉。 */
+  if (el.dataset.statentry !== undefined){ goView('stat', { statPage: 'today' }); return; }
   /* 设置页的外观开关。同样不走 refresh()：显示的显隐交给 body[data-help]，
      所以这里只要改状态 + 同步 aria-checked，页面一帧都不会跳。 */
   if (el.dataset.set !== undefined){
@@ -11053,7 +11202,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.3.3';
+const APP_VERSION = '5.4.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
@@ -11716,6 +11865,10 @@ window.addEventListener('yushi:speech', e => {
       不是冗余代码。 */
 function goView(v, opts){
   const o = opts || {};
+  /* ★ 0E：统计页的子页只活在"这一屏"里 —— 任何换页（含重开底栏那颗「统计」）都回到
+     统计首页。statPage 故意不进 S、不进备份，所以这条兜底是它唯一的清理点。
+     清单页那行入口要**直接**进某一子页，就用 goView('stat', { statPage:'today' }) 点名。 */
+  statPage = (v === 'stat' && o.statPage) ? o.statPage : null;
   if (S.view === v){ refresh(); return; }
   S.view = v;
   if (v !== 'idea'){ ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); ideaUI.sparkOpen = null; }
