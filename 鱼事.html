@@ -2082,6 +2082,19 @@ input:focus-visible,textarea:focus-visible{outline:none!important}
    不会整页重播 —— 本项目早先正是栽在「无条件入场动画 + innerHTML 整体重建」上。 */
 @keyframes itemIn{from{opacity:0;transform:translateY(-7px) scale(.995)}to{opacity:1;transform:none}}
 .item.just-added{animation:itemIn .34s var(--mo-soft) both}
+/* ★ 2B 两段式上屏的第二段：AI 回来之后把这一条的标题换了，**亮 0.5 秒**让用户看见改成了什么
+   （用户原话："并且要停留 0.5 秒左右吧，就是让用户知道修改成什么了"）。
+   只亮标题那一块，不整卡闪 —— 否则看起来像又新加了一条。
+   用 animation 而不是 transition：它是一次性提示，跑完就该消失，不需要结束状态。 */
+@keyframes swapFlash{
+  from{background:color-mix(in srgb,var(--accent) 26%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)}
+  to{background:transparent;box-shadow:none}
+}
+.item.ai-swapped .t{
+  border-radius:7px;margin:-2px -5px;padding:2px 5px;
+  animation:swapFlash .5s var(--mo-soft) both;
+}
+@media (prefers-reduced-motion:reduce){ .item.ai-swapped .t{animation:none} }
 
 /* ---------- 6. 写法提示的展开 / 收起 ----------
    原生 <details> 是"啪"一下弹开的。Chrome 131+ 支持 ::details-content 伪元素，
@@ -4636,6 +4649,9 @@ let staleToastShown = false;
    用 id + 时间戳而不是一个"用完就清"的标记 —— 万一这条被筛掉了没渲染，
    标记也就自然过期，不会留到下一次刷新去污染别的条目。 */
 let justAdded = { id: '', t: 0 };
+/* ★ 2B：两段式上屏的第二段 —— AI 回来之后换掉了哪一条的标题，那条亮 0.5 秒。
+   与 justAdded 同一个套路（记 id + 时间戳，渲染时按时间窗挂类）。 */
+let aiSwapped = { id: '', t: 0 };
 
 /* 筛选栏可以多选：选中的标签之间是「或」——挂着其中任意一个就显示出来。
    同时搜索框再做一次标题/原文的过滤。 */
@@ -4739,7 +4755,8 @@ function seedHTML(it, info){
   const sugN = Array.isArray(it.suggest) ? it.suggest.length : 0;
   const cls = 'item seed' + (it.done ? ' done' : '') + (sleeping ? ' sleep' : '')
     + (pri ? ' pri' + pri : '')
-    + (it.id === justAdded.id && Date.now() - justAdded.t < 1200 ? ' just-added' : '');
+    + (it.id === justAdded.id && Date.now() - justAdded.t < 1200 ? ' just-added' : '')
+    + (it.id === aiSwapped.id && Date.now() - aiSwapped.t < 1600 ? ' ai-swapped' : '');
   /* 时间轴：一条竖脊 + 每步一个点。第一步是"种子本身"（记进来的那天），
      后面的都是它长出来的。日期用 createdAt 兜底 —— 老数据没有 at 也不会露出空标签。 */
   const first = it.createdAt ? ymd(new Date(it.createdAt)) : '';
@@ -4824,7 +4841,8 @@ function itemHTML(it, kidsHTML, goalInfo, extraHTML, noDel){
   const pri = it.pri || 0;
   const cls = 'item' + (it.done ? ' done' : '') + (overdue ? ' overdue' : '') + (stale ? ' stale' : '')
     + (pri ? ' pri' + pri : '') + (goalInfo ? ' goal' : '')
-    + (it.id === justAdded.id && Date.now() - justAdded.t < 1200 ? ' just-added' : '');
+    + (it.id === justAdded.id && Date.now() - justAdded.t < 1200 ? ' just-added' : '')
+    + (it.id === aiSwapped.id && Date.now() - aiSwapped.t < 1600 ? ' ai-swapped' : '');
   const lvl = urgencyLevel(it);
   /* ★ v3.36（用户："分区和时间轴页面里都有那个点…这些点也作为一个固定元素，
      让它们在视图切换时跟随那个文字，到自己对应的位置，不要直接消失和出现"）：
@@ -9251,11 +9269,27 @@ document.addEventListener('wheel', e => {
    解不了（大白话）→ 交给模型听懂；模型任何一环出问题 → 退回本地结果，
    并且**明确告诉用户"用的是本地识别"**（红线 2：绝不生成假数据）。
    输入框在等待之前就清掉 —— 用户按回车是"我说完了"，不该盯着自己那句话等。 */
-async function commitEntry(){
+async function commitEntry(opts){
   const el = document.getElementById('entry');
   const v = el.value.trim();
   if (!v) return;
   el.value = '';
+  /* ★ 2B 两段式上屏（用户 2026-10-08 定，选项 A：松手后用 AI 结果整套替换一次 + 停 0.5 秒）。
+     松手先把**本地结果**顶上屏（零请求、几毫秒），AI 回来之后再用它的结果替换。
+     语音录入的"慢"全部集中在"松手 → 卡片出现"这一段，而这一段根本不需要等网络。
+     只在"本地结果是一条干干净净的普通条目"时才启用 —— 带 path / dayParts / 循环 / 目标的
+     本地结果会顺手建出父卡与子任务，替换时收不干净；那几种本来就带语法、压根不会出网。 */
+  let quickMade = null;
+  if (opts && opts.twoPhase && aiOn() && smartNeedAI(v)){
+    const quick = smartLocalPlan(v);
+    const qp = quick.items[0] && quick.items[0].preset;
+    if (quick.items.length === 1 && qp && !(qp.path && qp.path.length)
+        && !(qp.dayParts && qp.dayParts.length) && !qp.repeat && !qp.goal){
+      quickMade = aiCommitPlan(quick, v);
+      refresh();
+      if (quickMade[0]) toast('先记下了 · 正在让 AI 听懂…', null, 2600);
+    }
+  }
   let plan;
   try {
     plan = await aiUnderstand(v);
@@ -9264,7 +9298,25 @@ async function commitEntry(){
     plan = smartLocalPlan(v);
     plan.reason = 'error';
   }
-  const made = aiCommitPlan(plan, v);
+  let made;
+  if (quickMade && quickMade.length){
+    /* 第二段。AI 头一条标题与本地一致就什么都不动（这种情况占大多数）；
+       不一致才替换，且替换做成**重建**而不是就地改字段 —— AI 的产出可能连分区都换
+       （长期 ↔ 想法），就地改要处理种子/待办的整整一列字段，重建只走 addItem 这一条路。 */
+    const same = plan.items.length === quickMade.length
+      && plan.items.every((x, i) => String(x.title) === String(quickMade[i].title));
+    if (same){
+      made = quickMade;
+    } else {
+      const kill = new Set(quickMade.map(x => x.id));
+      quickMade.forEach(x => { try { syncNotify(x); } catch (e){} });   // 先撤排期（约定 7 的唯一入口）
+      S.items = S.items.filter(x => !kill.has(x.id));
+      made = aiCommitPlan(plan, v);
+      if (made[0]) aiSwapped = { id: made[0].id, t: Date.now() };       // 亮 0.5 秒
+    }
+  } else {
+    made = aiCommitPlan(plan, v);
+  }
   const it = made[0] || null;
   /* ★ 2B（用户 2026-10-08）：把 AI **纠错后的整句**也留下来。
      为什么：用户真机录「我大后天要去图书馆还从图书馆借的书」，本地识别吐的是
@@ -12286,7 +12338,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.6.1';
+const APP_VERSION = '5.7.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
@@ -12706,7 +12758,8 @@ function voiceLeft(){
   cancelVoice();
   if (text){                                     // 有识别结果 → 直接入库（与打字同一入口）
     const el = document.getElementById('entry');
-    if (el){ el.value = text; commitEntry(); }
+    /* ★ 2B：语音这条走**两段式上屏** —— 本地结果先顶上，AI 回来再替换（见 commitEntry）。 */
+    if (el){ el.value = text; commitEntry({ twoPhase: true }); }
   } else {                                       // 没结果（语音关 / 不支持 / 没听清）→ 弹键盘降级
     goEntry();
     toast('点键盘上的麦克风说话');

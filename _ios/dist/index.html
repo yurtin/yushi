@@ -518,7 +518,7 @@ body[data-help="off"] .intro-note{
   background:color-mix(in srgb,var(--fg) 5%,transparent);
   color:var(--muted);font:inherit;font-size:11px;font-weight:700;letter-spacing:.02em;
   transition:background var(--mo-quick) ease,color var(--mo-quick) ease}
-.filter-bar:hover{color:var(--fg)}
+@media (hover:hover){ .filter-bar:hover{color:var(--fg)} }
 .filter-bar:active{background-color:var(--pill-hover)}
 .filter-bar .fb-chev{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2.2;
   stroke-linecap:round;stroke-linejoin:round;transition:transform .22s cubic-bezier(.2,.8,.2,1)}
@@ -1239,7 +1239,7 @@ html.soft-render .mask .modal{
   border:1px solid var(--line2);border-radius:14px;background:transparent;color:var(--fg);
   font:inherit;font-size:14px;font-weight:600;padding:11px 14px;outline:0;cursor:pointer;text-align:left;
 }
-.te-head:hover{border-color:var(--fg)}
+@media (hover:hover){ .te-head:hover{border-color:var(--fg)} }
 .te-head .te-cap{flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
 .te-head .te-val{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .te-head .te-val.mute{color:var(--faint)}
@@ -1276,7 +1276,7 @@ html.soft-render .mask .modal{
   background:transparent;color:var(--faint);font:inherit;font-size:14px;font-weight:700;cursor:pointer;
   transition:color var(--mo-base) var(--mo-soft),border-color var(--mo-base) var(--mo-soft);
 }
-.te-clear:hover{color:var(--danger);border-color:var(--danger)}
+@media (hover:hover){ .te-clear:hover{color:var(--danger);border-color:var(--danger)} }
 /* 内联日历：直接复用既有的 .cal-* 视觉（同一个 .cal-d / .cal-nav / .cal-title），
    只把外层从 .sel-pop 浮层换成展开区里的一个普通块。
    ★ v3.41：去掉自造的浅色面板与边框 —— 全站日历本体从来就是"无面板"的；
@@ -1293,14 +1293,14 @@ html.soft-render .mask .modal{
   aspect-ratio:1;border:0;background:transparent;color:var(--fg);font:inherit;font-size:12.5px;
   border-radius:9px;cursor:pointer;transition:background var(--mo-fast) ease;
 }
-.te-cal .cal-d:hover{background:var(--pill)}
+@media (hover:hover){ .te-cal .cal-d:hover{background:var(--pill)} }
 /* 区间带：起点/终点实心（与 .cal-d.on 同一套蓝），中间连成一条带（不是三个孤立的点） */
 .te-cal .cal-d.inrange{background:color-mix(in srgb,var(--accent) 20%,transparent);border-radius:0}
 .te-cal .cal-d.rstart{border-radius:9px 0 0 9px}
 .te-cal .cal-d.rend{border-radius:0 9px 9px 0}
 .te-cal .cal-d.rboth{border-radius:9px}
 .te-cal .cal-d.edge{background:var(--accent);color:#fff;font-weight:800}
-.te-cal .cal-d.edge:hover{background:var(--accent)}
+@media (hover:hover){ .te-cal .cal-d.edge:hover{background:var(--accent)} }
 .te-cal .cal-d.today-d{box-shadow:inset 0 0 0 1.6px var(--line2)}
 /* 时刻行 */
 .te-tline{display:flex;gap:8px;align-items:center;margin-top:12px}
@@ -1329,7 +1329,7 @@ html.soft-render .mask .modal{
   font:inherit;font-size:12.5px;font-weight:800;padding:8px 10px;border-radius:9999px;cursor:pointer;
   transition:background 220ms ease,color 220ms ease,box-shadow 220ms ease;
 }
-.te-mode button:hover{color:var(--fg)}
+@media (hover:hover){ .te-mode button:hover{color:var(--fg)} }
 .te-mode button.on{
   background:var(--fg);color:var(--bg);
   box-shadow:0 2px 10px color-mix(in srgb,var(--glass-edge) 45%,transparent);
@@ -1338,7 +1338,7 @@ html.soft-render .mask .modal{
    pointer-events:none 会让 disabled 属性看不出来，所以这里只降透明度 + 换鼠标指针，
    交给 disabled 属性真的拦住点击（视觉与行为各管一件事）。 */
 .te-mode button:disabled{opacity:.4;cursor:not-allowed}
-.te-mode button:disabled:hover{color:var(--muted)}
+@media (hover:hover){ .te-mode button:disabled:hover{color:var(--muted)} }
 /* ★ 0B.7：勾了作业时那行灰字说明（循环为什么被锁住） */
 .te-hwnote{margin:10px 0 0;font-size:12.5px;line-height:1.7;font-weight:600;color:var(--faint)}
 .te-hwnote.hide{display:none}
@@ -1356,7 +1356,7 @@ html.soft-render .mask .modal{
   background:transparent;color:var(--fg);font:inherit;font-size:14px;font-weight:700;
   padding:11px 12px;border-radius:11px;cursor:pointer;
 }
-.pp-row:hover{background:color-mix(in srgb,var(--fg) 7%,transparent)}
+@media (hover:hover){ .pp-row:hover{background:color-mix(in srgb,var(--fg) 7%,transparent)} }
 .pp-row.on{background:var(--fg);color:var(--bg)}
 /* 原文只读备注 */
 .modal-note.raw-ro{
@@ -1515,7 +1515,7 @@ html.soft-render .site-header,html.soft-render .capture{background:color-mix(in 
 /* 揭示改成 animation 之后，这里要关的是 animation（原来关的是 transition）。
    ★ 0G：同 reduce 那条 —— 这里把元素强制成可见，指针也要一起交回去。 */
 html.soft-render .reveal-on-scroll{opacity:1;transform:none;filter:none;transition:none;animation:none;pointer-events:auto}
-html.soft-render .feature-card:hover{transform:none}
+@media (hover:hover){ html.soft-render .feature-card:hover{transform:none} }
 
 /* ---------- 统计页：布局切换（右上角）+ 完成量细分 ---------- */
 .stat-toolbar{
@@ -1755,7 +1755,7 @@ body[data-help="off"] .set-row .set-txt > span:not([data-keephelp]){
   font:inherit;font-size:13px;font-weight:800;line-height:1;
   transition:transform var(--mo-quick) var(--mo-soft);
 }
-.rbtn:hover{color:var(--fg);border-color:var(--fg)}
+@media (hover:hover){ .rbtn:hover{color:var(--fg);border-color:var(--fg)} }
 .rbtn:active{transform:scale(.94)}
 /* 焦点环：和 .tab 同一套中性描边，不用 outline */
 .rbtn:focus-visible{outline:none!important;box-shadow:0 0 0 2px var(--ring)}
@@ -2082,6 +2082,19 @@ input:focus-visible,textarea:focus-visible{outline:none!important}
    不会整页重播 —— 本项目早先正是栽在「无条件入场动画 + innerHTML 整体重建」上。 */
 @keyframes itemIn{from{opacity:0;transform:translateY(-7px) scale(.995)}to{opacity:1;transform:none}}
 .item.just-added{animation:itemIn .34s var(--mo-soft) both}
+/* ★ 2B 两段式上屏的第二段：AI 回来之后把这一条的标题换了，**亮 0.5 秒**让用户看见改成了什么
+   （用户原话："并且要停留 0.5 秒左右吧，就是让用户知道修改成什么了"）。
+   只亮标题那一块，不整卡闪 —— 否则看起来像又新加了一条。
+   用 animation 而不是 transition：它是一次性提示，跑完就该消失，不需要结束状态。 */
+@keyframes swapFlash{
+  from{background:color-mix(in srgb,var(--accent) 26%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)}
+  to{background:transparent;box-shadow:none}
+}
+.item.ai-swapped .t{
+  border-radius:7px;margin:-2px -5px;padding:2px 5px;
+  animation:swapFlash .5s var(--mo-soft) both;
+}
+@media (prefers-reduced-motion:reduce){ .item.ai-swapped .t{animation:none} }
 
 /* ---------- 6. 写法提示的展开 / 收起 ----------
    原生 <details> 是"啪"一下弹开的。Chrome 131+ 支持 ::details-content 伪元素，
@@ -2832,7 +2845,7 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
   background:var(--panel-solid,var(--bg));border:1px solid var(--line,var(--pill));
   color:var(--faint);transition:color var(--mo-fast) ease,border-color var(--mo-fast) ease;
 }
-.item.seed .spine .fold:hover{border-color:var(--fg);color:var(--fg)}
+@media (hover:hover){ .item.seed .spine .fold:hover{border-color:var(--fg);color:var(--fg)} }
 .item.seed .spine .fold[aria-expanded="true"]{color:var(--accent);border-color:var(--accent)}
 /* 圆珠占的下半截空间：不然它压住最后一步的正文 */
 .item.seed .spine.has-kids{padding-bottom:16px}
@@ -2929,7 +2942,7 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
   flex:0 0 auto;margin-left:auto;border:0;background:none;color:var(--faint);
   font-size:11px;padding:2px 6px;border-radius:8px;cursor:pointer;line-height:1;
 }
-.sp-x:hover{background:var(--tap,var(--pill));color:var(--fg)}
+@media (hover:hover){ .sp-x:hover{background:var(--tap,var(--pill));color:var(--fg)} }
 .sp-add{display:flex;align-items:center;gap:6px;padding:6px 0 8px}
 .sp-in{
   flex:1;min-width:0;background:var(--panel-solid,var(--bg));color:var(--fg);
@@ -2961,7 +2974,7 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
   border:1px solid var(--line,var(--pill));border-radius:7px;background:var(--bg);
   color:var(--muted);font-size:11px;line-height:1;cursor:pointer;padding:0;
 }
-.sp-go:hover,.sp-push:hover{color:var(--accent);border-color:var(--accent)}
+@media (hover:hover){ .sp-go:hover,.sp-push:hover{color:var(--accent);border-color:var(--accent)} }
 .sp-done{color:var(--accent);font-size:11px;margin-left:2px}
 .chip.promoted{cursor:pointer;border:1px solid var(--accent);color:var(--accent)}
 .chip.srcchip{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -3031,7 +3044,7 @@ html.soft-render .mask.sheet-mode .modal{max-height:calc(82vh - var(--kb,0px))}
   color:var(--fg);font-size:15px;font-family:inherit;
   transition:background var(--mo-base) ease;
 }
-.sheet-item:hover{background:var(--pill-hover,var(--pill))}
+@media (hover:hover){ .sheet-item:hover{background:var(--pill-hover,var(--pill))} }
 .sheet-item:active{background:var(--pill)}
 .si-label{flex:0 0 auto;font-weight:600;min-width:3.2em}
 /* ★ v5.0：图标一格固定宽度 + 居中，标签才竖着对齐（否则 ⑂ 比 ✎ 窄，整列就歪了） */
@@ -3198,7 +3211,7 @@ html.tree-full .merge-bar{z-index:85}
   border-radius:999px;padding:5px 11px;font:inherit;font-size:11.5px;font-weight:700;
   cursor:pointer;white-space:nowrap;
 }
-.tree-fullbtn:hover{color:var(--fg);border-color:var(--fg)}
+@media (hover:hover){ .tree-fullbtn:hover{color:var(--fg);border-color:var(--fg)} }
 .tree-fullbtn .np-ico{width:14px;height:14px}
 /* ★ v5.0 修订：`.tree-zone`（两区区名那小字）已按用户要求删除，
    规则一并删掉 —— 不留没人用的死样式。两区的划分还在，只是不再写名字。 */
@@ -3588,11 +3601,17 @@ function dateFrom(s){ const [y, m, d] = s.split('-').map(Number); return new Dat
 function dateText(v){
   const s = String(v == null ? '' : v);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  /* ★ 2B（用户 2026-10-08 真机截图）：三段全开时保持原来的紧凑写法 `2026-10-08`；
+     **一旦缺段就改用中文单位**。旧写法一律 `join('-')`，于是"月关掉、日留着"会拼出
+     `2026-08`（年 + 日）—— 那个形状正是标准的"年-月"，谁看都是 2026 年 8 月。
+     用户为这个专门截了图问"现在不是 10 月 8 号吗"，所以这不是口味问题。 */
+  const on = { y: !!S.dateShow.y, m: !!S.dateShow.m, d: !!S.dateShow.d };
+  if (on.y && on.m && on.d) return s;
   const p = [];
-  if (S.dateShow.y) p.push(s.slice(0, 4));
-  if (S.dateShow.m) p.push(s.slice(5, 7));
-  if (S.dateShow.d) p.push(s.slice(8, 10));
-  return p.join('-');
+  if (on.y) p.push(s.slice(0, 4) + '年');
+  if (on.m) p.push(String(+s.slice(5, 7)) + '月');
+  if (on.d) p.push(String(+s.slice(8, 10)) + '日');
+  return p.join('');
 }
 
 /* 导入历史笔记时，相对日期（今天/周四/17号）按「基准日」算，而不是按今天 */
@@ -4089,11 +4108,11 @@ const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', t
        lastScanAt     上次 AI 关联扫描的时间戳（距今 > 24h 才再扫）
        ideaReview     「想法回顾」总开关（设置页），默认开
        ideaReviewDone 今天已经把回顾抽屉处理完了（存日期）—— 当天不再推，次日自动失效
-       captureZone    「没写时间的条目默认去哪」：'long'（默认，老习惯）| 'idea'
+       captureZone    「没写时间的条目默认去哪」：'auto'（默认，让模型判长期还是想法）| 'long' | 'idea'
        ideaGestureSeen 想法页的手势说明是否已经自动弹过一次
        ideaLayout     想法页主视图：'list'（默认，卡片流）| 'tree'（树状图） */
   ideaUsedAt: null, lastOpenedSeed: null, lastScanAt: 0, ideaReview: true, ideaReviewDone: null,
-  captureZone: 'long', ideaGestureSeen: false, ideaLayout: 'list',
+  captureZone: 'auto', ideaGestureSeen: false, ideaLayout: 'list',
   /* ★ 0B.2（决策 2）：子任务全勾完**不**自动完成父任务。给一个开关让人自己选，
       默认关 —— 理由：别人给你派的一张清单，你做完手上这项不等于整件事结束了。
       打开后：勾掉最后一个未完成子任务时，连同祖先一起补上勾。 */
@@ -4281,7 +4300,7 @@ function load(){
       S.lastScanAt = Number.isFinite(o.lastScanAt) ? o.lastScanAt : 0;
       S.ideaReview = o.ideaReview !== false;
       S.ideaReviewDone = typeof o.ideaReviewDone === 'string' ? o.ideaReviewDone : null;
-      S.captureZone = o.captureZone === 'idea' ? 'idea' : 'long';
+      S.captureZone = (o.captureZone === 'idea' || o.captureZone === 'long') ? o.captureZone : 'auto';
       S.ideaGestureSeen = o.ideaGestureSeen === true;
       S.ideaLayout = o.ideaLayout === 'tree' ? 'tree' : 'list';
       /* ★ v5.0 第 3 批（AI）：老存档没有这几个字段 → 保持默认（**off**）。
@@ -4583,6 +4602,12 @@ function addItem(text, preset){
        画成实心点），再往 sparks 里塞一句一模一样的，用户看到的就是"刚记下就自己续写了一遍"
        —— v3.6.0 的真 bug。续写才往里加东西。 */
     it.sparks = [];
+    /* ★ 2B（用户 2026-10-08）：AI 判定"这件事真能拆成 ≥2 步"时才给子想法。
+       1 步不算能拆开 —— 旧的那条"原文比标题长就自动当第一步"已经删掉（见 taskToSeed）。
+       提示词里写死了"宁可少给，也不要硬把一句话拆成几步"。 */
+    if (p.steps && p.steps.length >= 2){
+      it.sparks = p.steps.slice(0, 6).map(x => ({ at: ymd(new Date()), text: String(x) }));
+    }
     it.bornFrom = null; it.promoted = null; it.hw = null; it.repeat = null;
     it.suggest = []; it.reviewedAt = null; it.aiUse = null;
   }
@@ -4644,6 +4669,9 @@ let staleToastShown = false;
    用 id + 时间戳而不是一个"用完就清"的标记 —— 万一这条被筛掉了没渲染，
    标记也就自然过期，不会留到下一次刷新去污染别的条目。 */
 let justAdded = { id: '', t: 0 };
+/* ★ 2B：两段式上屏的第二段 —— AI 回来之后换掉了哪一条的标题，那条亮 0.5 秒。
+   与 justAdded 同一个套路（记 id + 时间戳，渲染时按时间窗挂类）。 */
+let aiSwapped = { id: '', t: 0 };
 
 /* 筛选栏可以多选：选中的标签之间是「或」——挂着其中任意一个就显示出来。
    同时搜索框再做一次标题/原文的过滤。 */
@@ -4747,7 +4775,8 @@ function seedHTML(it, info){
   const sugN = Array.isArray(it.suggest) ? it.suggest.length : 0;
   const cls = 'item seed' + (it.done ? ' done' : '') + (sleeping ? ' sleep' : '')
     + (pri ? ' pri' + pri : '')
-    + (it.id === justAdded.id && Date.now() - justAdded.t < 1200 ? ' just-added' : '');
+    + (it.id === justAdded.id && Date.now() - justAdded.t < 1200 ? ' just-added' : '')
+    + (it.id === aiSwapped.id && Date.now() - aiSwapped.t < 1600 ? ' ai-swapped' : '');
   /* 时间轴：一条竖脊 + 每步一个点。第一步是"种子本身"（记进来的那天），
      后面的都是它长出来的。日期用 createdAt 兜底 —— 老数据没有 at 也不会露出空标签。 */
   const first = it.createdAt ? ymd(new Date(it.createdAt)) : '';
@@ -4798,7 +4827,7 @@ function seedHTML(it, info){
       ${spine}
       <div class="meta">
         ${pri ? `<span class="chip prichip p${pri}">${pri === 2 ? '紧急' : '重要'}</span>` : ''}
-        ${sparks.length ? `<span class="chip">${sparks.length} 步</span>` : ''}
+        ${sparks.length ? `<span class="chip">${sparks.length} 个子想法</span>` : ''}
         ${kidCount ? `<span class="chip kidchip" title="从这里还长出了 ${kidCount} 条">↳ ${kidCount}</span>` : ''}
         ${sugN ? `<span class="chip suggestchip" data-act="suggestopen" data-id="${esc(it.id)}" role="button" tabindex="0" title="AI 觉得它可能该挂在别的想法下面">✦ ${sugN}</span>` : ''}
         ${sleeping ? `<span class="chip sleepchip" title="最后动过是 ${sleepDays} 天前">${sleepDays} 天前</span>` : ''}
@@ -4832,7 +4861,8 @@ function itemHTML(it, kidsHTML, goalInfo, extraHTML, noDel){
   const pri = it.pri || 0;
   const cls = 'item' + (it.done ? ' done' : '') + (overdue ? ' overdue' : '') + (stale ? ' stale' : '')
     + (pri ? ' pri' + pri : '') + (goalInfo ? ' goal' : '')
-    + (it.id === justAdded.id && Date.now() - justAdded.t < 1200 ? ' just-added' : '');
+    + (it.id === justAdded.id && Date.now() - justAdded.t < 1200 ? ' just-added' : '')
+    + (it.id === aiSwapped.id && Date.now() - aiSwapped.t < 1600 ? ' ai-swapped' : '');
   const lvl = urgencyLevel(it);
   /* ★ v3.36（用户："分区和时间轴页面里都有那个点…这些点也作为一个固定元素，
      让它们在视图切换时跟随那个文字，到自己对应的位置，不要直接消失和出现"）：
@@ -5421,7 +5451,7 @@ function reviewDrawerHTML(){
     return `<div class="review-item" data-id="${esc(it.id)}">
       <div class="ri-why">${esc(reviewWhy(it))}</div>
       <div class="ri-title">${esc(it.title)}</div>
-      <div class="ri-sub">${(Array.isArray(it.sparks) ? it.sparks.length : 0)} 步${kids ? ' · ↳ ' + kids : ''}</div>
+      <div class="ri-sub">${(Array.isArray(it.sparks) ? it.sparks.length : 0)} 个子想法${kids ? ' · ↳ ' + kids : ''}</div>
       <div class="ri-acts">
         <button type="button" class="mini" data-act="sparkadd" data-rev="1" data-id="${esc(it.id)}">＋ 续写</button>
         <button type="button" class="mini" data-act="promote" data-rev="1" data-id="${esc(it.id)}">↙ 立项</button>
@@ -5597,7 +5627,7 @@ function treeMapHTML(list){
       <div class="tn-title">${esc(n.it.title)}</div>
       ${sparks}
       <div class="tn-meta">
-        ${stepN ? `<span class="tn-chip">${stepN} 步</span>` : ''}
+        ${stepN ? `<span class="tn-chip">${stepN} 个子想法</span>` : ''}
         ${(Array.isArray(n.it.bornFrom) && n.it.bornFrom.length)
           ? `<span class="tn-chip lin" title="由 ${n.it.bornFrom.length} 条合并而来">血缘 ${n.it.bornFrom.length}</span>` : ''}
         ${n.kids ? `<button type="button" class="tn-fold${col ? ' col' : ''}" data-act="tnfold"
@@ -6244,12 +6274,14 @@ function taskToSeed(it, quiet){
      就靠它（见 seedHTML 的 pushTask）。清掉它，那条待办就再也加不上后续内容了 ——
      一个字段的清理不该顺手剪掉一条功能。判空的入口本来就有（find 不到就不画那颗 ↑）。
      这一列必须与 openItemEditor 保存分支里种子方向的清理**完全一致**（0B.5 的验收点）。 */
-  /* 只有"原文比标题更长"时才把原文当第一步 —— 否则标题和第一步一模一样，看着像重复 */
-  if (!Array.isArray(it.sparks) || !it.sparks.length){
-    const extra = String(it.raw || '').trim();
-    it.sparks = (extra && extra !== String(it.title || '').trim())
-      ? [{ at: ymd(new Date()), text: extra }] : [];
-  }
+  /* ★ 2B（用户 2026-10-08 真机截图三条卡）：**不再自动把原文加成第一步**。
+     旧规则是"原文比标题长就加成第一步"，在解析器不改写标题的年代基本不成立；
+     2A 把标题交给模型改写之后这条**每次都成立** —— 录一句大白话变想法，必然多出一条
+     "原文"步骤（用户截图里「记一下车险价格 / 喝冰箱里的酸奶 / 给小调准备生日礼物」
+     三条全是这个机制造出来的，他以为是 AI 在拆步骤，还觉得"过度拆解"）。
+     原文一个字都没丢：它一直在 `it.raw` 里，编辑弹层的「原文」栏看得到。
+     时间轴上的子想法从此只有两个来源：用户点「续写」，或 AI 判定真能拆 ≥2 步。 */
+  if (!Array.isArray(it.sparks)) it.sparks = [];
   if (!Array.isArray(it.suggest)) it.suggest = [];
   if (it.reviewedAt === undefined) it.reviewedAt = null;
   if (it.aiUse === undefined) it.aiUse = null;
@@ -6321,11 +6353,11 @@ function seedFromTask(it){
   const t = String(it.raw || it.title || '').trim();
   if (!t){ toast('这条待办没内容'); return null; }
   /* 第一步只在"原文确实比标题多出东西"时才写 —— 否则标题和第一步一模一样，看着像重复 */
-  const hasExtra = t !== String(it.title || '').trim();
+  /* ★ 2B：同 taskToSeed —— 不自动把原文加成一步（1 步不算"能拆开"，走的是同一个口径） */
   return newSeed(it.title || t, {
     raw: t, tags: [...(it.tags || [])], pri: it.pri || 0,
     bornFrom: [it.id],
-    sparks: hasExtra ? [{ at: ymd(new Date()), text: t }] : []
+    sparks: []
   });
 }
 /* 立项后的双向活链（1.13）中的**读**这一半：谁是从这条待办立项出来的 */
@@ -7154,7 +7186,9 @@ function sanitizeHotwordSeen(v){
     const keys = Object.keys(v).slice(0, 200);
     for (const k of keys){
       const n = Number(v[k]);
-      if (k && Number.isFinite(n) && n > 0) out[k] = Math.min(99, Math.floor(n));
+      /* ★ 2B：计数带小数权重（手动改标题 = 1、AI 纠错 = 0.5）—— 这里原来是 Math.floor，
+         会把 0.5 直接抹成 0、AI 那一路的印记全丢。改成保留一位小数。 */
+      if (k && Number.isFinite(n) && n > 0) out[k] = Math.min(99, Math.round(n * 10) / 10);
     }
   }
   return out;
@@ -7522,7 +7556,7 @@ function smartLocalPlan(text){
 /* ⚠️ 请求体的**前缀必须逐字符固定**：系统提示词 + schema 说明放最前，变量全部放最后。
    理由：DeepSeek 的缓存命中输入单价是未命中的 1/50 —— 前缀一变，整个缓存失效。
    所以这两条是常量字符串，**不许拼接任何变量**。 */
-const AI_UNDERSTAND_SCHEMA = '{"items":[{"title":"","date":"","endDate":"","time":"","tags":[],"pri":0,"parent":"","note":""}],"corrected":"","confidence":0.0}';
+const AI_UNDERSTAND_SCHEMA = '{"items":[{"title":"","date":"","endDate":"","time":"","tags":[],"pri":0,"parent":"","note":"","zone":"","steps":[]}],"corrected":"","confidence":0.0}';
 const AI_UNDERSTAND_SYS =
   '你把用户随口说的一句话整理成待办条目。只输出 JSON，不要解释文字、不要 markdown 围栏。\n'
   + '输出形状固定为：' + AI_UNDERSTAND_SCHEMA + '\n'
@@ -7534,6 +7568,12 @@ const AI_UNDERSTAND_SYS =
   + '· pri 0 普通 / 1 重要 / 2 紧急\n'
   + '· parent 这一条要挂到**同一次回答里另一条**下面时，填那一条的 title；否则空串\n'
   + '· note 补充说明，没有就空串\n'
+  + '· zone 只管**没写日期**的那一条：写 "idea" 表示它其实只是个念头（想做的事、还没定的打算），'
+  + '写 "long" 表示它是一件要认真做的长期事（有明确交代、必须完成的）。'
+  + '写了日期的一律空串；拿不准也空串。这两个词只能二选一，别自创。\n'
+  + '· steps 子想法：**只有这件事明显能拆成两个及以上步骤时才给**，每项一句话、不超过 30 字。'
+  + '一个动作就能做完的事（交房租、喝酸奶、买个生日礼物）一律写空数组 —— '
+  + '宁可少给，也不要硬把一句话拆成几步。\n'
   + '· corrected 把原话里明显的同音错字改对之后的完整句子（没把握就原样回填）\n'
   + '· confidence 0~1，你对这次解析的把握\n'
   + '铁律：只做整理。不许新增用户没说的信息，不许下判断，不许替用户决定做不做。'
@@ -7582,12 +7622,24 @@ function aiValidateItems(raw){
     const title = r.title.trim();
     if (!title) continue;                                        // 且非空
     const x = { title: title, date: null, dateEnd: null, time: null,
-      tags: [], pri: 0, parent: '', note: '' };
+      tags: [], pri: 0, parent: '', note: '', zone: '', steps: [] };
     if (typeof r.date === 'string' && aiValidDateStr(r.date.trim())) x.date = r.date.trim();
     if (typeof r.endDate === 'string' && aiValidDateStr(r.endDate.trim())) x.dateEnd = r.endDate.trim();
     if (!x.date) x.dateEnd = null;
     if (x.date && x.dateEnd && x.dateEnd < x.date) x.dateEnd = null;   // endDate 不早于 date
     if (typeof r.time === 'string' && aiValidTimeStr(r.time.trim())) x.time = r.time.trim();
+    /* ★ 2B：落点由模型判（用户 2026-10-08 定："让用户接入的 AI 模型去区分，应该归入
+       「长期待办」还是「想法」"）。只收 long / idea 两个值；**写了日期的一律不认 idea**
+       —— 有具体安排的事就是待办，不是念头（模型偶尔会把带日期的事也判成想法）。 */
+    if (r.zone === 'long' || r.zone === 'idea') x.zone = r.zone;
+    if (x.zone === 'idea' && x.date) x.zone = '';
+    /* ★ 2B：子想法。**少于 2 步一律当没有** —— 用户的原话是"只有那种明显的可以拆成
+       多个步骤，两个及以上步骤的，再把它录入子想法"。1 步不叫"能拆开"。 */
+    if (Array.isArray(r.steps)){
+      const st = r.steps.map(s => String(s == null ? '' : s).trim())
+        .filter(s => s && s.length <= 30).slice(0, 6);
+      x.steps = st.length >= 2 ? st : [];
+    }
     if (Array.isArray(r.tags)){
       x.tags = r.tags.map(t => String(t == null ? '' : t).trim())
         .filter(aiValidTag).slice(0, TAG_PER_ITEM);
@@ -7663,9 +7715,16 @@ function aiPlanPreset(x){
     date: date, dateEnd: x.dateEnd || null, monthOnly: false,
     time: x.time || null,
     tags: (x.tags || []).slice(0, TAG_PER_ITEM),
-    zone: date ? (daysFromToday(date) <= 14 ? 'short' : 'long') : 'long',
+    /* ★ 2B：zone 的优先级 —— **模型表了态就听模型的**（用户 2026-10-08 定：让 AI 判
+       "该进长期待办还是想法"）；模型没表态（空串 / 不认识的值）才按日期推：
+       14 天内算短期，其余算长期，没日期也当长期（再由 commitEntry 按「录入默认落点」处置）。 */
+    zone: (x.zone === 'idea' || x.zone === 'long')
+      ? x.zone
+      : (date ? (daysFromToday(date) <= 14 ? 'short' : 'long') : 'long'),
     repeat: null, pri: x.pri || 0, goal: false, dayParts: null,
-    path: x.parent ? [x.parent] : []
+    path: x.parent ? [x.parent] : [],
+    /* 子想法：校验器已经保证"少于 2 步等于没有"，这里只是原样带过去 */
+    steps: Array.isArray(x.steps) ? x.steps.slice(0, 6) : []
   };
 }
 /* 按计划落库。返回真正建出来的条目（可能是 0 条 —— 调用方据此判断"什么都没收到"）。
@@ -7731,13 +7790,20 @@ function hotwordAdd(w){
   save();
   return true;
 }
-function hotwordObserve(before, after){
+/* 记一次"某个词被改对了"。**权重分两档**（用户 2026-10-08 定）：
+     · 用户自己把标题改对 → 1 分（他的原话：AI 纠错的"权重肯定是不如用户自己手动录入编辑的那些"）
+     · AI 纠错层改对        → 0.5 分
+   凑够 HOTWORD_ASK_AT（2 分）才问一次。于是：手动改 2 次、或 AI 改 4 次、或 1 手动 + 2 次 AI。
+   判定用"**跨过**阈值"而不是"等于阈值" —— 带小数之后 `n === 2` 会漏掉 1.5 + 0.5 这一档。 */
+function hotwordObserve(before, after, weight){
   const d = hotwordDiff(before, after);
   if (!d) return null;
+  const w = (Number(weight) > 0) ? Number(weight) : 1;
   if (!S.hotwordSeen || typeof S.hotwordSeen !== 'object') S.hotwordSeen = {};
-  const n = (Number(S.hotwordSeen[d.to]) || 0) + 1;
-  S.hotwordSeen[d.to] = Math.min(99, n);
-  if (n !== HOTWORD_ASK_AT) return d;                 // 只在**第 2 次**问一次
+  const n0 = Number(S.hotwordSeen[d.to]) || 0;
+  const n = n0 + w;
+  S.hotwordSeen[d.to] = Math.min(99, Math.round(n * 10) / 10);
+  if (n0 >= HOTWORD_ASK_AT || n < HOTWORD_ASK_AT) return d;   // 只在**第一次跨过**门槛时问
   if (S.hotwords.indexOf(d.to) >= 0) return d;
   if (S.hotwords.length >= HOTWORDS_MAX) return d;
   hideToast();
@@ -8066,11 +8132,15 @@ function renderSettings(){
           <div class="set-txt">
             <b>没写时间的条目默认去哪</b>
             <span>新建时如果一句话里没解析出任何日期，它算「长期待办」还是直接算「想法」。
-              选「想法」的话，随手记下的半截念头不用再点一次「存入想法」。</span>
+              选「想法」的话，随手记下的半截念头不用再点一次「存入想法」。
+              <b>「自动」＝让 AI 读那句话替你判</b>：它觉得是个念头就进想法，觉得是件正经事就进长期；
+              判不了就照旧算长期。</span>
           </div>
           <div class="seg-cap" role="group" aria-label="没写时间的条目默认去哪">
-            <button type="button" class="pill${S.captureZone !== 'idea' ? ' on' : ''}"
-                    data-capzone="long" aria-pressed="${S.captureZone !== 'idea' ? 'true' : 'false'}">长期</button>
+            <button type="button" class="pill${S.captureZone === 'auto' ? ' on' : ''}"
+                    data-capzone="auto" aria-pressed="${S.captureZone === 'auto' ? 'true' : 'false'}">自动</button>
+            <button type="button" class="pill${S.captureZone === 'long' ? ' on' : ''}"
+                    data-capzone="long" aria-pressed="${S.captureZone === 'long' ? 'true' : 'false'}">长期</button>
             <button type="button" class="pill${S.captureZone === 'idea' ? ' on' : ''}"
                     data-capzone="idea" aria-pressed="${S.captureZone === 'idea' ? 'true' : 'false'}">想法</button>
           </div>
@@ -9219,11 +9289,27 @@ document.addEventListener('wheel', e => {
    解不了（大白话）→ 交给模型听懂；模型任何一环出问题 → 退回本地结果，
    并且**明确告诉用户"用的是本地识别"**（红线 2：绝不生成假数据）。
    输入框在等待之前就清掉 —— 用户按回车是"我说完了"，不该盯着自己那句话等。 */
-async function commitEntry(){
+async function commitEntry(opts){
   const el = document.getElementById('entry');
   const v = el.value.trim();
   if (!v) return;
   el.value = '';
+  /* ★ 2B 两段式上屏（用户 2026-10-08 定，选项 A：松手后用 AI 结果整套替换一次 + 停 0.5 秒）。
+     松手先把**本地结果**顶上屏（零请求、几毫秒），AI 回来之后再用它的结果替换。
+     语音录入的"慢"全部集中在"松手 → 卡片出现"这一段，而这一段根本不需要等网络。
+     只在"本地结果是一条干干净净的普通条目"时才启用 —— 带 path / dayParts / 循环 / 目标的
+     本地结果会顺手建出父卡与子任务，替换时收不干净；那几种本来就带语法、压根不会出网。 */
+  let quickMade = null;
+  if (opts && opts.twoPhase && aiOn() && smartNeedAI(v)){
+    const quick = smartLocalPlan(v);
+    const qp = quick.items[0] && quick.items[0].preset;
+    if (quick.items.length === 1 && qp && !(qp.path && qp.path.length)
+        && !(qp.dayParts && qp.dayParts.length) && !qp.repeat && !qp.goal){
+      quickMade = aiCommitPlan(quick, v);
+      refresh();
+      if (quickMade[0]) toast('先记下了 · 正在让 AI 听懂…', null, 2600);
+    }
+  }
   let plan;
   try {
     plan = await aiUnderstand(v);
@@ -9232,8 +9318,35 @@ async function commitEntry(){
     plan = smartLocalPlan(v);
     plan.reason = 'error';
   }
-  const made = aiCommitPlan(plan, v);
+  let made;
+  if (quickMade && quickMade.length){
+    /* 第二段。AI 头一条标题与本地一致就什么都不动（这种情况占大多数）；
+       不一致才替换，且替换做成**重建**而不是就地改字段 —— AI 的产出可能连分区都换
+       （长期 ↔ 想法），就地改要处理种子/待办的整整一列字段，重建只走 addItem 这一条路。 */
+    const same = plan.items.length === quickMade.length
+      && plan.items.every((x, i) => String(x.title) === String(quickMade[i].title));
+    if (same){
+      made = quickMade;
+    } else {
+      const kill = new Set(quickMade.map(x => x.id));
+      quickMade.forEach(x => { try { syncNotify(x); } catch (e){} });   // 先撤排期（约定 7 的唯一入口）
+      S.items = S.items.filter(x => !kill.has(x.id));
+      made = aiCommitPlan(plan, v);
+      if (made[0]) aiSwapped = { id: made[0].id, t: Date.now() };       // 亮 0.5 秒
+    }
+  } else {
+    made = aiCommitPlan(plan, v);
+  }
   const it = made[0] || null;
+  /* ★ 2B（用户 2026-10-08）：把 AI **纠错后的整句**也留下来。
+     为什么：用户真机录「我大后天要去图书馆还从图书馆借的书」，本地识别吐的是
+     "我大要去图书馆还长图书馆借的书"，AI 其实能纠回来，但这个字段一直没人接，
+     他只能自己去猜"AI 到底听懂没有"。
+       · 存进 `it.heard`，编辑弹层在「原文」下面多一行「AI 听成 …」（原文一个字不动，需求 A5）
+       · 同时按 **0.5 权重**喂纠错层的常用词采集 —— 用户定的口径是"AI 纠错的权重
+         不如用户自己手动改标题的"，手动改一次记 1 分。 */
+  const heard = String((plan && plan.corrected) || '').trim();
+  if (heard && heard !== v) made.forEach(x => { x.heard = heard; });
   /* 录入区手选的标签（可多选）优先加在最前面，再跟上正文里写的 #标签，去重后截断。
      多条目时**每条都套用** —— 用户是给这一整句选的标签，不是只给第一条。 */
   if (made.length && entryTagSet.size){
@@ -9288,6 +9401,9 @@ async function commitEntry(){
     if (reply.via === 'aiSay') aiSay(reply.msg, tActs, 6000);
     else if (reply.via === 'aiFail') aiFail(reply.msg, tActs, 8000);
     else toast(reply.msg, tActs, 6000);
+    /* 纠错层的采集排在提示之后：hotwordObserve 自己会 hideToast 再问，
+       所以先让"已加入…"（带撤销）活一下，再轮到"是你的常用词吗"。 */
+    if (heard && heard !== v) hotwordObserve(v, heard, 0.5);
     // 新增后把看板滚进视野，避免"存了但没看见"
     const sec = document.getElementById('view');
     if (sec && sec.getBoundingClientRect().top > window.innerHeight * 0.6)
@@ -9789,11 +9905,12 @@ view.addEventListener('click', e => {
   }
   /* ★ v5.0：「没写时间的条目默认去哪」—— 只改默认落点，不改录入流程本身 */
   if (el.dataset.capzone){
-    S.captureZone = el.dataset.capzone === 'idea' ? 'idea' : 'long';
+    const cz = el.dataset.capzone;
+    S.captureZone = (cz === 'idea' || cz === 'long') ? cz : 'auto';
     save(); refresh();
-    toast(S.captureZone === 'idea'
-      ? '以后没写时间的条目直接长成想法'
-      : '以后没写时间的条目还是进「长期」');
+    toast(S.captureZone === 'idea' ? '以后没写时间的条目直接长成想法'
+      : S.captureZone === 'long' ? '以后没写时间的条目还是进「长期」'
+      : '以后没写时间的条目交给 AI 判：念头进想法，正经事进长期');
     return;
   }
   /* ---- ★ v5.0 回顾抽屉 ---- */
@@ -11422,6 +11539,8 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
     </div>
     <div class="field"><label>原文</label>
       <div class="modal-note raw-ro" id="m_raw">${esc(it.raw || it.title)}</div>
+      ${(it.heard && String(it.heard).trim() && String(it.heard).trim() !== String(it.raw || '').trim())
+        ? `<div class="modal-note raw-ro" id="m_heard"><b>AI 听成</b>　${esc(it.heard)}</div>` : ''}
     </div>
     <div class="field"><label>重要程度</label><div class="sel" id="m_pri"></div></div>
     <div class="field"><label>标签（可多选，也可以不选）</label>
@@ -11685,6 +11804,16 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
     /* 新建：原文栏只读，所以 parseSmart 的结果（分区/标签/重要程度）在 openEditNew 里就已落成初值，
        这里不再重解析 —— 否则用户在弹层里手动改的分区/优先级会被原文静默盖掉。 */
     if (isNew) S.items.push(it);   // 新建：先入库存，再统一 save/refresh（编辑则本来就在库里）
+    /* ★ 2B：右滑「进入编辑」这条也会带来"早中晚"（本地 parseSmart 或 AI 给了 dayParts）。
+       口径与 addItem 完全一致：父条目**之后**按 08:00 / 12:00 / 19:00 的顺序插子任务
+       （逐个 unshift 会把钟点渲染成倒序）。想法不参与这套，所以先排掉 isSeed。 */
+    const dpKids = (isNew && !isSeed(it) && it.dayParts && it.dayParts.length >= 2)
+      ? dayPartKids(it, it.dayParts) : [];
+    if (dpKids.length){
+      S.items.splice(S.items.indexOf(it) + 1, 0, ...dpKids);
+      dpKids.forEach(k => notifyFire(k));
+    }
+    delete it.dayParts;            // 用完就摘，别在条目上留一个只在建的时候有意义的字段
     /* ★ 2A 纠错层：用户把某个词改对了 → 记一次账；同一个词第 2 次就**问一次**
        要不要收进常用词。带按钮的提示不会被下面那句"已保存"顶掉（toast 的老规矩），
        所以这里排在收尾提示之前。 */
@@ -11781,13 +11910,23 @@ function openParentPicker(it, isNew, getCur, onPick){
   openMask();
 }
 /* 语言 / 快捷录入"进入编辑"分支：拿识别结果（或空串）先解析成草稿，再让用户改标签 / 日期 / 优先级 / 分区，确定才入库。 */
-function openEditNew(rawText){
-  const p = parseSmart(rawText || '');
+/* 新建：原文栏只读，所以解析结果（分区/标签/重要程度）在这里就已落成初值。
+   ★ 2B：第二个参数是**预解析结果**（形状同 parseSmart 的返回值），
+   与 addItem 共用同一条口子 —— 语音「右滑进入编辑」那条路会先把 AI 的理解结果传进来，
+   这样编辑页里看到的标题跟落库结果一致（以前只跑 parseSmart，用户看到的是识别原文的错字）。 */
+function openEditNew(rawText, preset){
+  const p = preset || parseSmart(rawText || '');
   const it = { id: uid(), raw: (rawText || '').trim(), title: p.title || (rawText || '').trim(),
     date: p.date, dateEnd: p.dateEnd, monthOnly: p.monthOnly, time: p.time,
     zone: p.zone || 'short', tags: p.tags || [], done: false, doneAt: null,
     createdAt: Date.now(), hw: null, repeat: p.repeat || null, pri: p.pri || 0, timeMode: 'once',
-    parent: null, goal: !!p.goal };
+    parent: null, goal: !!p.goal, dayParts: p.dayParts || null,
+    heard: p.heard || null };   // AI 纠错后的整句（调用方塞在 preset 上，见 voiceRight）
+  /* ★ 2B：AI 判定能拆 ≥2 步时，进编辑页也该看到那几条子想法 —— 用户可以逐条改/删。
+     只在确实有 ≥2 步时才挂 sparks 字段；保存时分区分支会按需要保留或删掉它。 */
+  if (p.steps && p.steps.length >= 2){
+    it.sparks = p.steps.slice(0, 6).map(t => ({ at: ymd(new Date()), text: String(t) }));
+  }
   /* ★ 0A.4：这条路以前**不消费** `p.path` —— 「论文> 查文献」里的父级被整段丢掉，
      和 addItem（粘贴/回车那条路）行为不一致。现在照 addItem 的写法逐级挂靠。
      种子不参与复合目标的父子关系（见 addItem 的说明），所以 idea 分区跳过。 */
@@ -11934,7 +12073,7 @@ window.addEventListener('drop', e => {
           if (Number.isFinite(o.lastScanAt)) S.lastScanAt = o.lastScanAt;
           if (typeof o.ideaReview === 'boolean') S.ideaReview = o.ideaReview;
           if (typeof o.ideaReviewDone === 'string') S.ideaReviewDone = o.ideaReviewDone;
-          if (o.captureZone === 'idea' || o.captureZone === 'long') S.captureZone = o.captureZone;
+          if (o.captureZone === 'idea' || o.captureZone === 'long' || o.captureZone === 'auto') S.captureZone = o.captureZone;
           if (typeof o.ideaGestureSeen === 'boolean') S.ideaGestureSeen = o.ideaGestureSeen;
           if (o.ideaLayout === 'tree' || o.ideaLayout === 'list') S.ideaLayout = o.ideaLayout;
           /* ★ 审查修复（2026-10-04）：snapshot() 里写了 setOpen / aiMode / aiBase / aiModel /
@@ -12219,7 +12358,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.6.1';
+const APP_VERSION = '5.7.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
@@ -12639,18 +12778,42 @@ function voiceLeft(){
   cancelVoice();
   if (text){                                     // 有识别结果 → 直接入库（与打字同一入口）
     const el = document.getElementById('entry');
-    if (el){ el.value = text; commitEntry(); }
+    /* ★ 2B：语音这条走**两段式上屏** —— 本地结果先顶上，AI 回来再替换（见 commitEntry）。 */
+    if (el){ el.value = text; commitEntry({ twoPhase: true }); }
   } else {                                       // 没结果（语音关 / 不支持 / 没听清）→ 弹键盘降级
     goEntry();
     toast('点键盘上的麦克风说话');
   }
 }
-function voiceRight(){
+/* ★ 2B（用户 2026-10-08）：右滑「进入编辑」也要**先过一遍理解内核**。
+   以前这条路只跑 parseSmart，于是"左滑直接录入"拿到的是 AI 改写过的干净标题，
+   "右滑进入编辑"却是本地解析识别原文的结果 —— 同一个入口两套待遇，用户原话：
+   "我真不确定，录入的时候 AI 能不能给我翻译得当"。现在两条路共用一个理解结果。
+   多条目时编辑页只能编第一条，所以顺手把"AI 听成了几条"说清楚（不静默丢）。 */
+async function voiceRight(){
   const text = (voicePending || '').trim();
   voiceHandled = true;
   if (text) voiceConsumed = text;
   cancelVoice();
-  openEditNew(text);                             // 进入编辑：改标签 / 日期 / 优先级 / 分区，确定才入库
+  if (!text){ openEditNew(''); return; }
+  let plan;
+  try {
+    plan = await aiUnderstand(text);
+  } catch (e){
+    plan = smartLocalPlan(text);
+    plan.reason = 'error';
+  }
+  const list = (plan && Array.isArray(plan.items)) ? plan.items : [];
+  const first = list[0] || null;
+  /* 本地条目的 items[i].preset 就是 parseSmart 的完整返回值（含 path / repeat / goal / dayParts）；
+     模型条目没有 preset，才用 aiPlanPreset 拼一份 —— 与 aiCommitPlan 同一条规矩。 */
+  const preset = first ? (first.preset || aiPlanPreset(first)) : null;
+  const heard = String((plan && plan.corrected) || '').trim();
+  if (preset && heard && heard !== text) preset.heard = heard;
+  openEditNew(text, preset);
+  const reply = aiEntryReply(plan, '进入编辑');
+  if (reply.via === 'aiFail') aiFail(reply.msg, null, 6000);
+  if (list.length > 1) toast('AI 听成了 ' + list.length + ' 条，这里先编辑第 1 条', null, 6000);
 }
 
 fab.addEventListener('pointerdown', e => {

@@ -235,7 +235,7 @@ const AI_HEARD = '我大后天要去图书馆还从图书馆借的书';
 const seed = { items: [], lastBackup: Date.now(), tags: [], statLayout: 'card', hintOpen: false,
   showHelp: false, aiMode: 'title', captureZone: 'idea' };
 const BOOT = `<script>
-window.__ai = { reqs: 0, last: null, next: null };
+window.__ai = { reqs: 0, last: null, next: null, delay: 0 };
 window.fetch = function(url, opt){
   window.__ai.reqs++;
   try { window.__ai.last = JSON.parse(opt && opt.body || '{}'); } catch(e){}
@@ -243,7 +243,10 @@ window.fetch = function(url, opt){
     items: [{ title: ${JSON.stringify(AI_TITLE)}, date:'', endDate:'', time:'', tags:[], pri:0, parent:'', note:'' }],
     corrected: ${JSON.stringify(AI_HEARD)}, confidence: 0.9 };
   var body = { choices: [{ message: { content: JSON.stringify(payload) } }] };
-  return Promise.resolve({ ok: true, status: 200, json: function(){ return Promise.resolve(body); } });
+  var wait = window.__ai.delay || 0;
+  return new Promise(function(res){
+    setTimeout(function(){ res({ ok: true, status: 200, json: function(){ return Promise.resolve(body); } }); }, wait);
+  });
 };
 <\/script>`;
 const inject = s => html.replace('</head>',
@@ -359,6 +362,30 @@ const n3 = await ev(`var it=S.items[0]; if(!it) return { none:true };
   return { kind: it.kind, sparks: (it.sparks||[]).length };`);
 t('★ 只有 1 步 → 不成子想法（1 步不叫"能拆开"）', n3.sparks, 0);
 tOk('它仍然是个想法（zone 是 idea，只是没子想法）', n3.kind === 'seed', JSON.stringify(n3));
+
+/* 6d：两段式上屏（批 4）—— 松手立刻见到卡片，AI 回来换掉标题并亮一下 */
+await ev(`closeModalNow(); S.items.length=0; S.captureZone='auto';
+  S.view='list'; ANIM=false; refresh(); return 1;`);
+await sleep(260);
+await ev(`window.__ai.delay = 900;
+  window.__ai.next = { items: [{ title:'买西瓜', date:'', endDate:'', time:'', tags:[], pri:0, parent:'', note:'' }], corrected:'', confidence:0.9 };
+  voicePending='把西瓜买了'; voiceLeft(); return 1;`);
+await sleep(140);
+const midState = await ev(`var it=S.items[0];
+  return it ? { title: it.title, n: S.items.length, reqs: window.__ai.reqs } : { none: true };`);
+tOk('★ 松手后 140ms 内卡片已经出现（本地那段不等网络）', !midState.none, JSON.stringify(midState));
+t('   这时候的标题是本地解析的（还没等到 AI）', midState.title, '把西瓜买了');
+tOk('   确实已经把请求发出去了（在等 AI）', midState.reqs >= 1, String(midState.reqs));
+await sleep(1800);
+const fin = await ev(`var it=S.items[0];
+  return it ? { title: it.title, n: S.items.length,
+    swapped: !!document.querySelector('.item.ai-swapped'),
+    cls: (document.querySelector('.item') || {}).className || '' } : { none: true };`);
+t('★ AI 回来之后标题换成了模型给的那条', fin.title, '买西瓜');
+t('★ 全程只有 1 条（本地那条是**被换掉**，不是并排两条）', fin.n, 1);
+tOk('★ 那一条被打上了 ai-swapped（亮 0.5 秒让用户看见改成了什么）', fin.swapped, fin.cls);
+await ev(`window.__ai.delay = 0; S.items.length=0; return 1;`);
+await sleep(150);
 ws.close(); chrome.kill(); srv.close();
 console.log('\n' + (fail ? 'FAIL ' : 'PASS ') + pass + ' / ' + (pass + fail) + (fail ? '  —— ' + fail + ' 条失败' : '  全绿'));
 process.exit(fail ? 1 : 0);
