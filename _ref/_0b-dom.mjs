@@ -500,7 +500,7 @@ console.log('\n[8] 0B.11  折叠动画：有子树的条目量到的高度不是
 {
   const r = await ev(`var chip = document.querySelector('#view .goalchip[data-act="fold"]');
     if (!chip) return { noChip: true };
-    var box = chip.closest('.body').querySelector(':scope > .goal-kids');
+    var box = chip.closest('.item').querySelector(':scope > .goal-kids');
     if (!box) return { noBox: true };
     var id = chip.dataset.id;
     if (collapsed.has(id)){ collapsed.delete(id); refresh(); return { needRetry: true }; }
@@ -512,7 +512,7 @@ console.log('\n[8] 0B.11  折叠动画：有子树的条目量到的高度不是
   if (r && r.needRetry){
     await sleep(420);
     rr = await ev(`var chip = document.querySelector('#view .goalchip[data-act="fold"]');
-      var box = chip.closest('.body').querySelector(':scope > .goal-kids');
+      var box = chip.closest('.item').querySelector(':scope > .goal-kids');
       var full = box.scrollHeight;
       foldWithMotion(chip, S.items.find(function(x){ return x.id === chip.dataset.id; }));
       return { full: full, mid: Math.round(box.getBoundingClientRect().height), folded: collapsed.has(chip.dataset.id) };`);

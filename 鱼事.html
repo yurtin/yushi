@@ -269,8 +269,14 @@ html.gpu-render .capture{
 /* ---------- 页面骨架 ---------- */
 .page-shell{position:relative;z-index:2;
   /* 屏底胶囊 + 悬浮圆钮占位：最后一张卡 / 录入提示不能被底栏挡住。
-     胶囊约 58px 高、悬浮球向上凸约 28px、再加 10px 外距与安全区，留 130px 才稳妥。 */
-  padding-bottom:calc(130px + max(env(safe-area-inset-bottom), var(--sab,0px)));;
+     ★ 0D.3：改成 JS 实测的 --bar-keep（= 屏幕底到"底栏中间凸起最顶那条线"的距离）。
+     原来写死 130px，比实测基准（90px）多 40px —— 这 40px 既是"页面底部一段没解释的空白"，
+     也正是滚动判据错位的来源：旧的滚动锁写的是"溢出 ≤ 140px 就算装得下"，而内容只要溢出
+     > 40px 就已经钻到底栏凸起下面了，于是 40~140px 这一档是"被盖住又滑不动"（统计页就在这档）。
+     现在 padding 与判定基准共用同一个实测值，"装得下"（scrollHeight ≤ clientHeight）与
+     "内容底 ≤ 基准线"变成同一件事的两种说法，不会再互相打架。
+     兜底值保留旧的 calc：没有原生桥的环境（JS 那段不跑）行为与改动前完全一致。 */
+  padding-bottom:var(--bar-keep,calc(130px + max(env(safe-area-inset-bottom), var(--sab,0px))));
   /* v3.3 全面屏适配（用户："我的手机是全面屏的，这应用好像不太适配全面屏"）：
      页面顶部必须吃下状态栏 / 挖孔的安全区，否则第一行会顶到状态栏下面。
      env() 只在 WebView 真的上报安全区时非 0（Android 需 edge-to-edge、iOS 需 viewport-fit=cover），
@@ -832,7 +838,10 @@ body:not([data-view="settings"]) .pdaim-footer{display:none}
 .done-zone .item .udot{opacity:.35}
 
 /* ---------- 条目 ---------- */
-.item{display:flex;align-items:flex-start;gap:11px;padding:11px 2px;border-bottom:1px solid var(--line);position:relative}
+/* flex-wrap:wrap + row-gap:0 是给 0D.1 准备的：子任务那棵 .goal-kids 现在是 .item 的
+   一个整行（见 itemHTML），靠换行独占第二行。row-gap 必须显式写 0 —— `gap:11px`
+   是行列双值简写，会顺手给换行后的那一行加 11px 行距，子任务就会平白往下掉一截。 */
+.item{display:flex;flex-wrap:wrap;align-items:flex-start;gap:11px;row-gap:0;padding:11px 2px;border-bottom:1px solid var(--line);position:relative}
 .item:last-child{border-bottom:0}
 /* 行首：紧急度小点 + 勾选框。两个包一层，免得 .item 的 gap 被拆成两份、白吃一截宽度 */
 .lead{flex:0 0 auto;display:flex;align-items:flex-start;gap:7px}
@@ -897,9 +906,20 @@ body:not([data-view="settings"]) .pdaim-footer{display:none}
 /* 时间轴现在是清单页的一种展示模式（S.listMode==='timeline'，body[data-view] 仍是 "list"），
    不再有独立的 timeline 视图，下面三组 data-view="timeline" 规则已失效，删掉。 */
 .tl-section{width:min(100%,960px);margin:0 auto}   /* 列表读起来窄一点更舒服 */
-/* 复合目标：子任务缩进挂在目标卡下，左侧树线随层级渐淡 */
+/* 复合目标：子任务缩进挂在目标卡下，左侧树线随层级渐淡
+   ★ 0D.1（用户真机实测，两个问题一起治）：
+   改之前 .goal-kids 是 .body 的子节点，而父卡的内容区被右边那列 ✎/✕（.acts，实测 49.6px）
+   吃掉一截 —— 于是子任务那一行的**右边界**停在 299.38，比父卡自己的底边线（362）短 62.6px，
+   正好是用户说的"右边明显短一截、约 60dp"，标题也被挤到换行（子任务内容区只剩 86.75px）。
+   现在 .goal-kids 从 .body 里搬出来，成为 .item 的一个整行（见 itemHTML），宽度由卡片自己决定：
+     · flex-basis calc(100% - 2px)：容器内容宽 320 → 实宽 318，加左右外边距正好 320，独占一行；
+     · margin-left:4px：那条竖线（border-left）落在 x=44 —— 与父卡紧急度圆点 .udot 的
+       水平中心是同一条竖线；
+     · margin-right:-2px：吃掉卡片自己的右内边距，右边缘与父卡底边线（x=362）齐平。
+   改完子卡与父卡一样宽，且子卡的**内容区**右边界与父卡的**内容区**右边界精确相等（都 299.38）。 */
 .goal-kids{
-  margin:6px 0 2px 2px;padding-left:12px;
+  flex:0 0 calc(100% - 2px);
+  margin:6px -2px 2px 4px;padding-left:12px;
   border-left:2px solid color-mix(in srgb,var(--accent) 40%,transparent);
   display:flex;flex-direction:column;gap:2px;
 }
@@ -1047,7 +1067,19 @@ html.locked{overflow:hidden}
   -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
 .mask.on{display:flex;animation:fadein .2s ease both}
 @keyframes fadein{from{opacity:0}to{opacity:1}}
-.modal{width:100%;max-width:600px;max-height:88vh;overflow:auto;overscroll-behavior:contain;padding:clamp(22px,3vw,34px);border-radius:38px;animation:rise .34s var(--mo-soft) both}
+.modal{width:100%;max-width:600px;max-height:88vh;overflow:auto;overscroll-behavior:contain;padding:clamp(22px,3vw,34px);border-radius:38px;animation:rise .34s var(--mo-soft) both;scrollbar-width:none;-ms-overflow-style:none}   /* 0D.2：末尾两个属性见下面那条注释 */
+/* ★ 0D.2（用户："弹层底部四个按钮里，右边那个保存贴到界面右边缘了"）：
+   真凶是 .modal 自己那条 overflow:auto 的滚动条。内容一超过 88vh 就出现，而它**落在
+   padding 那 22px 里**（安卓 WebView 是覆盖式细条画在留白带上，桌面是占位的 15px 宽条，
+   两种都吃这块）—— 于是"保存"到弹层右边缘的**可见留白**只剩 7px 左右，左边「删除」却是
+   干净的 22px，差 15px 正好是用户目测的 10~15dp。按钮的盒模型一直是对称的（rect 量出来左右
+   都是 22px），被吃掉的是那一截视觉留白，所以光看 rect 查不出来。
+   做法按全站既有约定：手机上的滚动条一律不画（html/body 见文件头、.pillstrip / .tree-wrap /
+   .batch-bar .bb-acts / .wheel-col 都是这么处理的），滚动能力本身一点不减。
+   ⚠️ scrollbar-width 这一条已**并进上面那唯一一处 .modal 定义**（见行尾），
+   不许再写第二条 .modal{...} —— 同一选择器两处定义正是本项目踩过的坑
+   （旧 .cmenu 两处定义，让 bug 时好时坏）。下面只留 ::-webkit-scrollbar 这条兄弟选择器。 */
+.modal::-webkit-scrollbar{width:0;height:0}
 /* 弹窗压在深色遮罩上，而 .glass 的底是**半透明**的（真机 GPU 下只有 54% 不透明）——
    于是遮罩的深色透过弹窗本身浮上来，整块被染成灰、连字都跟着发灰
    （用户截图里那个灰扑扑的「粘贴导入」就是这么来的）。
@@ -4450,12 +4482,12 @@ function itemHTML(it, kidsHTML, goalInfo, extraHTML){
         ${tags}
       </div>
       ${extraHTML || ''}
-      ${kidsHTML || ''}
     </div>
     <div class="acts">
       <button class="mini" data-act="edit" title="编辑">✎</button>
       <button class="mini" data-act="del" title="删除">✕</button>
     </div>
+    ${kidsHTML || ''}
   </div>`;
 }
 
@@ -7415,6 +7447,10 @@ function refresh(){
     /* ★ v5.0：底栏小指示条要落在**图标**正下方。这一帧的 DOM 刚建好、布局已定，
        正是量图标中心的时候（见 syncTabDots）。放在最后，确保读到的是最终布局。 */
     syncTabDots();
+    /* ★ 0D.3：这一帧的布局刚定，正是重算"--bar-keep / 这一屏要不要滑 / 设置页收起态页脚位置"
+       的时候。必须在最后——它读的是最终高度（见 _syncFit）。没有原生桥的环境下这个函数不存在，
+       行为与改动前一致（滚动锁本来也只在 WebView 里生效）。 */
+    if (window.__syncBarFit) window.__syncBarFit();
   });
 }
 
@@ -8617,6 +8653,13 @@ view.addEventListener('click', e => {
     if (card) card.classList.toggle('open', nowOpen);
     el.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
     revealAnim(body, nowOpen, h, mt);
+    /* ★ 0D.3：设置页收起态要把页脚灰字摆到「关于」块与基准线的中点、并把页脚留白收掉
+       （展开态再交回正常流）。这个类切换不会触发 #view 的 MutationObserver，
+       所以要自己叫一次；高度在 REVEAL_MS(300ms) 里是连续变的，动画跑完再补一次。 */
+    if (window.__syncBarFit){
+      window.__syncBarFit();
+      setTimeout(window.__syncBarFit, REVEAL_MS + 60);
+    }
     return;
   }
   /* ★ v5.0：「没写时间的条目默认去哪」—— 只改默认落点，不改录入流程本身 */
@@ -9068,7 +9111,10 @@ function foldWithMotion(chip, it){
   /* ★ 审查修复（2026-10-04）：同一个函数同时服务两种折叠容器 ——
      清单页复合目标是卡内的 .goal-kids，想法卡是卡片**外面**的 .seed-kids（挂在 .seed-node 下）。
      两者的"收起"标记不同：前者是 `.folded` 类，后者是 `hidden` 属性，所以统一走 markFolded()。 */
-  const host = chip.closest('.seed-node') || chip.closest('.body');
+  /* ★ 0D.1：清单侧的复合目标 .goal-kids 已从 .body 里搬到 .item 的整行（见 itemHTML），
+     宿主查询跟着上移到 .item。**必须一起改**：查询不到会撞上下面那条 `if (!box)` 兜底
+     → 退化成整页重渲染，而且 collapsed 状态不写，表现只是"点 ▾ 没反应"，很难查。 */
+  const host = chip.closest('.seed-node') || chip.closest('.item');
   const box = host ? host.querySelector(':scope > .goal-kids, :scope > .seed-kids') : null;
   const isSeedBox = !!(box && box.classList.contains('seed-kids'));
   const markFolded = on => { if (isSeedBox) box.hidden = !!on; else box.classList.toggle('folded', !!on); };
@@ -10994,7 +11040,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.3.1';
+const APP_VERSION = '5.3.2';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
@@ -11094,21 +11140,77 @@ const barHeardSpan = barHeardEl ? barHeardEl.querySelector('span') : null;
       _scrollT = setTimeout(() => de.classList.remove('is-scrolling'), 140);
     }, { passive: true });
     /* v3.25：内容装得下 → 整页锁死，不许上下滑；装不下（设置页那种长页）才放行。
-       挂在 MutationObserver 上，任何重新渲染/展开分区之后都会重算，不用去改 refresh()。 */
+       挂在 MutationObserver 上，任何重新渲染/展开分区之后都会重算，不用去改 refresh()。
+
+       ★ 0D.3（用户真机三例："设置页滑到底仍被底栏遮一半 / 想法页底部那行标签被挡 /
+       统计页最底那张卡被挡四分之一**而且根本滑不动**"）：
+       原来的判据是"溢出量 ≤ 140px 就锁死"，而 140 只是 `.page-shell` 那条 130px 预留 padding
+       的粗糙替身。真机实测：底栏中间凸起的最顶那条线在距屏底 90px 处 —— 内容只要溢出 40px
+       就已经钻到凸起下面，却还被判成"装得下"→ 锁死滚不动。40~140px 这一档正是统计页的症状。
+       现在判据统一到**实测基准线**：
+         基准线 y = 圆钮顶 − 包边（= 底栏玻璃轮廓气球的最顶点，见 barBaselineY）
+         --bar-keep = 屏幕底 − 基准线（实测 90px），同时被 .page-shell 的 padding-bottom 用掉
+       于是 "scrollHeight ≤ clientHeight" 与 "内容底 ≤ 基准线" 是同一件事的两种说法。 */
     try {
       const _de = document.documentElement;
+      /* 基准线：圆钮本体（.fab，实测直径 56）的顶边再往上一个包边宽（--wrap，实测 8）——
+         玻璃轮廓的气球沿比圆钮还高这一圈，那一圈也是底栏真正盖住内容的最上沿。
+         全部从**实测 rect / computed style** 推出来，不按 --bar-h / --btn-d 那几条公式硬算。 */
+      const barBaselineY = () => {
+        const fab = document.getElementById('entryFab');
+        const cap = document.getElementById('capsule');
+        if (!fab || !cap) return window.innerHeight;   // 底栏不在（全屏树状图）→ 不预留
+        const r = fab.getBoundingClientRect();
+        if (!r.height) return window.innerHeight;      // 被 display:none 收起时同理
+        const wrap = parseFloat(getComputedStyle(cap).getPropertyValue('--wrap')) || 0;
+        return r.top - wrap;
+      };
+      let _barKeep = -1;
+      /* 设置页收起态：把最底部那行灰色小字摆到「关于」块下边缘与基准线的正中，
+         并把页脚底部留白收掉 —— 于是收起态整页正好装得下、不需要滑动；
+         一旦展开某个栏目（下面会提前 return）就交回正常流：该滑就滑，滑到底也不会被遮。 */
+      const syncSettingsFoot = () => {
+        const foot = document.querySelector('.pdaim-footer');
+        if (!foot) return;
+        const clear = () => {
+          if (foot.style.marginTop) foot.style.removeProperty('margin-top');
+          if (foot.style.paddingBottom) foot.style.removeProperty('padding-bottom');
+        };
+        if (S.view !== 'settings'){ clear(); return; }
+        const cards = document.querySelectorAll('.set-wrap .set-card');
+        if (!cards.length || document.querySelectorAll('.set-wrap .set-card.open').length){ clear(); return; }
+        /* 全程用**视口坐标**做相对运算：页面当前滚到哪都不影响结果。
+           用 margin-top（可以是负数）而不是 padding-top：收起态的页脚**本来就在中点下方**
+           （它上面还压着 .page-shell 那段给底栏预留的高度），只加下边距只会把它推得更低。 */
+        const aboutBottom = cards[cards.length - 1].getBoundingClientRect().bottom;
+        const mid = aboutBottom + (barBaselineY() - aboutBottom) / 2;
+        const fcs = getComputedStyle(foot);
+        const mtNow = parseFloat(fcs.marginTop) || 0;
+        const pbNow = parseFloat(fcs.paddingBottom) || 0;    // 这一趟要把它压成 0
+        const naturalBottom = foot.getBoundingClientRect().bottom - mtNow;
+        /* 目标：压掉底部留白之后，整个页脚的底边落在中点。
+           注意别用 span 的 rect 高度当行高 —— 那是 inline 盒的字体高（18px），
+           而真正决定页脚高度的是**行框**（line-height 1.6 × 12.5px = 20px），直接量
+           页脚自己的 rect 才不会差这 2px。 */
+        const mt = mid - naturalBottom + pbNow;
+        const v = mt.toFixed(1) + 'px';
+        if (foot.style.marginTop !== v) foot.style.marginTop = v;
+        if (foot.style.paddingBottom !== '0px') foot.style.paddingBottom = '0px';
+      };
       const _syncFit = () => {
         try {
-          /* 溢出量 ≤ 140px 就锁死：这 140px 正是 `.page-shell` 给底栏预留的 padding-bottom
-             （130px + 安全区余量），并不代表真有内容被挡在屏幕外。
-             设置页/长清单那种真装不下的，溢出远超 140px，照样能滚。 */
-          const over = document.body.scrollHeight - window.innerHeight;
-          const fit = over <= 140;
+          const keep = Math.max(0, window.innerHeight - barBaselineY());
+          if (keep !== _barKeep){ _barKeep = keep; _de.style.setProperty('--bar-keep', keep + 'px'); }
+          syncSettingsFoot();
+          const fit = _de.scrollHeight - window.innerHeight <= 0.5;
           _de.classList.toggle('fit-view', fit);
           if (fit && window.scrollY > 0) window.scrollTo(0, 0);   // 锁死的同时把偏移归零
         } catch (_){}
       };
       _syncFit();
+      /* refresh() 与设置页的折叠开关都要能主动叫一次（见那两处调用点）：
+         MutationObserver 只监听 #view 的 childList，而设置页折叠改的是 class、不是子节点。 */
+      window.__syncBarFit = _syncFit;
       window.addEventListener('resize', _syncFit, { passive: true });
       window.addEventListener('orientationchange', _syncFit);
       new MutationObserver(_syncFit).observe(view, { childList: true, subtree: true });
