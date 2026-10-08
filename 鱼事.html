@@ -6760,9 +6760,17 @@ function originCounts(list){
 function originRowHTML(list){
   const c = originCounts(list);
   const total = c.short + c.long + c.loop;
-  if (!total) return `<div class="stat-origin empty">还没有打勾</div>`;
-  const cell = (label, n, cls) => `<span class="so${cls || ''}"><b>${n}</b><i>${label}</i></span>`;
-  return `<div class="stat-origin">` + cell('短期', c.short) + cell('长期', c.long) +
+  /* ★ 0G 修：这一行也要跟着子页一起入场。用户真机反馈："'短期'、'长期'和'循环'这种标识
+     似乎没有淡入的动画" —— 原来它没挂 rv()/rvd()，标题栏与列表在淡入、它自己"啪"地出现。
+     延迟排在标题栏之后 60ms（标题栏是 0ms）。 */
+  const attrs = `${rv()}${rvd(60)}`;
+  if (!total) return `<div class="stat-origin empty${attrs}">还没有打勾</div>`;
+  /* ⚠️ class 的连接符必须留空格。写成 `class="so${cls || ''}"` 会拼出 `soloop`（第三个格子），
+     那一格就完全不吃 `.stat-origin .so` 的样式 → 屏幕上挤成一行「0循环」、字体也退回默认
+     （用户真机截图抓到的就是这个；我的 DOM 断言当时只比对了数字，没比对"三格长得一样"，
+     所以没有拦住 —— 已补断言）。 */
+  const cell = (label, n, cls) => `<span class="so${cls ? ' ' + cls : ''}"><b>${n}</b><i>${label}</i></span>`;
+  return `<div class="stat-origin${attrs}">` + cell('短期', c.short) + cell('长期', c.long) +
     cell('循环', c.loop, 'loop') + `</div>`;
 }
 /* ★ 0G：长列表跳转钮的骨架。露不露由 updateStatJump() 按"内容 > 4 屏 + 滑过 2 屏"判，
@@ -10087,6 +10095,15 @@ function openMask(){
   clearTimeout(maskOutTimer); maskOutTimer = 0;
   mask.classList.remove('closing');
   mask.classList.add('on');
+  /* ★ 0G：每次打开弹层都回到**最上面**。
+     `.modal` 是常驻元素（每次只换 innerHTML），浏览器会把它的滚动位置留着 —— 上一次看到一半
+     关掉，下一次打开就停在半路。实测（_ref 里的取证）：作业那条 maxScroll=483，手动滚到 400
+     关闭、再打开时 scrollTop=**331**，首屏直接跳到「原文」（用户截图就是这个）；
+     **非作业**那条因为内容不够高（maxScroll=0）根本不可滚，所以看起来"只有作业才有这毛病"。
+     放在 openMask 而不是 openItemEditor：所有弹层都该从顶部开始，一处收口。
+     （openParentPicker 不受影响：它在调 openMask 之前已经记下 prevScroll 并把 scrollTop 置 0，
+       关闭时再还回去。） */
+  modal.scrollTop = 0;
   lockPage();
   /* 顺序要紧：**先记焦点、再 inert** —— 给一棵"焦点正在里面"的子树设 inert，
      浏览器会把焦点踢到 body，那时再记就只剩 body 了。
@@ -11481,7 +11498,9 @@ tabbar.addEventListener('click', e => {
      "在子页直接点底栏统计能不能回首页？"）。子页不是一页，它只是统计页里的一屏，
      所以这里必须放行给 goView（它会清掉 statPage 再重画首页）。 */
   if (v === S.view && !(v === 'stat' && statPage)) return;
-  goView(v);   // ★ 换页面的唯一入口：视图 + 会话态清理 + 副作用收敛（见 goView 的说明）
+  /* ★ 0G：从统计子页回首页是"同一个视图里的另一屏"，要带一次入场动画 ——
+     显式点名 anim（不点名时 goView 走的是"同页重画不播动画"那条路，用户看到的就是"没动画"）。 */
+  goView(v, v === S.view ? { anim: true } : undefined);
   if (v === 'list'){
     const sec = document.getElementById('view');
     if (sec) window.scrollTo({ top: sec.offsetTop - 132, behavior: 'smooth' });
@@ -11701,7 +11720,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.5.2';
+const APP_VERSION = '5.5.3';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
@@ -12420,7 +12439,17 @@ function goView(v, opts){
   /* ★ 0G：来处与 statPage 同一处赋值/清理（同一套生命周期，别让第二个真相源长在调用点上）。
      从清单页底部那行进来时带 {from:'list'} → 子页的「返回」才知道要回清单页。 */
   statFrom = (v === 'stat' && o.from === 'list') ? 'list' : null;
-  if (S.view === v){ refresh(); return; }
+  /* ★ 0G：同一个视图内部换屏也要能要求播一次入场。原来是直接 refresh()（而 ANIM 已被上一次
+     渲染关成 false）→ 从统计子页点底栏「统计」回首页时**一点动画都没有**（用户实测反馈）。
+     现在传 { anim:true } 就能播；不传时行为与改动前一致。 */
+  if (S.view === v){
+    /* ★ 0G：同屏换屏（统计子页进出）也要播一次入场。原来这里直接 refresh()（而 ANIM 已被上一次
+       渲染关成 false）→ 从子页点底栏「统计」回首页时**一点动画都没有**（用户实测反馈）。
+       两个触发条件：显式点名的 anim，或本次是"进/出某个统计子页"。不满足时行为与改动前一致。 */
+    if (o.anim || o.statPage) ANIM = true;
+    refresh();
+    return;
+  }
   S.view = v;
   if (v !== 'idea'){ ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); ideaUI.sparkOpen = null; }
   if (v !== 'idea' || S.ideaLayout !== 'tree') setTreeFull(false);

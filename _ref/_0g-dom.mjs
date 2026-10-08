@@ -41,6 +41,11 @@ const items = [
   Object.assign({}, base, { id: 'kd', raw: '今天做完的子', title: '今天做完的子', parent: 'pd', done: true, doneAt: Date.now() }),
   Object.assign({}, base, { id: 'short1', raw: '还没做的', title: '还没做的', zone: 'short' }),
   Object.assign({}, base, { id: 'long1', raw: '长期的事', title: '长期的事', zone: 'long' }),
+  /* 一条作业：① 让「作业未交」这一页有数；② [8] 用它验编辑弹层的滚动位置
+     （作业那条的 maxScroll 最大，是"打开就停在半路"最容易中招的形态）。 */
+  Object.assign({}, base, { id: 'hwA', raw: '毒品预防教育作业 做宣传内容', title: '毒品预防教育作业',
+    hw: { course: '毒品预防教育', status: 'todo', detail: '做宣传内容，形式不限，第七周给方案，第九周开始汇报',
+      channel: '', naming: '', submittedAt: null } }),
 ];
 for (let i = 0; i < 120; i++){
   items.push(Object.assign({}, base, {
@@ -121,7 +126,10 @@ const click = async (sel, wait) => {
 const visible = () => ev(`
   var els = [].slice.call(document.querySelectorAll('#view .reveal-on-scroll'));
   var paint = document.querySelector('#view .feature-card, #view .stat-list, #view .zone');
-  var inFold = els.filter(function(e){ return e.getBoundingClientRect().top < innerHeight; });
+  var inFold = els.filter(function(e){ var r = e.getBoundingClientRect();
+    /* 只算"确实落在揭示区里"的：IO 的 rootMargin 会在视口底部留 8% 不触发揭示，
+       那种"半露在屏幕下沿"的元素本来就该等滚动到位 —— 算进来是假红。 */
+    return r.top < innerHeight * 0.9 && r.bottom > 0; });
   return { view: S.view, statPage: (typeof statPage === 'undefined' ? 'UNDEF' : statPage),
     cards: document.querySelectorAll('.feature-card[data-statpage]').length,
     revealN: els.length,
@@ -202,6 +210,15 @@ console.log('\n[3] 子页里点底栏「统计」→ 回统计首页（原来被
   const back = await visible();
   t('[3] 点底栏「统计」→ 回统计首页（不是留在子页、也不是空白）',
     [back.view, back.statPage, back.cards, back.paintOpacity], ['stat', null, 5, 1]);
+  /* ★ 0G 修：这一屏必须是**带动画**渲染的。判据看 DOM 有没有 reveal 类（rv() 只在 ANIM
+     为真时才吐这个类）—— 读 ANIM 变量没用：refresh() 收尾会把它关回 false。
+     修前这里走的是"同页重画不播动画"那条路，元素上没有任何 reveal 类。 */
+  const anim = await ev(`
+    return { revealN: document.querySelectorAll('#view .reveal-on-scroll').length,
+      cards: document.querySelectorAll('.feature-card[data-statpage]').length };
+  `);
+  tOk('[3] 子页→统计首页这一屏带入场动画（元素挂着 reveal-on-scroll）',
+    anim.revealN > 0 && anim.cards === 5, JSON.stringify(anim));
 }
 
 /* ---------- [4] 清单页那行的形态与入场排队 ---------- */
@@ -252,9 +269,10 @@ console.log('\n[5] 分解条：统计首页卡片上没有、子页里有');
   t('[5] 首页 5 张卡上一条分解药丸/副行都没有了', [home.cards, home.vsub], [5, 0]);
   console.log('      五张卡的高度：' + JSON.stringify(home.heights));
   /* ⚠️ refresh() 是 rAF 里写 innerHTML 的：**必须分两步**（先切页、睡一觉再查 DOM），
-     同一个 ev 里立刻 querySelector 会拿到上一屏。这个坑在 0G 第一轮也踩过一次。 */
-  await ev(`goView('stat', { statPage:'today' }); return 1;`);
-  await sleep(700);
+     同一个 ev 里立刻 querySelector 会拿到上一屏。这个坑在 0G 第一轮也踩过一次。
+     这里走**真实用户路径**（点统计首页那张卡 → statGo → 带入场），而不是直接 goView。 */
+  await click('.feature-card[data-statpage="today"]');
+  await sleep(300);
   const today = await ev(`
     var row = document.querySelector('.stat-origin');
     var hits = statRootHits(statPageHits('today'));
@@ -265,6 +283,27 @@ console.log('\n[5] 分解条：统计首页卡片上没有、子页里有');
   `);
   t('[5] 今日完成子页有那条分解（三等分三格）', [today.exists, today.cols], [true, 3]);
   t('[5] 三格数字 = 根级列表的短期/长期/循环', today.nums, today.want);
+  /* ★ 0G 修：光比数字拦不住"第三格长得不一样"。用户真机截图报的两种毛病都在这里取证：
+     ① `.so` 的 class 拼成了 `soloop`（少一个空格）→ 那一格不吃样式、挤成一行且字体退回默认；
+     ② 这一行没挂 reveal → 标题与列表在淡入、它自己"啪"地出现。
+     所以这里比"每一格都是 .so、且三格的计算样式一致"。 */
+  const cells = await ev(`
+    var row = document.querySelector('.stat-origin');
+    var kids = row ? [].slice.call(row.children) : [];
+    return { classes: kids.map(function(k){ return k.className; }),
+      displays: kids.map(function(k){ return getComputedStyle(k).display; }),
+      numStyles: kids.map(function(k){ var b = k.querySelector('b'); return b ? getComputedStyle(b).fontSize + '|' + getComputedStyle(b).fontFamily : null; }),
+      labelSizes: kids.map(function(k){ var i = k.querySelector('i'); return i ? getComputedStyle(i).fontSize : null; }),
+      reveal: row ? row.classList.contains('reveal-on-scroll') : null };
+  `);
+  console.log('      三格：' + JSON.stringify(cells.classes) + ' · display=' + JSON.stringify(cells.displays));
+  t('[5] 三个格子都是 .so（第三个原来拼成了 soloop）',
+    cells.classes.map(c => /(^|\s)so(\s|$)/.test(c)), [true, true, true]);
+  t('[5] 三格都是同一套竖排布局', cells.displays, ['flex', 'flex', 'flex']);
+  tOk('[5] 三格的数字字号 + 字体完全一致（"0循环 字体不一样"就是这里歪的）',
+    new Set(cells.numStyles).size === 1, JSON.stringify(cells.numStyles));
+  tOk('[5] 三格的标签字号一致', new Set(cells.labelSizes).size === 1, JSON.stringify(cells.labelSizes));
+  tOk('[5] 这一行自己也参与入场（不再"啪"地出现）', cells.reveal === true, String(cells.reveal));
   t('[5] 三格之和 = 同一页「共 N 条」里的 N',
     [today.nums.reduce((a, b) => a + b, 0), today.subN],
     [1, '共 1 条']);
@@ -416,6 +455,49 @@ console.log('\n[7] 数字口径：清单页入口 N = 统计卡 N = 子页「共
   t('[7] 三个子页的「共 N 条」也同数',
     [subs.today, subs.overdue, subs.hw],
     ['共 ' + r.counts.today + ' 条', '共 ' + r.counts.overdue + ' 条', '共 ' + r.counts.hw + ' 条']);
+}
+
+/* ---------- [8] 编辑弹层：每次打开都从最上面开始 ---------- */
+console.log('\n[8] 编辑弹层：每次打开都回到最上面（作业那条最容易中招）');
+{
+  /* 机制：`.modal` 是常驻元素（只换 innerHTML），滚动位置会被浏览器留着。
+     实测（修前）：作业那条 maxScroll=483，手动滚到 400 关闭、再打开时 scrollTop=331，
+     首屏直接跳到「原文」；非作业那条 maxScroll=0 不可滚，所以"只有作业才有这个毛病"。 */
+  await ev(`hideToast(); goView('list'); return 1;`);
+  await sleep(700);
+  await ev(`openItemEditor(S.items.find(function(x){ return x.id === 'hwA'; }), false); return 1;`);
+  await sleep(500);
+  const open1 = await ev(`
+    var m = document.getElementById('modal');
+    return { top: Math.round(m.scrollTop), max: Math.round(m.scrollHeight - m.clientHeight) };
+  `);
+  t('[8] 第一次打开作业：在顶部', [open1.top, open1.max > 200], [0, true]);
+  await ev('document.getElementById("modal").scrollTop = 400; return 1;');
+  await sleep(200);
+  await ev('closeModalNow(); return 1;');
+  await sleep(400);
+  await ev(`openItemEditor(S.items.find(function(x){ return x.id === 'hwA'; }), false); return 1;`);
+  await sleep(500);
+  const open2 = await ev(`
+    var m = document.getElementById('modal');
+    var mt = document.getElementById('modalTitle');
+    var mr = m.getBoundingClientRect();
+    var r = mt ? mt.getBoundingClientRect() : null;
+    var labs = [].slice.call(m.querySelectorAll('.field > label'));
+    var firstSeen = null;
+    for (var i = 0; i < labs.length; i++){
+      if (labs[i].getBoundingClientRect().top >= mr.top - 1){ firstSeen = labs[i].textContent.trim(); break; }
+    }
+    return { top: Math.round(m.scrollTop), max: Math.round(m.scrollHeight - m.clientHeight),
+      titleVisible: r ? (r.top >= mr.top - 1 && r.top < mr.bottom) : null, firstSeen: firstSeen };
+  `);
+  console.log('      重开读数：' + JSON.stringify(open2));
+  tOk('[8] 滚到半路关掉、再打开：仍然回到最上面（修前停在 331）',
+    open2.top === 0 && open2.max > 200, JSON.stringify(open2));
+  tOk('[8] 标题栏「编辑」看得见，首屏**不是**从「原文」开始（那个正是修前的现象）',
+    open2.titleVisible === true && open2.firstSeen !== '原文', JSON.stringify(open2));
+  await ev('closeModalNow(); return 1;');
+  await sleep(300);
 }
 
 console.log('');
