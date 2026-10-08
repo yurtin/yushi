@@ -80,6 +80,10 @@ const PARENT_GUARD = constNum(html, 'PARENT_GUARD');
 const STAT_PAGES_SRC = blockOf(html, 'const STAT_PAGES = {');
 const statPageDecl = (html.match(/let statPage = null;[^\n]*/) || [])[0];
 if (!statPageDecl) { console.error('找不到 `let statPage = null;` 声明（0E 的子页状态）'); process.exit(1); }
+/* ★ 0G：子页的"来处"（statFrom）与 statPage 同一套生命周期，也要注入这个隔离环境 ——
+   它只被 renderStatSub（返回按钮文案）与 statGo（返回目标）读。 */
+const statFromDecl = (html.match(/let statFrom = null;[^\n]*/) || [])[0];
+if (!statFromDecl) { console.error('找不到 `let statFrom = null;` 声明（0G 的子页来处）'); process.exit(1); }
 
 /* 0E 新增 / 触碰的函数（全部按名从文件里切出来，不在测试里重写一份）。
    ⚠️ itemHTML **不能**放进这个名单：函数声明会盖掉同名参数，那样喂进去的桩就失效了 ——
@@ -88,6 +92,7 @@ if (!statPageDecl) { console.error('找不到 `let statPage = null;` 声明（0E
    真 DOM 上验（那边用的是文件里那份真代码）。 */
 const FN_NAMES = ['statPageHits', 'statTreeOf', 'statRootHits', 'statPageCount', 'statItemsHTML', 'statStreakDays', 'renderStatSub',
   'statGo', 'renderStat', 'renderZoneBody', 'ancestorIds', 'streak', 'statDoneItems', 'isSeed',
+  'originCounts', 'originRowHTML', 'jumpButtonHTML',
   'ymd', 'pad2', 'dateFrom', 'today0', 'daysFromToday', 'teDateLabelFromStr'];
 const appSrc = FN_NAMES.map(n => extractFn(html, n)).join('\n\n');
 
@@ -124,12 +129,14 @@ function makeEnv(items){
     'S', 'view', 'collapsed', 'PARENT_GUARD', 'ANIM', 'window',
     'ordered', 'cmpItem', 'esc', 'rv', 'rvd', 'itemHTML', 'countUpNumbers',
     'save', 'refresh', 'refreshAfterChange', 'toast', 'Date',
-    STAT_PAGES_SRC + '\n' + statPageDecl + '\n'
+    STAT_PAGES_SRC + '\n' + statPageDecl + '\n' + statFromDecl + '\n'
       + 'let BASEDAY = null;\n'      // today0() 读它（导入历史笔记的基准日）；测试里恒为 null
       + appSrc + '\n'
       + 'return { statPageHits, statTreeOf, statRootHits, statPageCount, statItemsHTML, statStreakDays, renderStatSub, statGo,'
       + ' renderStat, renderZoneBody, statDoneItems, streak, isSeed, itemHTML,'
+      + ' originCounts, originRowHTML, jumpButtonHTML,'
       + ' getStatPage: () => statPage, setStatPage: v => { statPage = v; },'
+      + ' getStatFrom: () => statFrom, setStatFrom: v => { statFrom = v; },'
       + ' getANIM: () => ANIM, view };'
   )(S, view, collapsed, PARENT_GUARD, false, window,
     ordered, cmpItem, esc, rv, rvd, itemHTML, countUpNumbers,
@@ -231,12 +238,38 @@ console.log('\n[1b] 0G  数字口径（根级）与「按树算出来的根数�
   t('0G：其中 2 条嵌在父卡的一个 .goal-kids 里', (out3.match(/class="goal-kids"/g) || []).length, 1);
   t('0G：清单页那行入口的 N = 数字口径（父 + 2 子 → 1）', entryN(e3.renderZoneBody()), e3.statPageCount('today'));
 
-  /* ④ 别的子页口径不变：已逾期 / 作业未交仍然逐条数（本卡未动） */
+  /* ④ ★ 0G 第二轮（用户定："已逾期 / 作业未交也数卡"）：**四个列表子页一个口径**，
+     不再分"回看页数卡、待办页数事"。fullItems 里：
+       已逾期 o1、o2 各自当根（父 p_ok 没逾期、不在命中集合）→ 2；
+       作业未交 h3 挂在 h1 下面 → 1（改之前是逐条数 2）。 */
   const { env: e4 } = makeEnv(fullItems());
-  t('0G：已逾期仍是逐条数（2 条，不是根级 1）', e4.statPageCount('overdue'), 2);
-  t('0G：作业未交仍是逐条数（2 项，不是根级 1）', e4.statPageCount('hw'), 2);
-  t('0G：已完成的回看页才数根级（today/history）',
-    [e4.statPageCount('today'), e4.statPageCount('history')], [1, 2]);
+  t('0G：已逾期也数卡（o1/o2 各占一张 → 2）', e4.statPageCount('overdue'), 2);
+  t('0G：作业未交也数卡（h3 挂在 h1 下面 → 1，不是 2）', e4.statPageCount('hw'), 1);
+  t('0G：四个列表子页都是根级口径',
+    [e4.statPageCount('today'), e4.statPageCount('history'),
+     e4.statPageCount('overdue'), e4.statPageCount('hw')], [1, 2, 2, 1]);
+  tOk('0G：statPageCount 对每个 key 都等于 statRootHits(statPageHits(key)).length（口径同源）',
+    ['today', 'history', 'overdue', 'hw'].every(k =>
+      e4.statPageCount(k) === e4.statRootHits(e4.statPageHits(k)).length));
+
+  /* ⑤ ★ 0G 第二轮：分解条从卡片搬进子页 */
+  tOk('0G：统计首页那两张卡上不再有来源副行（源码级：没有 sub: / x.sub 那条入口）',
+    !/sub: *breakdown/.test(codeOnly) && !/x\.sub/.test(codeOnly));
+  tOk('0G：分解条改画在子页里（今日完成那页有 .stat-origin）',
+    /class="stat-origin"/.test(e4.renderStatSub('today')));
+  tOk('0G：历史完成那页也有', /class="stat-origin"/.test(e4.renderStatSub('history')));
+  tOk('0G：已逾期 / 作业未交没有这条分解（它们不是"完成量"）',
+    !/stat-origin/.test(e4.renderStatSub('overdue')) && !/stat-origin/.test(e4.renderStatSub('hw')));
+  /* 三格数字必须与同页「共 N 条」同源（不然会出现"三格加起来 ≠ 条数"） */
+  {
+    const rootToday = e4.statRootHits(e4.statPageHits('today'));
+    const c = e4.originCounts(rootToday);
+    const row = e4.renderStatSub('today');
+    const nums = (row.match(/<b>(\d+)<\/b>/g) || []).map(s => s.replace(/\D/g, ''));
+    t('0G：三格数字 = 短期/长期/循环（数的是**根级**列表，与「共 N 条」同源）',
+      [nums.join('/'), [c.short, c.long, c.loop].join('/')],
+      [[c.short, c.long, c.loop].join('/'), [c.short, c.long, c.loop].join('/')]);
+  }
 }
 
 /* ---------- 4. 明细页的树：根级条目 + 挂在它们下面的子任务 ---------- */
@@ -280,10 +313,12 @@ console.log('\n[2] 0E  明细页：根级条目 + 挂在它们下面的子任务
 console.log('\n[3] 0E  子页骨架：← 返回 + 标题 + 共 N 条');
 {
   const { env, view } = makeEnv(fullItems());
-  /* ★ 0G：「共 N 条」改成根级口径（与看得见的卡片数一致）——
-     fullItems 里 t2 挂在 t1 下面，所以今日完成是 1 不是 2；历史完成 1 + 昨天的 t3 = 2。 */
+  /* ★ 0G：数字口径**统一为根级**（用户 2026-10-08 定："已逾期 / 作业未交也数卡"）——
+     fullItems 里 t2 挂在 t1 下面 → 今日完成 1；历史完成 t1 + 昨天的 t3 = 2；
+     已逾期 o1、o2 各自当根（父 p_ok 没逾期、不在命中集合里）→ 2；
+     作业未交 h3 挂在 h1 下面 → 1（改之前是 2）。 */
   const spec = [['today', '今日完成', '共 1 条'], ['history', '历史完成', '共 2 条'],
-    ['overdue', '已逾期', '共 2 条'], ['hw', '作业未交', '共 2 条']];
+    ['overdue', '已逾期', '共 2 条'], ['hw', '作业未交', '共 1 条']];
   for (const [key, title, n] of spec){
     env.setStatPage(key);
     env.renderStat();
@@ -291,6 +326,9 @@ console.log('\n[3] 0E  子页骨架：← 返回 + 标题 + 共 N 条');
     tOk('[' + key + '] 有返回行「← 返回」', /data-statback="1"[^>]*>← 返回</.test(h), '');
     tOk('[' + key + '] 标题是「' + title + '」', h.includes('>' + title + '</h2>'), '');
     tOk('[' + key + '] 写着「' + n + '」', h.includes(n), (h.match(/共 \d+ 条/) || [''])[0]);
+    /* ★ 0G：长列表跳转钮随子页一起渲染（它是 #view 里的一员，换页自动消失） */
+    tOk('[' + key + '] 挂着长列表跳转钮（默认不浮现，要滑够了才出来）',
+      /class="stat-jump"/.test(h) && !/class="stat-jump on"/.test(h), '');
   }
   /* 空态：没有数据时给一句人话，而不是一片空白 */
   const empty = makeEnv([mk({ id: 'z', title: '没做完的' })]);
@@ -357,14 +395,25 @@ console.log('\n[4] 0E  等式：统计页「今日完成」卡的 N == 清单页
   tOk('N>0 → 那一行入口出现，且文案是「今天已完成 N 条」',
     /今天已完成 <b class="de-n mono">1<\/b> 条/.test(oneOut), (oneOut.match(/今天已完成[^<]*<b[^>]*>\d+<\/b>[^<]*/) || [''])[0]);
   tOk('那一行入口是无障碍可达的（真 button + aria-label）',
-    /<button class="glass zone-wide done-entry[^"]*" data-statentry="1"/.test(oneOut) &&
+    /<button class="zone-wide done-entry[^"]*" data-statentry="1"/.test(oneOut) &&
     /aria-label="今天已完成 1 条，点开看明细"/.test(oneOut));
+  /* ★ 0G 改形态（用户："不要用框框起来了……直接单列一行"）：那行不再是玻璃卡 ——
+     没有 .glass、没有圆点，也不再有"跟分区标题长得像"的那套（源码级 + HTML 级各钉一条）。 */
+  tOk('那一行不再是玻璃卡（class 里没有 glass）', !/class="[^"]*\bglass\b[^"]*done-entry/.test(oneOut), '');
+  tOk('那行的圆点标识已撤（不再像分区标题）', !/done-entry[\s\S]{0,200}class="dot"/.test(oneOut), '');
   /* 位置：与原来那块收纳区一样，压在三个分区**脚下**（0B 的理由："今天做完的东西
      不该占着第一屏"）。用"最后一个 </section> 之后"当判据，别用 'glass zone' 前缀 ——
-     入口自己的 class 是 `glass zone-wide`，前缀匹配会把它自己算进去。 */
+     前缀匹配会把它自己算进去。 */
   tOk('那一行入口压在三个分区脚下（不占第一屏）',
     oneOut.indexOf('done-entry') > oneOut.lastIndexOf('</section>'),
     'entry@' + oneOut.indexOf('done-entry') + ' lastSection@' + oneOut.lastIndexOf('</section>'));
+  /* ★ 0G：入场排队必须**排在三栏之后**（原来写死 40ms，比「长期」的 100ms 还早，
+     用户看到的是"跟长期一块儿进来、看着有点快"）。这里只能源码级断言 —— 测试环境里
+     rvd 是桩，渲染不出 --delay；真 DOM 上的延迟值由 _0g-dom.mjs 量（三栏 100/180/260），
+     期望值按分区数现算，不钉魔法数字。 */
+  tOk('那行的入场延迟 = 100 + 分区数×80（排在三栏之后，不是写死的 40）',
+    /rvd\(100 \+ cols\.length \* 80\)/.test(extractFn(html, 'renderZoneBody')) &&
+    !/rvd\(40\)/.test(extractFn(html, 'renderZoneBody')));
 }
 
 /* ---------- 7. 五张卡都能点 ---------- */
@@ -394,20 +443,63 @@ console.log('\n[6] 0E  红线：不新增浮层 / 不新增 S.view / 子页状�
      然后再去注释：那段说明文字里写着"这里没有任何 position:fixed / z-index"。 */
   const cssOpen = html.lastIndexOf('/*', cssStart);
   const css = stripComments((cssStart >= 0 && cssEnd > cssStart) ? html.slice(cssOpen, cssEnd + 40) : '');
-  tOk('子页的 CSS 里没有 position:fixed（不是浮层）', !!css && !/position\s*:\s*fixed/.test(css), 'len=' + css.length);
-  tOk('子页的 CSS 里没有 position:absolute（不是抽屉）', !!css && !/position\s*:\s*absolute/.test(css));
-  tOk('子页的 CSS 里没有 z-index（不参与层叠）', !!css && !/z-index/.test(css));
+  /* ★ 0G 改判据：这一段原来断言"子页 CSS 里完全没有 position:fixed / absolute / z-index"
+     —— 那是 0E "不新增浮层"的红线。0G 第二轮用户点名要那枚长列表跳转钮，它**必须是浮层**
+     （固定在右下角、要压住滚动内容）。所以红线不能被删掉，只能**收窄成"唯一豁免 + 有约束"**：
+       · 整段 CSS 里只允许 .stat-jump 一处 position:fixed；
+       · position:absolute 只允许出现在 .stat-jump 的箭头叠放上（不是抽屉/遮罩）；
+       · z-index 只允许出现在 .stat-jump，且 70 < 底栏的 80（永不盖底栏）。 */
+  const rules = css.split('}').map(r => r + '}');
+  const withFixed = rules.filter(r => /position\s*:\s*fixed/.test(r));
+  const withAbs = rules.filter(r => /position\s*:\s*absolute/.test(r));
+  const withZ = rules.filter(r => /z-index/.test(r));
+  tOk('子页里唯一的浮层是 .stat-jump（其余规则不含 position:fixed）',
+    withFixed.length === 1 && /\.stat-jump\{/.test(withFixed[0]),
+    withFixed.map(r => r.trim().slice(0, 46)).join(' | '));
+  tOk('position:absolute 只用于 .stat-jump 里两枚箭头的叠放（不是抽屉 / 遮罩）',
+    withAbs.length > 0 && withAbs.every(r => /\.stat-jump/.test(r)),
+    withAbs.map(r => r.trim().slice(0, 46)).join(' | '));
+  tOk('z-index 只出现在 .stat-jump，且 70 < 底栏 80（永不盖底栏）',
+    withZ.length === 1 && /\.stat-jump\{/.test(withZ[0]) && /z-index:70/.test(withZ[0]),
+    withZ.map(r => r.trim().slice(0, 52)).join(' | '));
+  tOk('跳转钮是实底（项目硬规则：浮层不靠 backdrop-filter 提供可读性）',
+    /\.stat-jump\{[^}]*background:var\(--bg\)/.test(css) && !/\.stat-jump\{[^}]*backdrop-filter/.test(css));
   t('S.view 的赋值点仍然只有 goView 一处（没有新增视图）',
     (codeOnly.match(/S\.view\s*=(?!=)/g) || []).length, 1);
   t('goView 里那句赋值为 1 处', (codeOnly.match(/S\.view = v;/g) || []).length, 1);
   tOk('statPage 不挂在 S 上（不进存档、不进备份）', !/S\.statPage/.test(codeOnly));
-  tOk('snapshot() 里没有 statPage', !/statPage/.test(extractFn(html, 'snapshot')));
-  tOk('load() 里没有 statPage', !/statPage/.test(extractFn(html, 'load')));
+  tOk('statFrom（子页来处）同样不挂在 S 上', !/S\.statFrom/.test(codeOnly));
+  tOk('snapshot() 里没有 statPage / statFrom',
+    !/statPage/.test(extractFn(html, 'snapshot')) && !/statFrom/.test(extractFn(html, 'snapshot')));
+  tOk('load() 里没有 statPage / statFrom',
+    !/statPage/.test(extractFn(html, 'load')) && !/statFrom/.test(extractFn(html, 'load')));
   tOk('0B 那块已完成收纳区的残留全清了（done-zone / done-hint / doneOpen / data-donefold）',
     !/done-zone/.test(codeOnly) && !/done-hint/.test(codeOnly) && !/doneOpen/.test(codeOnly)
     && !/data-donefold/.test(codeOnly));
   tOk('子页状态的清理收在 goView 一处兜底（换页 / 重开统计页都回首页）',
     /statPage = \(v === 'stat' && o\.statPage\) \? o\.statPage : null;/.test(extractFn(html, 'goView')));
+  /* ★ 0G：来处与 statPage 在**同一个地方**赋值/清理（不许长出第二个真相源） */
+  tOk('statFrom 也在 goView 里赋值/清理（与 statPage 同行同源）',
+    /statFrom = \(v === 'stat' && o\.from === 'list'\) \? 'list' : null;/.test(extractFn(html, 'goView')));
+  /* ★ 0G：**空白屏根因**的收口断言 —— 渲染收尾只留一处，两个渲染出口都要调它。 */
+  tOk('渲染收尾已抽成 afterRender（refresh 的尾巴不再自己写一遍）',
+    /afterRender\(\);/.test(extractFn(html, 'refresh')) &&
+    !/observeReveals\(\)/.test(extractFn(html, 'refresh')) &&
+    !/syncSegPills\(false\)/.test(extractFn(html, 'refresh')));
+  tOk('第二个渲染出口 statGo 也调 afterRender（这就是子页空白的根因修）',
+    /typeof afterRender === 'function'[\s\S]{0,40}afterRender\(\);/.test(extractFn(html, 'statGo')));
+  tOk('afterRender 里包含 observeReveals（揭示绑定）+ 跳转钮核对',
+    /observeReveals\(\);/.test(extractFn(html, 'afterRender')) &&
+    /updateStatJump\(false\);/.test(extractFn(html, 'afterRender')));
+  /* ★ 0G：底栏「统计」在子页里必须能回首页（原来被 `if (v === S.view) return;` 挡死） */
+  tOk('底栏页签：在统计子页里点「统计」不再被 v===S.view 挡掉',
+    /if \(v === S\.view && !\(v === 'stat' && statPage\)\) return;/.test(html));
+  /* ★ 0G：看不见的元素不接指针（"看得见空白、点得中按钮"的第二道闸） */
+  tOk('未揭示的 .reveal-on-scroll 不接指针（防"看不见但可交互"）',
+    /\.reveal-on-scroll:not\(\.is-visible\)\{pointer-events:none\}/.test(html));
+  tOk('两条"强制可见"的兜底（reduce / soft-render）同时把指针交回',
+    /\.reveal-on-scroll\{opacity:1;transform:none;filter:none;animation:none;pointer-events:auto\}/.test(html) &&
+    /html\.soft-render \.reveal-on-scroll\{[^}]*pointer-events:auto\}/.test(html));
 }
 
 /* ---------- 9. 重复定义体检（本卡碰过的函数 / 选择器） ---------- */

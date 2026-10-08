@@ -134,15 +134,18 @@ console.log('被测文件:', path.join(ROOT, '鱼事.html'), html.length, 'bytes
 console.log('视口 400x888@3x · 切主题用 animate=false（不产生过渡，量的才是配色本身）\n');
 
 const measure = async (theme) => {
+  /* ⚠️ 上一轮最后停在子页上，先回清单页（不然这一轮的"入口那行"量不到） */
+  await ev('hideToast(); goView("list"); return 1;');
+  await sleep(650);
   /* 同步切换 + 确认过渡类已经不在，再量 */
-  await ev(`applyTheme(${JSON.stringify(theme)}, false); ANIM = false; refresh(); return 1;`);
+  await ev(`applyTheme(${JSON.stringify(theme)}, false); return 1;`);
   for (let i = 0; i < 40; i++){
     const busy = await ev('return document.documentElement.classList.contains("theme-changing");');
     if (busy === false) break;
     await sleep(100);
   }
   await sleep(250);
-  return await ev(`${LUM}
+  const list = await ev(`${LUM}
     var entry = document.querySelector('#view .done-entry');
     if (!entry) return { missing: true };
     var n = entry.querySelector('.de-n');
@@ -161,6 +164,26 @@ const measure = async (theme) => {
       ratioOldMuted: _ratio(cs.getPropertyValue('--muted').trim(), entry),
       ratioMain: _ratio(getComputedStyle(entry).color, entry) };
   `);
+  /* ★ 0G 第二轮新增的界面元素：子页那条三等分分解（数字 / 标签）与长列表跳转钮。
+     refresh 是 rAF 渲染，所以必须分成两步：先切页、睡一觉、再量。 */
+  await ev(`goView('stat', { statPage:'today' }); return 1;`);
+  await sleep(700);
+  const sub = await ev(`${LUM}
+    var b = document.querySelector('.stat-origin .so b');
+    var i = document.querySelector('.stat-origin .so i');
+    var c = b ? b.closest('.stat-origin') : null;
+    var j = document.getElementById('statJump');
+    return { originExists: !!c,
+      bColor: b ? getComputedStyle(b).color : null,
+      iColor: i ? getComputedStyle(i).color : null,
+      bRatio: b ? _ratio(getComputedStyle(b).color, c) : null,
+      iRatio: i ? _ratio(getComputedStyle(i).color, c) : null,
+      jumpBg: j ? getComputedStyle(j).backgroundColor : null,
+      jumpRatio: j ? _ratio(getComputedStyle(j).color, j) : null,
+      jumpAlpha: j ? (String(getComputedStyle(j).backgroundColor).match(/[\\d.]+/g) || []).length > 3
+        ? Number((String(getComputedStyle(j).backgroundColor).match(/[\\d.]+/g) || [])[3]) : 1 : null };
+  `);
+  return Object.assign({}, list, { sub });
 };
 
 for (const theme of ['light', 'dark']){
@@ -172,11 +195,21 @@ for (const theme of ['light', 'dark']){
   console.log('  .de-n 字号 ' + r.fontSize + ' · color ' + r.nColor);
   console.log('  ★ 实测对比度：改后（' + r.nColor + '）= ' + r.ratioNow +
     '   改前（--muted）= ' + r.ratioOldMuted + '   同行的主文案 = ' + r.ratioMain);
+  console.log('  子页分解条：数字 ' + r.sub.bColor + ' → ' + r.sub.bRatio +
+    ' · 标签 ' + r.sub.iColor + ' → ' + r.sub.iRatio);
+  console.log('  跳转钮：字色对比度 ' + r.sub.jumpRatio + ' · 底色 ' + r.sub.jumpBg + '（alpha ' + r.sub.jumpAlpha + '）');
   tOk('（' + theme + '）此刻是' + (theme === 'light' ? '浅色' : '深色') + '主题', r.theme === theme, String(r.theme));
   tOk('（' + theme + '）入口那行在页面上', r.missing !== true);
   tOk('（' + theme + '）只改了颜色、字号仍 12px', r.fontSize === '12px', String(r.fontSize));
   tOk('（' + theme + '）.de-n 对比度 ≥ 4.5（WCAG AA 正文）', r.ratioNow >= 4.5,
     '实测 ' + r.ratioNow + '（底色 ' + r.bg + '）');
+  tOk('（' + theme + '）子页分解条渲染出来了', r.sub.originExists === true);
+  tOk('（' + theme + '）分解条数字（--fg）对比度 ≥ 4.5', (r.sub.bRatio || 0) >= 4.5, String(r.sub.bRatio));
+  tOk('（' + theme + '）分解条标签（--muted，11.5px 小字）对比度 ≥ 4.5',
+    (r.sub.iRatio || 0) >= 4.5, String(r.sub.iRatio));
+  tOk('（' + theme + '）跳转钮是实底（alpha = 1，不靠 backdrop-filter）',
+    r.sub.jumpAlpha === 1, String(r.sub.jumpBg));
+  tOk('（' + theme + '）跳转钮图标对比度 ≥ 4.5', (r.sub.jumpRatio || 0) >= 4.5, String(r.sub.jumpRatio));
   console.log('');
 }
 

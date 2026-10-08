@@ -463,6 +463,12 @@ body[data-help="off"] .intro-note{
    动画播完自动失效、元素回落自身样式。用 both 会把终态的 transform 一直挂着，
    卡片 hover 的 translateY(-8px) 就再也抬不起来了。 */
 .reveal-on-scroll{opacity:0;will-change:opacity,transform,filter}
+/* ★ 0G：还没揭示的元素**不接指针**。这是防"看不见但点得中"的兜底 —— 0E 起 statGo 漏了
+   渲染收尾，子页整屏停在 opacity:0，用户看到的是白屏、可随手一点却弹出编辑弹层（真实反馈：
+   "显示空白，但是点击某个点，还是会弹出编辑选项"）。根因已修（收尾收口到 afterRender），
+   这一条是第二道闸：万一哪条路又漏了收尾，最差也只是"少一块内容"，不会再出现
+   "看不见却可交互"这种最糟的组合。 */
+.reveal-on-scroll:not(.is-visible){pointer-events:none}
 .reveal-on-scroll.is-visible{
   opacity:1;
   animation:rvIn .76s cubic-bezier(.16,1,.3,1) backwards;
@@ -829,18 +835,24 @@ body:not([data-view="settings"]) .pdaim-footer{display:none}
 /* ★ 0E（用户原话："静态页面在功能定位上就是'还没完成的事'，那为什么要加'已完成'？"）：
    清单页底部那块可折叠的「已完成」收纳区**整块撤掉**，换成一行入口 —— 点它去统计页的
    「今日完成」子页看明细（数据和渲染都在那边，一份不多一份不少）。
-   形态沿用分区标题栏（同样的玻璃圆角 + 圆点 + 右侧箭头），但只有一行、不可折叠。
-   ⚠️ 配色仍用 --fg：0B 实测过降成 --muted/--faint 会掉到"次要信息 3:1"以下
-   （对比度断言见 _0b-dom.mjs），分区标题是文字不是装饰 —— 这一行同理。 */
+   ★ 0G 改形态（用户原话："不要用框框起来了。这样显得跟上面的形式比较像，但它们又不是
+   一个东西。直接单列一行'今天已完成'就行了，后面再加一个大于号"）：**去掉玻璃卡**——
+   不再有 .glass 类、没有底色/圆角/阴影，也不再有那枚把"像分区标题"的印象坐实的圆点。
+   现在它就是一行字 + 右侧箭头。留下的只有：
+     · 上下 14px 内边距 ⇒ 触控热区 13px×1.4 + 28 ≈ 46px（≥44px 可用性下限，实测见
+       _ref/_0g-dom.mjs 的"热区高度"断言）；
+     · 配色仍是 --fg（0B 实测过降成 --muted/--faint 会掉到"次要信息 3:1"以下）。
+   反馈：手机上没有 hover，「按下」用文字转强调色（用户 2026-10-08 选定）——`@media
+   (hover:hover)` 里的 hover 只给鼠标，触摸端不会出现"点了还亮着"的粘滞态。 */
 .done-entry{
-  appearance:none;-webkit-appearance:none;border:0;width:100%;
+  appearance:none;-webkit-appearance:none;border:0;background:none;width:100%;
   display:flex;align-items:center;gap:9px;
-  padding:16px 20px;border-radius:32px;text-align:left;
+  padding:14px 20px;text-align:left;
   font:inherit;font-size:13px;font-weight:900;letter-spacing:.06em;color:var(--fg);
   cursor:pointer;
 }
-.done-entry:hover{color:var(--accent)}
-.done-entry .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:var(--accent);opacity:.45}
+.done-entry:active{color:var(--accent)}
+@media (hover:hover){ .done-entry:hover{color:var(--accent)} }
 /* ★ 0G：数字从 --muted 换成 --fg。两套主题都实测过（_ref/_0g-contrast.mjs）：
    --fg 浅色 20.14 / 深色 20.38；原来的 --muted 浅色 5.01 / 深色 7.79 —— 两个都过
    WCAG AA 的 4.5，所以这不是救火，而是把这个 12px 的数字与同一句话的主文案（本来就用
@@ -1033,8 +1045,7 @@ body:not([data-view="settings"]) .pdaim-footer{display:none}
 }
 /* 左列：标题 / 大数字 / 单位，三行左对齐、行间留一点空隙 */
 .feature-card .pcol{display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:0}
-/* 右列：细分小药丸竖排、右对齐 */
-.vsub-v{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+/* ★ 0G：右列那族细分小药丸（.vsub-v）随"分解搬进子页"删除 —— 现在右列只剩单位那行。 */
 /* 抬升只在「真有悬停」的设备上做：触屏点一下 :hover 会粘住不回落（用户截图里那张卡片
    一直抬着）。包进 @media (hover:hover) 后，触屏设备根本不会匹配这条，卡片回归静止。
    .st（作业状态按钮）是 :active 真交互，不在这里动它。 */
@@ -1501,8 +1512,9 @@ html.soft-render .glass,html.soft-render .site-header,html.soft-render .capture,
   box-shadow:0 1px 3px color-mix(in srgb,var(--fg) 10%,transparent),0 10px 28px color-mix(in srgb,var(--fg) 6%,transparent);
 }
 html.soft-render .site-header,html.soft-render .capture{background:color-mix(in srgb,var(--bg) 95%,transparent)}
-/* 揭示改成 animation 之后，这里要关的是 animation（原来关的是 transition）。 */
-html.soft-render .reveal-on-scroll{opacity:1;transform:none;filter:none;transition:none;animation:none}
+/* 揭示改成 animation 之后，这里要关的是 animation（原来关的是 transition）。
+   ★ 0G：同 reduce 那条 —— 这里把元素强制成可见，指针也要一起交回去。 */
+html.soft-render .reveal-on-scroll{opacity:1;transform:none;filter:none;transition:none;animation:none;pointer-events:auto}
 html.soft-render .feature-card:hover{transform:none}
 
 /* ---------- 统计页：布局切换（右上角）+ 完成量细分 ---------- */
@@ -1522,6 +1534,60 @@ html.soft-render .feature-card:hover{transform:none}
 .stat-sub-n{margin-left:auto;font-size:12.5px;font-weight:800;color:var(--faint)}
 /* 明细卡：复用 .zone 的玻璃卡（同一套圆角/内边距），只是里面装的是统计页的条目 */
 .stat-list{width:100%}
+/* ---------- ★ 0G：完成量细分（从统计首页的卡片搬进子页）----------
+   用户原话："关于'短期、长期循环'任务……那个显示完成了多少任务的条就不要放在这儿了，
+   把它放到详情里面。不然这样看的话，它跟其他 3 个统计展示不太一样，显得比较难看。"
+   ⇒ 今日完成 / 历史完成 两张卡上的副行**撤掉**（五张卡终于同一形态），改画在子页标题下面。
+   三个等分列（用户选定"标题下、左中右三等分一行"）：数字 --fg、标签 --muted（两者在
+   --bg 上的对比度实测见 _ref/_0g-dom.mjs）。刻意不做成一张玻璃卡：它是标题的一部分，
+   不是又一屏内容。 */
+.stat-origin{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:2px 2px 16px}
+.stat-origin .so{display:flex;flex-direction:column;align-items:center;gap:1px}
+/* 纯数字元素才挂 tabular-nums（含 CJK 的选择器挂它会让浏览器换字形，见 0G 之前的教训） */
+.stat-origin .so b{font-size:20px;font-weight:900;color:var(--fg);font-variant-numeric:tabular-nums;line-height:1.2}
+.stat-origin .so i{font-style:normal;font-size:11.5px;font-weight:800;letter-spacing:.08em;color:var(--muted)}
+.stat-origin .so.loop b{color:var(--accent)}
+.stat-origin.empty{display:block;text-align:center;font-size:12.5px;font-weight:700;color:var(--muted);padding:8px 0 16px}
+
+/* ---------- ★ 0G：长列表跳转钮（只统计子页有）----------
+   规格由用户 2026-10-08 定：①内容超过 **4 屏**才有这枚按钮；②要**滑过 2 屏**才浮现；
+   ③方向感知——往下滑给「↓ 到最下」，往上滑给「↑ 回到最上」；④停在原地 **1 秒**自己隐去
+   （"不然对页面内容造成一定的遮挡"）。
+   它是**浮层**，所以按项目硬规则来：实底 var(--bg)（不靠 backdrop-filter 提供可读性）、
+   z-index 归到 #view 这一层（70 < 底栏 80，永远不盖底栏）、只在滚动中现身。
+   动画：出现 220ms 项目现成曲线；隐去 160ms ease-in；两枚箭头**交叉淡入**（旧 90ms 淡出、
+   新 140ms 淡入并位移 6px 归位），按钮本体不重播出现动画（否则切换方向时会闪）。 */
+.stat-jump{
+  /* bottom 的算法：--bar-keep(90) 是内容避让线（= 底栏中间那颗圆钮的顶边，见 0D.3），
+     但底栏那圈玻璃胶囊的上沿比它还要高约 12px（实测 capsuleTop=786 / 视口 888 → 距底 102）。
+     于是 90 + 12 + 14（呼吸）= 116：实测按钮底边 772、胶囊上沿 786 → 让开 14px。
+     （不能只写 --bar-keep：那样按钮底边 784 只比胶囊高 2px，贴着边看着要撞上。） */
+  position:fixed;right:14px;bottom:calc(var(--bar-keep,90px) + 26px);z-index:70;
+  width:44px;height:44px;padding:0;border:1px solid color-mix(in srgb,var(--glass-edge) 18%,transparent);
+  border-radius:14px;background:var(--bg);color:var(--fg);cursor:pointer;
+  display:grid;place-items:center;
+  box-shadow:0 10px 26px color-mix(in srgb,var(--glass-edge) 22%,transparent),
+             0 2px 6px color-mix(in srgb,var(--glass-edge) 12%,transparent);
+  opacity:0;transform:translateY(10px) scale(.94);pointer-events:none;
+  transition:opacity 160ms cubic-bezier(.4,0,1,1),transform 160ms cubic-bezier(.4,0,1,1);
+}
+.stat-jump.on{
+  opacity:1;transform:none;pointer-events:auto;
+  transition:opacity 220ms cubic-bezier(.16,1,.3,1),transform 220ms cubic-bezier(.16,1,.3,1);
+}
+.stat-jump:active{transform:scale(.96)}
+.stat-jump .ji{
+  position:absolute;width:20px;height:20px;fill:none;stroke:currentColor;
+  stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;
+}
+.stat-jump[data-dir="up"] .ji-up{opacity:1;transform:none;
+  transition:opacity 140ms linear,transform 140ms cubic-bezier(.16,1,.3,1)}
+.stat-jump[data-dir="up"] .ji-down{opacity:0;transform:translateY(-6px);transition:opacity 90ms linear}
+.stat-jump[data-dir="down"] .ji-down{opacity:1;transform:none;
+  transition:opacity 140ms linear,transform 140ms cubic-bezier(.16,1,.3,1)}
+.stat-jump[data-dir="down"] .ji-up{opacity:0;transform:translateY(6px);transition:opacity 90ms linear}
+.stat-jump[data-dir="up"] .ji-down,
+.stat-jump[data-dir="down"] .ji-up{position:absolute}
 /* 统计页是**回看**的地方：勾选框和标题仍可点（取消勾选 / 跳详情），删除按钮不画
    （itemHTML 的第 5 个参数负责不生成它，"误删代价高"是用户拍的） */
 .stat-day{display:flex;align-items:baseline;gap:10px;padding:11px 2px;border-bottom:1px solid var(--line)}
@@ -1790,30 +1856,10 @@ body[data-help="off"] .set-row .set-txt > span:not([data-keephelp]){
 .feature-grid.tile .feature-card .pcol{align-items:center}
 .feature-grid.tile .feature-card.big .v{font-size:clamp(34px,3.7vw,50px)}
 .feature-grid.tile .feature-card .s{margin-top:5px;font-size:11.5px}
-.feature-grid.tile .vchips{justify-content:center;margin-top:9px;gap:4px}
-
-/* 完成量的来源细分：短期 / 长期 / 考虑 / 循环。
-   ★ v3.38 起在横条布局里是**竖排**放在卡片右侧（.vsub-v）。
-   每颗小药丸的宽度统一：`auto 4ch` —— 左边是标签（短期/长期/考虑/循环），
-   右边固定留 4 个字符位给数字（用户原话："在『短期』后面留 4 个空格，这 4 个空格就是给
-   4 位数预留的"），数字在这 4 格里居中（用户选的那档）。于是"短期 2"与"短期 117"
-   长度完全一样，竖着排下来右端是齐的。 */
-.vchip{
-  display:inline-grid;grid-template-columns:auto 4ch;align-items:center;gap:6px;
-  font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap;
-  padding:3px 10px;border-radius:999px;background:var(--pill);
-  border:1px solid color-mix(in srgb,var(--glass-edge) 45%,transparent);
-}
-.vchip b{
-  font-family:var(--font-mono);font-weight:800;color:var(--fg);
-  font-variant-numeric:tabular-nums;text-align:center;
-}
-.vchip.loop b{color:var(--accent)}
-/* 空态那句「还没有打勾」没有数字，不能去吃那 4 个空格 */
-.vchip.empty{display:inline-block}
-.vchips{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}
-/* 方块模式里 chips 太占地方，换成一行小字 */
-.vsub{margin-top:10px;font-size:12px;font-weight:700;line-height:1.5;color:var(--muted)}
+/* ★ 0G：原来这里有一整族「完成量来源细分」的样式（.vchip / .vchips / .vsub / .vsub-v，
+   还有方块模式那句 .feature-grid.tile .vchips）—— 那是长在统计首页卡片上的小药丸。
+   用户把那条分解挪进子页之后，这一族**全都没有引用了**（源码级 grep：0 处使用），
+   按"不留死代码"一并删除；子页那行用的是新的 .stat-origin（见统计子页那一段）。 */
 
 /* ---------- 响应式 ---------- */
 @media (max-width:1080px){
@@ -1918,7 +1964,6 @@ body[data-help="off"] .set-row .set-txt > span:not([data-keephelp]){
   background-image:linear-gradient(var(--tap),var(--tap));
 }
 .tick:active{transform:scale(.86)}          /* 勾选框最小，动作要更明显才看得见 */
-.vchip:active{opacity:.72}                  /* 统计页细分 chip 只压暗，不做位移（太小） */
 .switch:active{transform:scale(.955)}        /* 开关只压一下，不做位移（横向控件，位移看着像歪了） */
 
 /* ---------- 2. 键盘焦点环 ----------
@@ -3215,8 +3260,12 @@ html.tree-full .merge-bar{z-index:85}
   *,*::before,*::after{animation:none!important;transition:none!important}
   /* 揭示的入场现在是 animation，全局那条已经用 !important 关掉了；
      这里再写一遍 animation:none 是明示 —— 免得以后有人删掉上面那行"无用"的通配规则，
-     揭示动画就会在不该动的人身上复活。 */
-  .reveal-on-scroll{opacity:1;transform:none;filter:none;animation:none}
+     揭示动画就会在不该动的人身上复活。
+     ★ 0G：这两条兜底把元素强制成**可见**，所以必须同时把指针也交回去 —— 否则会与
+     `.reveal-on-scroll:not(.is-visible){pointer-events:none}` 打架，变成"看得见却点不动"。 */
+  .reveal-on-scroll{opacity:1;transform:none;filter:none;animation:none;pointer-events:auto}
+  /* 长列表跳转钮在不动效的人身上直接切状态（它本身的出现/隐去是过渡，全局那条已关） */
+  .stat-jump,.stat-jump .ji{transition:none}
   /* 上面那条 * 选不到伪元素，::details-content 的高度过渡得单独关 */
   .hint::details-content{transition:none}
   /* ★ 真 bug 修复（2026-09-25，用户实测反馈："长按之后，左边跟右边原本的清单和统计 UI
@@ -5085,9 +5134,13 @@ function renderZoneBody(){
      （见上面那段说明与 doneTodayN）。清单页只有"还没做的"—— 做完的东西回统计页看。
      它是 .board 的最后一个整行 item（grid-column:1/-1），位置就是原来那块收纳区的位置。 */
   if (doneTodayN){
-    bh += `<button class="glass zone-wide done-entry${rv()}" data-statentry="1"${rvd(40)}
+    /* ★ 0G：① 去掉 .glass（不再是个"框"，见 CSS 那段说明）；② 入场延迟排到**三栏之后** ——
+       它原来写 40ms，比「长期」(100ms) 还早，于是看着像跟长期一起冒出来（用户原话：
+       "它是跟'长期'一块儿进入的，就导致看着有点快"）。从上到下的顺序 = 100 + 分区数×80，
+       按分区数现算而不是写死 340（以后加减分区不会漂）。 */
+    bh += `<button class="zone-wide done-entry${rv()}" data-statentry="1"${rvd(100 + cols.length * 80)}
       aria-label="今天已完成 ${doneTodayN} 条，点开看明细">
-      <span class="dot" aria-hidden="true"></span>今天已完成 <b class="de-n mono">${doneTodayN}</b> 条
+      今天已完成 <b class="de-n mono">${doneTodayN}</b> 条
       <span class="de-chev" aria-hidden="true">›</span>
     </button>`;
   }
@@ -6615,6 +6668,10 @@ function openSeedPrompt(title, label, placeholder, onOk){
    statPage 是**这一屏的临时状态**：故意不进 S、不进备份，换页 / 重开一律回统计首页
    （清理点只有一处 —— goView）。 */
 let statPage = null;                       // null | 'today' | 'streak' | 'overdue' | 'hw' | 'history'
+/* ★ 0G：子页的**来处**（'list' | null）。从清单页底部那行进来的，「← 返回」要回清单页而不是
+   统计首页 —— 用户原话："无法返回到清单页面"。与 statPage 同一套生命周期：只在 goView 里
+   赋值/清理（故意不进 S、不进备份，刷新即归零）。 */
+let statFrom = null;
 
 /* 五个子页的标题 / 单位 / 空态只有一份。统计卡、清单页那行入口、子页标题栏都从这里取。 */
 const STAT_PAGES = {
@@ -6679,12 +6736,86 @@ function statRootHits(hits){
 /* 数字的唯一真相源：统计卡大数字 / 子页标题栏「共 N 条」都走它。
    （清单页那行入口的 N 走 renderZoneBody 里的**等价内联谓词** —— 那儿不能引用新全局，
    原因见 renderZoneBody 里那段说明；两处相等由 _0e-regress.mjs 的运行时等式断言钉住。）
-   口径分档：**已完成的两个回看页**（today / history）数根级，与卡片数一致；
-   已逾期 / 作业未交是"还剩几件事要办"，每一条都是一个独立的待办，照旧逐条数（本卡未动）。 */
+   ★ 0G：口径**统一为根级**，不再分档 —— 四个列表子页一个规则。用户原话确认：
+   "已逾期 / 作业未交也数卡（和今日完成一样）"。理由：用户核对数字的方式永远是"拿眼睛数
+   卡片"，两个口径并存就迟早再被当成 bug 报一次（"父+2子显示 3 条却只有 1 张卡"）。 */
 function statPageCount(key){
-  if (key === 'today' || key === 'history') return statRootHits(statPageHits(key)).length;
-  return statPageHits(key).length;
+  return statRootHits(statPageHits(key)).length;
 }
+/* ★ 0G：完成量按来源拆开（循环 / 短期 / 长期 / 老数据的考虑）。
+   它原来是 renderStat 里的**局部**函数；0G 把这条分解从统计首页的卡片搬进子页，
+   所以挪到模块作用域：卡片与子页共用同一份，以后不可能漂。 */
+function originCounts(list){
+  const c = { short: 0, long: 0, loop: 0 };
+  (list || []).forEach(i => {
+    if (i.repeat) c.loop++;
+    else if (i.zone === 'short') c.short++;
+    else if (i.zone === 'long' || i.zone === 'consider') c.long++;
+  });
+  return c;
+}
+/* 子页标题下那一行：左中右三等分（用户 2026-10-08 选定）。
+   ⚠️ 三个数取自**根级列表**，与同一页的「共 N 条」同源 —— 否则会出现"三个数加起来 ≠ 条数"。
+   v5.0 的老口径保留：`zone === 'consider'` 的老数据归到「长期」，不因为一次改版就从统计里少掉。 */
+function originRowHTML(list){
+  const c = originCounts(list);
+  const total = c.short + c.long + c.loop;
+  if (!total) return `<div class="stat-origin empty">还没有打勾</div>`;
+  const cell = (label, n, cls) => `<span class="so${cls || ''}"><b>${n}</b><i>${label}</i></span>`;
+  return `<div class="stat-origin">` + cell('短期', c.short) + cell('长期', c.long) +
+    cell('循环', c.loop, 'loop') + `</div>`;
+}
+/* ★ 0G：长列表跳转钮的骨架。露不露由 updateStatJump() 按"内容 > 4 屏 + 滑过 2 屏"判，
+   所以这里只管把它挂上去（两枚箭头都在，靠 [data-dir] 交叉淡入切）。 */
+function jumpButtonHTML(){
+  return `<button class="stat-jump" id="statJump" type="button" data-jump="1" data-dir="up"
+    aria-label="回到最上">
+    <svg class="ji ji-up" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+    <svg class="ji ji-down" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+  </button>`;
+}
+/* 长列表跳转钮的显隐逻辑（规格是用户 2026-10-08 逐条定的）：
+   ① 内容不足 **4 屏** → 这页根本没有它；② 没滑过 **2 屏** → 不浮现；
+   ③ 方向感知：往下滑给「↓ 到最下」、往上滑给「↑ 回到最上」（|Δy| < 4px 不算换向，
+      免得惯性微抖让箭头乱跳）；已经在最下时强制「↑」（那时往下的动作没有意义）；
+   ④ 停在原地 **1 秒** → 自己隐去（不常驻、不遮挡）。
+   查不到元素就什么都不做 —— 它长在 #view 里，换页时随 DOM 一起消失，定时器不需要额外清理。 */
+const SJ_OWN_SCREENS = 4;      // 内容超过 4 屏才启用
+const SJ_SHOW_SCREENS = 2;     // 滑过 2 屏才浮现
+const SJ_IDLE_MS = 1000;       // 静置 1 秒隐去
+let sjTimer = 0, sjLastY = 0, sjDir = 'up';
+function statJumpHide(){
+  const b = document.getElementById('statJump');
+  if (b) b.classList.remove('on');
+}
+function updateStatJump(scrolled){
+  const b = document.getElementById('statJump');
+  if (!b){ clearTimeout(sjTimer); sjTimer = 0; return; }
+  const y = window.scrollY || 0;
+  const vh = window.innerHeight || 1;
+  const max = Math.max(0, document.documentElement.scrollHeight - vh);
+  /* ① 内容不够 4 屏 → 这页不该有它（短列表别打扰） */
+  if (max + vh < vh * SJ_OWN_SCREENS){ b.classList.remove('on'); return; }
+  /* ② 还没滑过 2 屏 → 不浮现（返回入口就在标题栏上，近处不需要它） */
+  if (y < vh * SJ_SHOW_SCREENS){ b.classList.remove('on'); return; }
+  b.dataset.dir = sjDir;
+  b.setAttribute('aria-label', sjDir === 'down' ? '跳到最下' : '回到最上');
+  b.classList.add('on');
+  clearTimeout(sjTimer);
+  if (scrolled) sjTimer = setTimeout(statJumpHide, SJ_IDLE_MS);
+}
+/* 滚动监听全局只挂一次（passive，不抢滚动）：它自己找 #statJump，找不到就空转。 */
+window.addEventListener('scroll', () => {
+  if (!document.getElementById('statJump')) return;
+  const y = window.scrollY || 0;
+  const vh = window.innerHeight || 1;
+  const max = Math.max(0, document.documentElement.scrollHeight - vh);
+  const dy = y - sjLastY;
+  if (Math.abs(dy) >= 4) sjDir = dy > 0 ? 'down' : 'up';
+  sjLastY = y;
+  if (max - y <= 8) sjDir = 'up';      // 到底了：只有"回最上"有意义
+  updateStatJump(true);
+}, { passive: true });
 /* 明细列表的 HTML。复用清单页那一套 itemHTML + .goal-kids 结构。
    统计页是**回看**的地方，所以不折叠（不传 goalInfo → 没有 ▾ 角标），全部展开。 */
 function statItemsHTML(hits){
@@ -6740,20 +6871,40 @@ function renderStatSub(key){
       ? statItemsHTML(hits)
       : `<div class="empty">${meta.empty}</div>`) + `</section>`;
   }
+  /* ★ 0G：完成量细分搬到子页（原来长在统计首页那两张卡上，与另外三张卡不同形态，用户否掉）。
+     只有两个"已完成"的回看页有这行 —— 已逾期 / 作业未交是按分区拆不出意义的待办列表。
+     数字取**根级**列表：与同页「共 N 条」同源，不会出现"三格加起来 ≠ 条数"。 */
+  const originRow = (key === 'today' || key === 'history') ? originRowHTML(statRootHits(hits)) : '';
+  /* ★ 0G：从清单页进来的，「返回」回清单页（用户定的"记住来处"）；从统计卡进来的回统计首页。 */
+  const backLabel = statFrom === 'list' ? '← 清单' : '← 返回';
   return `<div class="stat-sub">
     <div class="stat-sub-top${rv()}">
-      <button class="btn ghost stat-back" type="button" data-statback="1">← 返回</button>
+      <button class="btn ghost stat-back" type="button" data-statback="1"
+        aria-label="${statFrom === 'list' ? '返回清单页' : '返回统计首页'}">${backLabel}</button>
       <h2 class="stat-sub-title">${meta.title}</h2>
       <span class="stat-sub-n mono">${n}</span>
     </div>
+    ${originRow}
     ${body}
+    ${jumpButtonHTML()}
   </div>`;
 }
 /* 进 / 出统计子页 —— 与 goView 同样的思路：只留一个入口，别让调用点各自为政。 */
 function statGo(page){
+  /* ★ 0G：从清单页那行进来的子页，「返回」回到**清单页**（用户定的"记住来处"）。
+     原来无论从哪儿进来都 statGo(null) → 统计首页，用户的原话是"无法返回到清单页面"。 */
+  if (!page && statFrom === 'list'){ goView('list'); return; }
   statPage = (page && STAT_PAGES[page]) ? page : null;
   ANIM = true;                     // 子页是新的一屏，播一次入场
   renderStat();
+  /* ★ 0G（**这是"点进子页空白"的根因修复**）：渲染完必须跑一次收尾。
+     原来收尾只长在 refresh() 尾巴上，而 statGo 是第二个渲染出口、没有它 →
+     ANIM=true 让这一屏的每块都带 .reveal-on-scroll，停在 opacity:0：
+     DOM 在、还点得中，但整屏看不见（用户实测"显示空白，但点某个点还能弹出编辑选项"）。
+     收尾现已收口到 afterRender()，这里和 refresh() 共用同一份。
+     用 typeof 守卫是因为纯 Node 回归（_0e-regress）会把 statGo 整段切进隔离环境跑，
+     那里没有 afterRender（项目里"解析层调应用层新能力"的既有转发口写法）。 */
+  if (typeof afterRender === 'function') afterRender();
   /* 0D.3 的 __syncBarFit 只把"装得下"的页面偏移归零；装不下的子页得自己回到顶部 */
   if (window.scrollY > 0) window.scrollTo(0, 0);
 }
@@ -6764,48 +6915,15 @@ function renderStat(){
   if (statPage && STAT_PAGES[statPage]){ view.innerHTML = renderStatSub(statPage); return; }
   /* ★ 0E：取数只有一处 —— 卡片数字 / 子页「共 N 条」/ 清单页那行入口的 N，全走 statPageHits。
      （0B.8 的"一律排除想法"在 statDoneItems 里，而它现在只被 statPageHits 调。）
-     ★ 0G：这两行过一道 statRootHits —— **数字口径是根级**（与明细页看得见的卡片数一致，
-     父任务完成时被顺手收起的子任务不另算一条）。卡上的小字拆解也跟着这份根级列表走，
-     否则药丸加起来（3）会跟大数字（1）对不上。明细页的渲染仍用完整的 statPageHits。 */
+     ★ 0G：数字口径统一为**根级**（statPageCount / statRootHits）—— 与明细页看得见的
+     卡片数一致，"父任务完成时被顺手收起的子任务"不另算一条。四个列表页一个规则。 */
   const doneTodayList = statRootHits(statPageHits('today'));
   const doneItems = statRootHits(statPageHits('history'));
   const doneAll = doneItems.length;
-  const overdue = statPageHits('overdue').length;
-  const hwOpen = statPageHits('hw').length;
+  const overdue = statPageCount('overdue');
+  const hwOpen = statPageCount('hw');
   const st = streak();
   const tile = S.statLayout === 'tile';
-
-  /* 完成量按来源拆开：循环 / 短期 / 长期 / 考虑。
-     清单页每个分区标题本来就带未完成条数，这里就不重复列分区待办数了。 */
-  function byOrigin(list){
-    /* ★ v5.0：「考虑」并入想法。老数据里 zone==='consider' 的历史条目**归到「长期」那一档**算 ——
-       已经打完勾的数据不该因为一次改版就从统计里少掉一格。 */
-    const c = { short: 0, long: 0, loop: 0 };
-    list.forEach(i => {
-      if (i.repeat) c.loop++;
-      else if (i.zone === 'short') c.short++;
-      else if (i.zone === 'long' || i.zone === 'consider') c.long++;
-    });
-    return c;
-  }
-  function breakdown(list){
-    const c = byOrigin(list);
-    const total = c.short + c.long + c.loop;
-    if (!total) return tile ? `<div class="vsub">还没有打勾</div>`
-                            : `<div class="vsub-v"><span class="vchip empty">还没有打勾</span></div>`;
-    if (tile){                                   /* 方块太小，chips 会挤爆 → 收成一行小字 */
-      const parts = [];
-      if (c.short) parts.push('短期 ' + c.short);
-      if (c.long) parts.push('长期 ' + c.long);
-      if (c.loop) parts.push('循环 ' + c.loop);
-      return `<div class="vsub">${parts.join(' · ')}</div>`;
-    }
-    /* 横条：竖排小药丸放到卡片右侧（v3.38）。宽度由 CSS 统一（标签 + 4 个数字位），
-       所以这里只管内容顺序；数字在 .vchip b 里居中。 */
-    const chip = (label, n, cls) => `<span class="vchip ${cls || ''}">${label}<b>${n}</b></span>`;
-    return `<div class="vsub-v">` + chip('短期', c.short) + chip('长期', c.long) +
-      chip('循环', c.loop, 'loop') + `</div>`;
-  }
 
   /* v2.5（用户指定，2026-09-25 二次确认）：块状图顺序固定为
      ① 今日完成  ② **连续打勾**（它是一张**独立的卡**，不是"今日完成"的副行 —— 上一版
@@ -6814,16 +6932,18 @@ function renderStat(){
      ③ 已逾期  ④ 作业未交  ⑤ 历史完成
      其中原来「已逾期 + 作业未交」并排在一张 .pair 卡里，用户说"太挤了" → 各占一张。
      ★ 0E：五张卡各自挂 page —— 卡片从"只能看的数字"变成"能点进去看明细的入口"。
-     data-statpage 的值就是子页 key，数字本身仍取自 statPageHits，所以卡上的数字
-     与点进去那一页的「共 N 条」必然是同一个数。 */
+     data-statpage 的值就是子页 key，数字本身仍取自 statPageCount，所以卡上的数字
+     与点进去那一页的「共 N 条」必然是同一个数。
+     ★ 0G：两张"已完成"卡上的来源副行**撤掉**（用户原话："那个显示完成了多少任务的条
+     就不要放在这儿了，把它放到详情里面。不然这样看的话，它跟其他 3 个统计展示不太一样，
+     显得比较难看"）→ 五张卡同一形态；那条分解改画在子页标题下面（originRowHTML）。 */
   const cards = [
-    { k: '今日完成', v: doneTodayList.length, s: '条', cls: 'accent big', page: 'today',
-      sub: breakdown(doneTodayList) },
+    { k: '今日完成', v: doneTodayList.length, s: '条', cls: 'accent big', page: 'today' },
     { k: '连续打勾', v: st, s: '天没断', cls: 'big', page: 'streak',
       tip: '连着多少天，每天都至少打勾一次。今天还没打勾不算断，从昨天往前数。' },
     { k: '已逾期', v: overdue, s: '条', page: 'overdue', tip: '截止日已经过去、还没打勾的条数。' },
     { k: '作业未交', v: hwOpen, s: '项', page: 'hw', tip: '标了「作业」、状态还没到「已交」的条数。' },
-    { k: '历史完成', v: doneAll, s: '条', page: 'history', sub: breakdown(doneItems) }
+    { k: '历史完成', v: doneAll, s: '条', page: 'history' }
   ];
 
   /* 「布局 横条/方块」这一行原来没挂揭示类：整页别的东西都在淡入去模糊，
@@ -6866,13 +6986,13 @@ function renderStat(){
          横条 ⇄ 方块 时这四级都会各自被"搬"过去（卡片长宽变、文字换位置/换字号）。
          标签和单位也要挂键：否则它们会被卡片的拉伸**带着一起变形**（字被拉扁），
          而用户要的是"文字运动到它应当在的位置"，不是被拽着走。 */
-      /* ★ v3.38：细分（x.sub）从 .pcol 里挪出来 —— 它现在是卡片的**第二列**（右侧竖排小药丸），
-         不再跟在"标题/数字/单位"下面。左列依旧是那三行。 */
+      /* ★ 0G：细分（x.sub）整块撤掉 —— 那条"短期/长期/循环"搬进了统计子页（originRowHTML），
+         卡片上不再有第二列，所以 `(x.sub || '')` 这个入口也一起删（不留走不到的分支）。 */
       const inner = cols.map((x, xi) =>
         `<div class="pcol"><div class="k" data-fk="k:${ci}:${xi}">${x.k}</div>` +
         `<div class="v" data-fk="v:${ci}:${xi}">${x.v}</div>` +
         `<div class="s" data-fk="s:${ci}:${xi}">${x.s}</div>` +
-        `</div>` + (x.sub || '')).join('');
+        `</div>`).join('');
       /* ★ 0E：卡片可点（进对应子页）。语义交给 role="button" + aria-label ——
          卡里还有大数字和药丸，用真的 <button> 把它整块包起来会破坏 .pcol 的排版。
          键盘可达靠 tabindex + view 的 keydown 分流（Enter / 空格）。 */
@@ -7904,24 +8024,36 @@ function refresh(){
       clearTimeout(viewEnterT);
       viewEnterT = setTimeout(() => document.body.classList.remove('view-enter'), 900);
     }
-    /* v2.5：顶部图标行整行撤掉后，页面名不再单独渲染 —— 当前页由底栏选中态
-       （aria-current + 指示短线）表达，读屏也由 aria-label 承担。 */
-    applyHelp();                           // 「页面说明文字」总开关（切页后 DOM 是新的，这里每帧同步一次最稳）
-    observeReveals();
-    /* 标签条是这一帧刚重建的，边缘渐隐要按新的 scrollWidth 重算
-       （标签增删、筛选栏重置滚动位置都会改变"哪一侧还被切住"）。 */
-    syncStripFades();
-    /* 分段控件的滑块也要重新对齐：refresh 会重建整个 .seg，新 DOM 里没有旧位置。
-       animate=false —— 页面渲染不该让滑块从上一个位置飘过来（那是"换挡"才该有的动作）。 */
-    syncSegPills(false);
-    /* ★ v5.0：底栏小指示条要落在**图标**正下方。这一帧的 DOM 刚建好、布局已定，
-       正是量图标中心的时候（见 syncTabDots）。放在最后，确保读到的是最终布局。 */
-    syncTabDots();
-    /* ★ 0D.3：这一帧的布局刚定，正是重算"--bar-keep / 这一屏要不要滑 / 设置页收起态页脚位置"
-       的时候。必须在最后——它读的是最终高度（见 _syncFit）。没有原生桥的环境下这个函数不存在，
-       行为与改动前一致（滚动锁本来也只在 WebView 里生效）。 */
-    if (window.__syncBarFit) window.__syncBarFit();
+    afterRender();
   });
+}
+
+/* ★ 0G：refresh() 的**渲染收尾** —— 抽出来给第二个渲染出口共用。
+   原来这一段只长在 refresh() 的尾巴上，而统计子页进出的 statGo() 是**另一个渲染出口**，
+   它渲染完没有这一步：.reveal-on-scroll 全停在 opacity:0（DOM 在、命中也正常，就是看不见）
+   → 用户看到的就是"点进子页整屏空白，但随手一点还能弹出编辑弹层"。
+   收尾只留**一处**：以后再加渲染入口，调 afterRender() 就不会漏（不要再让调用点自觉）。 */
+function afterRender(){
+  /* v2.5：顶部图标行整行撤掉后，页面名不再单独渲染 —— 当前页由底栏选中态
+     （aria-current + 指示短线）表达，读屏也由 aria-label 承担。 */
+  applyHelp();                           // 「页面说明文字」总开关（切页后 DOM 是新的，这里每帧同步一次最稳）
+  observeReveals();
+  /* 标签条是这一帧刚重建的，边缘渐隐要按新的 scrollWidth 重算
+     （标签增删、筛选栏重置滚动位置都会改变"哪一侧还被切住"）。 */
+  syncStripFades();
+  /* 分段控件的滑块也要重新对齐：refresh 会重建整个 .seg，新 DOM 里没有旧位置。
+     animate=false —— 页面渲染不该让滑块从上一个位置飘过来（那是"换挡"才该有的动作）。 */
+  syncSegPills(false);
+  /* ★ v5.0：底栏小指示条要落在**图标**正下方。这一帧的 DOM 刚建好、布局已定，
+     正是量图标中心的时候（见 syncTabDots）。放在最后，确保读到的是最终布局。 */
+  syncTabDots();
+  /* ★ 0G：长列表跳转钮的显隐也要在渲染后核对一次（换页后 scrollY 可能还在阈值以上）。
+     scrolled=false —— 这次不是"用户正在滑"，不给它排 1 秒隐去的定时器。 */
+  updateStatJump(false);
+  /* ★ 0D.3：这一帧的布局刚定，正是重算"--bar-keep / 这一屏要不要滑 / 设置页收起态页脚位置"
+     的时候。必须在最后——它读的是最终高度（见 _syncFit）。没有原生桥的环境下这个函数不存在，
+     行为与改动前一致（滚动锁本来也只在 WebView 里生效）。 */
+  if (window.__syncBarFit) window.__syncBarFit();
 }
 
 /* 布局切换过渡（分区 ⇄ 时间轴、统计的横条 ⇄ 方块 共用）。两种手法见 swapContent 内的说明：
@@ -8780,7 +8912,7 @@ view.addEventListener('keydown', e => {
 });
 
 view.addEventListener('click', e => {
-  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart],[data-statpage],[data-statback],[data-statentry]');
+  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart],[data-statpage],[data-statback],[data-statentry],[data-jump]');
   if (!el) return;
 
   /* ★ 0E：清单页底部那块「已完成」折叠区整块撤掉了 —— 连它的展开 / 收起分支一起删。
@@ -8897,13 +9029,24 @@ view.addEventListener('click', e => {
     return;
   }
   /* ★ 0E：统计页的五张卡 → 进对应子页；子页的「← 返回」→ 回统计首页。
-     都是**就地替换**（不新增浮层、不新增 S.view），统一走 statGo 这一个入口。 */
+     都是**就地替换**（不新增浮层、不新增 S.view），统一走 statGo 这一个入口。
+     ★ 0G：返回的目标由 statFrom 决定（从清单页进来的回清单页），逻辑收在 statGo 里。 */
   if (el.dataset.statpage !== undefined){ statGo(el.dataset.statpage); return; }
   if (el.dataset.statback !== undefined){ statGo(null); return; }
+  /* ★ 0G：长列表跳转钮。方向由滚动监听算好存在 sjDir 里，这里只负责"跳"。
+     先隐去再滚：smooth 滚动期间滚动事件会把方向判成 down（y 在增大），留在屏上会闪一下。 */
+  if (el.dataset.jump !== undefined){
+    const maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    statJumpHide();
+    try { window.scrollTo({ top: sjDir === 'down' ? maxY : 0, behavior: 'smooth' }); }
+    catch (e){ window.scrollTo(0, sjDir === 'down' ? maxY : 0); }
+    return;
+  }
   /* ★ 0E：清单页那行「今天已完成 N 条」→ 统计页的「今日完成」子页。
      它真的换了视图（list → stat），所以走 goView 这个唯一入口；子页由 opts.statPage
-     点名 —— goView 里"每次换页都回统计首页"那条兜底才不会把它一起抹掉。 */
-  if (el.dataset.statentry !== undefined){ goView('stat', { statPage: 'today' }); return; }
+     点名 —— goView 里"每次换页都回统计首页"那条兜底才不会把它一起抹掉。
+     ★ 0G：带上来处 from:'list' —— 子页的「返回」要回清单页（用户定的"记住来处"）。 */
+  if (el.dataset.statentry !== undefined){ goView('stat', { statPage: 'today', from: 'list' }); return; }
   /* 设置页的外观开关。同样不走 refresh()：显示的显隐交给 body[data-help]，
      所以这里只要改状态 + 同步 aria-checked，页面一帧都不会跳。 */
   if (el.dataset.set !== undefined){
@@ -11333,7 +11476,11 @@ tabbar.addEventListener('click', e => {
      ⚠️ v3.50 起外观键已从底栏撤走（想法键顶替了它的位置），这条守卫仍然保留 ——
      它是"带 .tab 却没有页"这类按钮的通用护栏，不是只为外观键写的。 */
   if (!v) return;
-  if (v === S.view) return;
+  /* ★ 0G：在统计子页里点「统计」= 回统计首页。原来这行 `if (v === S.view) return;` 把
+     "我在子页、想回首页"也当成"我已经在这一页了"直接挡掉 —— 子页根本出不去（用户实测：
+     "在子页直接点底栏统计能不能回首页？"）。子页不是一页，它只是统计页里的一屏，
+     所以这里必须放行给 goView（它会清掉 statPage 再重画首页）。 */
+  if (v === S.view && !(v === 'stat' && statPage)) return;
   goView(v);   // ★ 换页面的唯一入口：视图 + 会话态清理 + 副作用收敛（见 goView 的说明）
   if (v === 'list'){
     const sec = document.getElementById('view');
@@ -11554,7 +11701,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.5.1';
+const APP_VERSION = '5.5.2';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
@@ -12270,6 +12417,9 @@ function goView(v, opts){
      统计首页。statPage 故意不进 S、不进备份，所以这条兜底是它唯一的清理点。
      清单页那行入口要**直接**进某一子页，就用 goView('stat', { statPage:'today' }) 点名。 */
   statPage = (v === 'stat' && o.statPage) ? o.statPage : null;
+  /* ★ 0G：来处与 statPage 同一处赋值/清理（同一套生命周期，别让第二个真相源长在调用点上）。
+     从清单页底部那行进来时带 {from:'list'} → 子页的「返回」才知道要回清单页。 */
+  statFrom = (v === 'stat' && o.from === 'list') ? 'list' : null;
   if (S.view === v){ refresh(); return; }
   S.view = v;
   if (v !== 'idea'){ ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); ideaUI.sparkOpen = null; }
