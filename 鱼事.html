@@ -4075,11 +4075,11 @@ const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', t
        lastScanAt     上次 AI 关联扫描的时间戳（距今 > 24h 才再扫）
        ideaReview     「想法回顾」总开关（设置页），默认开
        ideaReviewDone 今天已经把回顾抽屉处理完了（存日期）—— 当天不再推，次日自动失效
-       captureZone    「没写时间的条目默认去哪」：'long'（默认，老习惯）| 'idea'
+       captureZone    「没写时间的条目默认去哪」：'auto'（默认，让模型判长期还是想法）| 'long' | 'idea'
        ideaGestureSeen 想法页的手势说明是否已经自动弹过一次
        ideaLayout     想法页主视图：'list'（默认，卡片流）| 'tree'（树状图） */
   ideaUsedAt: null, lastOpenedSeed: null, lastScanAt: 0, ideaReview: true, ideaReviewDone: null,
-  captureZone: 'long', ideaGestureSeen: false, ideaLayout: 'list',
+  captureZone: 'auto', ideaGestureSeen: false, ideaLayout: 'list',
   /* ★ 0B.2（决策 2）：子任务全勾完**不**自动完成父任务。给一个开关让人自己选，
       默认关 —— 理由：别人给你派的一张清单，你做完手上这项不等于整件事结束了。
       打开后：勾掉最后一个未完成子任务时，连同祖先一起补上勾。 */
@@ -4267,7 +4267,7 @@ function load(){
       S.lastScanAt = Number.isFinite(o.lastScanAt) ? o.lastScanAt : 0;
       S.ideaReview = o.ideaReview !== false;
       S.ideaReviewDone = typeof o.ideaReviewDone === 'string' ? o.ideaReviewDone : null;
-      S.captureZone = o.captureZone === 'idea' ? 'idea' : 'long';
+      S.captureZone = (o.captureZone === 'idea' || o.captureZone === 'long') ? o.captureZone : 'auto';
       S.ideaGestureSeen = o.ideaGestureSeen === true;
       S.ideaLayout = o.ideaLayout === 'tree' ? 'tree' : 'list';
       /* ★ v5.0 第 3 批（AI）：老存档没有这几个字段 → 保持默认（**off**）。
@@ -4569,6 +4569,12 @@ function addItem(text, preset){
        画成实心点），再往 sparks 里塞一句一模一样的，用户看到的就是"刚记下就自己续写了一遍"
        —— v3.6.0 的真 bug。续写才往里加东西。 */
     it.sparks = [];
+    /* ★ 2B（用户 2026-10-08）：AI 判定"这件事真能拆成 ≥2 步"时才给子想法。
+       1 步不算能拆开 —— 旧的那条"原文比标题长就自动当第一步"已经删掉（见 taskToSeed）。
+       提示词里写死了"宁可少给，也不要硬把一句话拆成几步"。 */
+    if (p.steps && p.steps.length >= 2){
+      it.sparks = p.steps.slice(0, 6).map(x => ({ at: ymd(new Date()), text: String(x) }));
+    }
     it.bornFrom = null; it.promoted = null; it.hw = null; it.repeat = null;
     it.suggest = []; it.reviewedAt = null; it.aiUse = null;
   }
@@ -7512,7 +7518,7 @@ function smartLocalPlan(text){
 /* ⚠️ 请求体的**前缀必须逐字符固定**：系统提示词 + schema 说明放最前，变量全部放最后。
    理由：DeepSeek 的缓存命中输入单价是未命中的 1/50 —— 前缀一变，整个缓存失效。
    所以这两条是常量字符串，**不许拼接任何变量**。 */
-const AI_UNDERSTAND_SCHEMA = '{"items":[{"title":"","date":"","endDate":"","time":"","tags":[],"pri":0,"parent":"","note":""}],"corrected":"","confidence":0.0}';
+const AI_UNDERSTAND_SCHEMA = '{"items":[{"title":"","date":"","endDate":"","time":"","tags":[],"pri":0,"parent":"","note":"","zone":"","steps":[]}],"corrected":"","confidence":0.0}';
 const AI_UNDERSTAND_SYS =
   '你把用户随口说的一句话整理成待办条目。只输出 JSON，不要解释文字、不要 markdown 围栏。\n'
   + '输出形状固定为：' + AI_UNDERSTAND_SCHEMA + '\n'
@@ -7524,6 +7530,12 @@ const AI_UNDERSTAND_SYS =
   + '· pri 0 普通 / 1 重要 / 2 紧急\n'
   + '· parent 这一条要挂到**同一次回答里另一条**下面时，填那一条的 title；否则空串\n'
   + '· note 补充说明，没有就空串\n'
+  + '· zone 只管**没写日期**的那一条：写 "idea" 表示它其实只是个念头（想做的事、还没定的打算），'
+  + '写 "long" 表示它是一件要认真做的长期事（有明确交代、必须完成的）。'
+  + '写了日期的一律空串；拿不准也空串。这两个词只能二选一，别自创。\n'
+  + '· steps 子想法：**只有这件事明显能拆成两个及以上步骤时才给**，每项一句话、不超过 30 字。'
+  + '一个动作就能做完的事（交房租、喝酸奶、买个生日礼物）一律写空数组 —— '
+  + '宁可少给，也不要硬把一句话拆成几步。\n'
   + '· corrected 把原话里明显的同音错字改对之后的完整句子（没把握就原样回填）\n'
   + '· confidence 0~1，你对这次解析的把握\n'
   + '铁律：只做整理。不许新增用户没说的信息，不许下判断，不许替用户决定做不做。'
@@ -7572,12 +7584,24 @@ function aiValidateItems(raw){
     const title = r.title.trim();
     if (!title) continue;                                        // 且非空
     const x = { title: title, date: null, dateEnd: null, time: null,
-      tags: [], pri: 0, parent: '', note: '' };
+      tags: [], pri: 0, parent: '', note: '', zone: '', steps: [] };
     if (typeof r.date === 'string' && aiValidDateStr(r.date.trim())) x.date = r.date.trim();
     if (typeof r.endDate === 'string' && aiValidDateStr(r.endDate.trim())) x.dateEnd = r.endDate.trim();
     if (!x.date) x.dateEnd = null;
     if (x.date && x.dateEnd && x.dateEnd < x.date) x.dateEnd = null;   // endDate 不早于 date
     if (typeof r.time === 'string' && aiValidTimeStr(r.time.trim())) x.time = r.time.trim();
+    /* ★ 2B：落点由模型判（用户 2026-10-08 定："让用户接入的 AI 模型去区分，应该归入
+       「长期待办」还是「想法」"）。只收 long / idea 两个值；**写了日期的一律不认 idea**
+       —— 有具体安排的事就是待办，不是念头（模型偶尔会把带日期的事也判成想法）。 */
+    if (r.zone === 'long' || r.zone === 'idea') x.zone = r.zone;
+    if (x.zone === 'idea' && x.date) x.zone = '';
+    /* ★ 2B：子想法。**少于 2 步一律当没有** —— 用户的原话是"只有那种明显的可以拆成
+       多个步骤，两个及以上步骤的，再把它录入子想法"。1 步不叫"能拆开"。 */
+    if (Array.isArray(r.steps)){
+      const st = r.steps.map(s => String(s == null ? '' : s).trim())
+        .filter(s => s && s.length <= 30).slice(0, 6);
+      x.steps = st.length >= 2 ? st : [];
+    }
     if (Array.isArray(r.tags)){
       x.tags = r.tags.map(t => String(t == null ? '' : t).trim())
         .filter(aiValidTag).slice(0, TAG_PER_ITEM);
@@ -7653,9 +7677,16 @@ function aiPlanPreset(x){
     date: date, dateEnd: x.dateEnd || null, monthOnly: false,
     time: x.time || null,
     tags: (x.tags || []).slice(0, TAG_PER_ITEM),
-    zone: date ? (daysFromToday(date) <= 14 ? 'short' : 'long') : 'long',
+    /* ★ 2B：zone 的优先级 —— **模型表了态就听模型的**（用户 2026-10-08 定：让 AI 判
+       "该进长期待办还是想法"）；模型没表态（空串 / 不认识的值）才按日期推：
+       14 天内算短期，其余算长期，没日期也当长期（再由 commitEntry 按「录入默认落点」处置）。 */
+    zone: (x.zone === 'idea' || x.zone === 'long')
+      ? x.zone
+      : (date ? (daysFromToday(date) <= 14 ? 'short' : 'long') : 'long'),
     repeat: null, pri: x.pri || 0, goal: false, dayParts: null,
-    path: x.parent ? [x.parent] : []
+    path: x.parent ? [x.parent] : [],
+    /* 子想法：校验器已经保证"少于 2 步等于没有"，这里只是原样带过去 */
+    steps: Array.isArray(x.steps) ? x.steps.slice(0, 6) : []
   };
 }
 /* 按计划落库。返回真正建出来的条目（可能是 0 条 —— 调用方据此判断"什么都没收到"）。
@@ -8063,11 +8094,15 @@ function renderSettings(){
           <div class="set-txt">
             <b>没写时间的条目默认去哪</b>
             <span>新建时如果一句话里没解析出任何日期，它算「长期待办」还是直接算「想法」。
-              选「想法」的话，随手记下的半截念头不用再点一次「存入想法」。</span>
+              选「想法」的话，随手记下的半截念头不用再点一次「存入想法」。
+              <b>「自动」＝让 AI 读那句话替你判</b>：它觉得是个念头就进想法，觉得是件正经事就进长期；
+              判不了就照旧算长期。</span>
           </div>
           <div class="seg-cap" role="group" aria-label="没写时间的条目默认去哪">
-            <button type="button" class="pill${S.captureZone !== 'idea' ? ' on' : ''}"
-                    data-capzone="long" aria-pressed="${S.captureZone !== 'idea' ? 'true' : 'false'}">长期</button>
+            <button type="button" class="pill${S.captureZone === 'auto' ? ' on' : ''}"
+                    data-capzone="auto" aria-pressed="${S.captureZone === 'auto' ? 'true' : 'false'}">自动</button>
+            <button type="button" class="pill${S.captureZone === 'long' ? ' on' : ''}"
+                    data-capzone="long" aria-pressed="${S.captureZone === 'long' ? 'true' : 'false'}">长期</button>
             <button type="button" class="pill${S.captureZone === 'idea' ? ' on' : ''}"
                     data-capzone="idea" aria-pressed="${S.captureZone === 'idea' ? 'true' : 'false'}">想法</button>
           </div>
@@ -9798,11 +9833,12 @@ view.addEventListener('click', e => {
   }
   /* ★ v5.0：「没写时间的条目默认去哪」—— 只改默认落点，不改录入流程本身 */
   if (el.dataset.capzone){
-    S.captureZone = el.dataset.capzone === 'idea' ? 'idea' : 'long';
+    const cz = el.dataset.capzone;
+    S.captureZone = (cz === 'idea' || cz === 'long') ? cz : 'auto';
     save(); refresh();
-    toast(S.captureZone === 'idea'
-      ? '以后没写时间的条目直接长成想法'
-      : '以后没写时间的条目还是进「长期」');
+    toast(S.captureZone === 'idea' ? '以后没写时间的条目直接长成想法'
+      : S.captureZone === 'long' ? '以后没写时间的条目还是进「长期」'
+      : '以后没写时间的条目交给 AI 判：念头进想法，正经事进长期');
     return;
   }
   /* ---- ★ v5.0 回顾抽屉 ---- */
@@ -11814,6 +11850,11 @@ function openEditNew(rawText, preset){
     createdAt: Date.now(), hw: null, repeat: p.repeat || null, pri: p.pri || 0, timeMode: 'once',
     parent: null, goal: !!p.goal, dayParts: p.dayParts || null,
     heard: p.heard || null };   // AI 纠错后的整句（调用方塞在 preset 上，见 voiceRight）
+  /* ★ 2B：AI 判定能拆 ≥2 步时，进编辑页也该看到那几条子想法 —— 用户可以逐条改/删。
+     只在确实有 ≥2 步时才挂 sparks 字段；保存时分区分支会按需要保留或删掉它。 */
+  if (p.steps && p.steps.length >= 2){
+    it.sparks = p.steps.slice(0, 6).map(t => ({ at: ymd(new Date()), text: String(t) }));
+  }
   /* ★ 0A.4：这条路以前**不消费** `p.path` —— 「论文> 查文献」里的父级被整段丢掉，
      和 addItem（粘贴/回车那条路）行为不一致。现在照 addItem 的写法逐级挂靠。
      种子不参与复合目标的父子关系（见 addItem 的说明），所以 idea 分区跳过。 */
@@ -11960,7 +12001,7 @@ window.addEventListener('drop', e => {
           if (Number.isFinite(o.lastScanAt)) S.lastScanAt = o.lastScanAt;
           if (typeof o.ideaReview === 'boolean') S.ideaReview = o.ideaReview;
           if (typeof o.ideaReviewDone === 'string') S.ideaReviewDone = o.ideaReviewDone;
-          if (o.captureZone === 'idea' || o.captureZone === 'long') S.captureZone = o.captureZone;
+          if (o.captureZone === 'idea' || o.captureZone === 'long' || o.captureZone === 'auto') S.captureZone = o.captureZone;
           if (typeof o.ideaGestureSeen === 'boolean') S.ideaGestureSeen = o.ideaGestureSeen;
           if (o.ideaLayout === 'tree' || o.ideaLayout === 'list') S.ideaLayout = o.ideaLayout;
           /* ★ 审查修复（2026-10-04）：snapshot() 里写了 setOpen / aiMode / aiBase / aiModel /

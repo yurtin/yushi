@@ -73,11 +73,12 @@ function extractLet(src, name){
 }
 
 const FNS = ['isSeed', 'sanitizeHotwords', 'sanitizeHotwordSeen', 'hotwordDiff', 'hotwordAdd',
-  'hotwordObserve', 'taskToSeed'];
+  'hotwordObserve', 'taskToSeed',
+  'aiValidDateStr', 'aiValidTimeStr', 'aiValidTag', 'aiValidateItems', 'aiPlanPreset'];
 const srcAll = pure + '\n'
-  + ['HOTWORDS_MAX', 'HOTWORD_ASK_AT'].map(n => extractConst(html, n)).join('\n') + '\n'
+  + ['HOTWORDS_MAX', 'HOTWORD_ASK_AT', 'AI_UNDERSTAND_MAX'].map(n => extractConst(html, n)).join('\n') + '\n'
   + FNS.map(n => extractFn(html, n)).join('\n\n') + '\n'
-  + 'return { dateText, taskToSeed, hotwordObserve, hotwordDiff, sanitizeHotwordSeen, HOTWORD_ASK_AT, HOTWORDS_MAX };';
+  + 'return { dateText, taskToSeed, hotwordObserve, hotwordDiff, sanitizeHotwordSeen, HOTWORD_ASK_AT, HOTWORDS_MAX, aiValidateItems, aiPlanPreset };';
 
 const toasts = [];
 const S = { items: [], tags: [], hotwords: [], hotwordSeen: {}, dateShow: { y: true, m: true, d: true }, ideaUsedAt: null };
@@ -184,21 +185,64 @@ console.log('\n[4] 源码级接线');
     /dayPartKids\(it, it\.dayParts\)/.test(extractFn(html, 'openItemEditor')), '');
 }
 
-/* ---------- [5] 真浏览器抽检：右滑进入编辑走 AI + 录入不变出子想法 ---------- */
-console.log('\n[5] 真浏览器抽检（桩 fetch：不联网、不需要真 key）');
+/* ---------- [5] 批 3：AI 判落点 + ≥2 步才生成长子想法 ---------- */
+console.log('\n[5] AI 判落点（长期 / 想法）与子想法的门槛');
+{
+  const V = box.aiValidateItems;
+  /* zone */
+  t('zone 认 long', V([{ title: '交房租', zone: 'long' }])[0].zone, 'long');
+  t('zone 认 idea', V([{ title: '学做菜', zone: 'idea' }])[0].zone, 'idea');
+  t('zone 不认自创值', V([{ title: '甲', zone: 'short' }])[0].zone, '');
+  t('★ 带了日期的想法不成立（有安排的事就是待办）',
+    V([{ title: '交房租', date: '2026-11-01', zone: 'idea' }])[0].zone, '');
+  /* steps */
+  t('★ 1 步 = 没有子想法（用户口径：两个及以上才算能拆）',
+    V([{ title: '交房租', steps: ['对比价格'] }])[0].steps, []);
+  t('2 步收下', V([{ title: '买车险', steps: ['对比价格', '下单'] }])[0].steps, ['对比价格', '下单']);
+  t('空串/空白的步被摘掉后不足 2 条也算没有',
+    V([{ title: '甲', steps: ['对的', '   ', ''] }])[0].steps, []);
+  t('超过 6 步截断',
+    V([{ title: '甲', steps: ['1', '2', '3', '4', '5', '6', '7', '8'] }])[0].steps.length, 6);
+  t('单步超过 30 字被摘掉',
+    V([{ title: '甲', steps: ['一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一', '短的'] }])[0].steps, []);
+  t('steps 不是数组时当没有', V([{ title: '甲', steps: '对比价格' }])[0].steps, []);
+  /* aiPlanPreset 的优先级 */
+  const pp = box.aiPlanPreset;
+  t('★ 模型表了态就听模型的（idea 不被日期推断盖掉）',
+    pp({ title: '学做菜', zone: 'idea' }).zone, 'idea');
+  t('模型说 long 就是 long', pp({ title: '交房租', zone: 'long' }).zone, 'long');
+  t('模型没表态 + 有近日期 → 短期（老规则不变）',
+    pp({ title: '甲', date: '2026-10-10' }).zone, 'short');
+  t('模型没表态 + 没日期 → 长期', pp({ title: '甲' }).zone, 'long');
+  t('steps 原样带进 preset', pp({ title: '甲', steps: ['一', '二'] }).steps, ['一', '二']);
+  /* 提示词里得写清楚这两条规矩，否则模型不知道有这两个字段 */
+  const sys = html.match(/const AI_UNDERSTAND_SYS =[\s\S]*?;\n/)[0];
+  tOk('提示词讲了 zone 的两个取值与"写日期就不表态"', /"idea"/.test(sys) && /"long"/.test(sys) && /写了日期/.test(sys), '');
+  tOk('提示词讲了 steps 的"两个及以上才给、宁可少给"', /两个及以上/.test(sys) && /宁可少给/.test(sys), '');
+  tOk('schema 里带了 zone 与 steps 两个字段',
+    html.indexOf('"note":"","zone":"","steps":[]') > 0, '');
+  /* 设置三档 */
+  tOk('设置页的落点是三档（自动 / 长期 / 想法）',
+    /data-capzone="auto"/.test(html) && /data-capzone="long"/.test(html) && /data-capzone="idea"/.test(html), '');
+  tOk('默认是「自动」', /captureZone: 'auto'/.test(html), '');
+}
+
+
+console.log('\n[6] 真浏览器抽检（桩 fetch：不联网、不需要真 key）');
 const PORT = 8906, CDP = 9446;
 const AI_TITLE = '去图书馆还书';
 const AI_HEARD = '我大后天要去图书馆还从图书馆借的书';
 const seed = { items: [], lastBackup: Date.now(), tags: [], statLayout: 'card', hintOpen: false,
   showHelp: false, aiMode: 'title', captureZone: 'idea' };
 const BOOT = `<script>
-window.__ai = { reqs: 0, last: null };
+window.__ai = { reqs: 0, last: null, next: null };
 window.fetch = function(url, opt){
   window.__ai.reqs++;
   try { window.__ai.last = JSON.parse(opt && opt.body || '{}'); } catch(e){}
-  var body = { choices: [{ message: { content: JSON.stringify({
+  var payload = window.__ai.next || {
     items: [{ title: ${JSON.stringify(AI_TITLE)}, date:'', endDate:'', time:'', tags:[], pri:0, parent:'', note:'' }],
-    corrected: ${JSON.stringify(AI_HEARD)}, confidence: 0.9 }) } }] };
+    corrected: ${JSON.stringify(AI_HEARD)}, confidence: 0.9 };
+  var body = { choices: [{ message: { content: JSON.stringify(payload) } }] };
   return Promise.resolve({ ok: true, status: 200, json: function(){ return Promise.resolve(body); } });
 };
 <\/script>`;
@@ -282,6 +326,39 @@ tOk('原文留在 raw 里，一个字没丢', landed.raw === '冰箱里的酸奶
 tOk('AI 纠错后的整句落到了 heard', landed.heard === AI_HEARD, String(landed.heard));
 
 tOk('全程没有未捕获异常', errors.length === 0, errors.join(' | '));
+
+/* 6c：AI 判落点 + 子想法门槛（批 3 的端到端） */
+await ev(`closeModalNow(); S.items.length=0; S.captureZone='auto'; return 1;`);
+await sleep(200);
+/* ① 模型说"这是个想法"、并给了 2 步 → 直接落成想法，带 2 个子想法 */
+await ev(`window.__ai.next = { items: [{ title:'买车险', date:'', endDate:'', time:'', tags:[], pri:0, parent:'', note:'', zone:'idea', steps:['对比三家的价格','下单'] }], corrected:'', confidence:0.9 };
+  voicePending='给车险比一下价，顺便看看能不能换一家'; voiceLeft(); return 1;`);
+await sleep(1600);
+const n1 = await ev(`var it=S.items[0]; if(!it) return { none:true };
+  return { kind: it.kind, zone: it.zone, sparks: (it.sparks||[]).map(function(s){ return s.text; }) };`);
+t('★ 模型判「想法」→ 直接落成想法', [n1.kind, n1.zone], ['seed', 'idea']);
+t('★ 模型给的 2 步变成了子想法', n1.sparks, ['对比三家的价格', '下单']);
+
+/* ② 模型说"这是长期事"、且不给 steps → 进长期，没有子想法 */
+await ev(`closeModalNow(); S.items.length=0;
+  window.__ai.next = { items: [{ title:'交房租', date:'', endDate:'', time:'', tags:[], pri:0, parent:'', note:'', zone:'long', steps:[] }], corrected:'', confidence:0.9 };
+  voicePending='下个月初要去交房租'; voiceLeft(); return 1;`);
+await sleep(1600);
+const n2 = await ev(`var it=S.items[0]; if(!it) return { none:true };
+  return { kind: it.kind || null, zone: it.zone, sparks: (it.sparks||[]).length, shown: it.title };`);
+t('★ 模型判「长期」→ 进长期，不是想法', [n2.kind, n2.zone], [null, 'long']);
+t('★ 没有 steps 就不长任何子想法', n2.sparks, 0);
+t('标题也是模型给的', n2.shown, '交房租');
+
+/* ③ 模型只给 1 步 → 校验器按"没有"处理，落到长期也不带子想法 */
+await ev(`closeModalNow(); S.items.length=0;
+  window.__ai.next = { items: [{ title:'喝酸奶', date:'', endDate:'', time:'', tags:[], pri:0, parent:'', note:'', zone:'idea', steps:['看一眼保质期'] }], corrected:'', confidence:0.9 };
+  voicePending='冰箱里的酸奶快过期了记得喝'; voiceLeft(); return 1;`);
+await sleep(1600);
+const n3 = await ev(`var it=S.items[0]; if(!it) return { none:true };
+  return { kind: it.kind, sparks: (it.sparks||[]).length };`);
+t('★ 只有 1 步 → 不成子想法（1 步不叫"能拆开"）', n3.sparks, 0);
+tOk('它仍然是个想法（zone 是 idea，只是没子想法）', n3.kind === 'seed', JSON.stringify(n3));
 ws.close(); chrome.kill(); srv.close();
 console.log('\n' + (fail ? 'FAIL ' : 'PASS ') + pass + ' / ' + (pass + fail) + (fail ? '  —— ' + fail + ' 条失败' : '  全绿'));
 process.exit(fail ? 1 : 0);
