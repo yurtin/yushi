@@ -4822,16 +4822,11 @@ function renderZoneBody(){
      ⚠️ 这里**不调用** statPageHits，而是直接用 statDoneItems 拼同一个谓词：0B 的纯 Node
      回归脚本是把 renderZoneBody 整段切出来喂桩跑的，引用一个新增的全局函数会让那份脚本
      直接 ReferenceError 崩掉、把它本来绿的断言一起带走。两处口径一致由 _0e-regress.mjs
-     的**运行时等式断言**钉住（同时渲染入口行与统计卡，比 N 必须相等）。 */
+     的**运行时等式断言**钉住（同时渲染入口行与统计卡，比 N 必须相等）。
+     位置与原来那块一样：压在三个分区**脚下**（`.board` 的最后一个整行 item）——
+     0B 那条理由仍然成立："今天做完的东西不该占着第一屏"，这一屏要回答的是"还剩什么没做"。 */
   const todayYmd = ymd(today0());
   const doneTodayN = statDoneItems().filter(i => i.doneAt && ymd(new Date(i.doneAt)) === todayYmd).length;
-  if (doneTodayN){
-    bh += `<button class="glass zone-wide done-entry${rv()}" data-statentry="1"${rvd(40)}
-      aria-label="今天已完成 ${doneTodayN} 条，点开看明细">
-      <span class="dot" aria-hidden="true"></span>今天已完成 <b class="de-n mono">${doneTodayN}</b> 条
-      <span class="de-chev" aria-hidden="true">›</span>
-    </button>`;
-  }
 
   cols.forEach((c, zi) => {
     /* ★ 0B：分区列表**不收已完成的根条目** —— 它们沉到下面那条「已完成」里。
@@ -4848,8 +4843,16 @@ function renderZoneBody(){
     </section>`;
   });
 
-  /* ★ 0E：0B 那块「已完成」收纳区就长在这里，现在整块删掉了（见上面那行入口）。
-     清单页只有"还没做的"—— 做完的东西回统计页看。 */
+  /* ★ 0E：0B 那块「已完成」收纳区就长在这里，现在整块撤掉，换成**一行入口**
+     （见上面那段说明与 doneTodayN）。清单页只有"还没做的"—— 做完的东西回统计页看。
+     它是 .board 的最后一个整行 item（grid-column:1/-1），位置就是原来那块收纳区的位置。 */
+  if (doneTodayN){
+    bh += `<button class="glass zone-wide done-entry${rv()}" data-statentry="1"${rvd(40)}
+      aria-label="今天已完成 ${doneTodayN} 条，点开看明细">
+      <span class="dot" aria-hidden="true"></span>今天已完成 <b class="de-n mono">${doneTodayN}</b> 条
+      <span class="de-chev" aria-hidden="true">›</span>
+    </button>`;
+  }
 
   /* 考虑区：这里放的是「还没决定要不要做」的事，不是待办 —— 不占三栏之一，
      靠 grid-column:1/-1 铺满整行落在所有栏目脚下，绿点跟上面三栏的蓝点分开。

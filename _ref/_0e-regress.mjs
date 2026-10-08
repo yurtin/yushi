@@ -304,6 +304,12 @@ console.log('\n[4] 0E  等式：统计页「今日完成」卡的 N == 清单页
   tOk('那一行入口是无障碍可达的（真 button + aria-label）',
     /<button class="glass zone-wide done-entry[^"]*" data-statentry="1"/.test(oneOut) &&
     /aria-label="今天已完成 1 条，点开看明细"/.test(oneOut));
+  /* 位置：与原来那块收纳区一样，压在三个分区**脚下**（0B 的理由："今天做完的东西
+     不该占着第一屏"）。用"最后一个 </section> 之后"当判据，别用 'glass zone' 前缀 ——
+     入口自己的 class 是 `glass zone-wide`，前缀匹配会把它自己算进去。 */
+  tOk('那一行入口压在三个分区脚下（不占第一屏）',
+    oneOut.indexOf('done-entry') > oneOut.lastIndexOf('</section>'),
+    'entry@' + oneOut.indexOf('done-entry') + ' lastSection@' + oneOut.lastIndexOf('</section>'));
 }
 
 /* ---------- 7. 五张卡都能点 ---------- */

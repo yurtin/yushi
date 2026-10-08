@@ -366,6 +366,21 @@ console.log('\n[6] 清单页那行「今天已完成 N 条」→ 统计页的今
   `);
   t('[6] 它是一个真 button，且有 aria-label', [aria.tag, aria.aria, aria.zone], ['BUTTON', '今天已完成 2 条，点开看明细', true]);
   t('[6] 0B 那块可折叠「已完成」收纳区已经不在了', [aria.oldZone, aria.foldAttr], [false, false]);
+  /* 位置：与原来那块收纳区一样压在三个分区脚下（0B："今天做完的东西不该占着第一屏"） */
+  const pos = await ev(`
+    var e = document.querySelector('.done-entry');
+    var zs = document.querySelectorAll('.board > .zone');
+    var last = zs[zs.length - 1];
+    return { zones: zs.length, entryTop: +(e.getBoundingClientRect().top + window.scrollY).toFixed(2),
+      lastZoneBottom: +(last.getBoundingClientRect().bottom + window.scrollY).toFixed(2),
+      fullWidth: +(e.getBoundingClientRect().width).toFixed(2),
+      boardWidth: +(document.querySelector('.board').getBoundingClientRect().width).toFixed(2) };
+  `);
+  tOk('[6] 那一行入口压在三个分区脚下（在最后一栏下面，不占第一屏）',
+    pos.zones === 3 && pos.entryTop >= pos.lastZoneBottom - 1,
+    'zones=' + pos.zones + ' entryTop=' + pos.entryTop + ' lastZoneBottom=' + pos.lastZoneBottom);
+  tOk('[6] 它是整行宽（铺满看板，不是一个格子）', pos.fullWidth > pos.boardWidth * 0.9,
+    pos.fullWidth + ' / ' + pos.boardWidth);
   await click('.done-entry');
   const sub = await state();
   t('[6] 点它落在统计页的「今日完成」子页', [sub.view, sub.statPage, sub.title], ['stat', 'today', '今日完成']);
