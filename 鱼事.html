@@ -518,7 +518,7 @@ body[data-help="off"] .intro-note{
   background:color-mix(in srgb,var(--fg) 5%,transparent);
   color:var(--muted);font:inherit;font-size:11px;font-weight:700;letter-spacing:.02em;
   transition:background var(--mo-quick) ease,color var(--mo-quick) ease}
-.filter-bar:hover{color:var(--fg)}
+@media (hover:hover){ .filter-bar:hover{color:var(--fg)} }
 .filter-bar:active{background-color:var(--pill-hover)}
 .filter-bar .fb-chev{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2.2;
   stroke-linecap:round;stroke-linejoin:round;transition:transform .22s cubic-bezier(.2,.8,.2,1)}
@@ -1239,7 +1239,7 @@ html.soft-render .mask .modal{
   border:1px solid var(--line2);border-radius:14px;background:transparent;color:var(--fg);
   font:inherit;font-size:14px;font-weight:600;padding:11px 14px;outline:0;cursor:pointer;text-align:left;
 }
-.te-head:hover{border-color:var(--fg)}
+@media (hover:hover){ .te-head:hover{border-color:var(--fg)} }
 .te-head .te-cap{flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
 .te-head .te-val{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .te-head .te-val.mute{color:var(--faint)}
@@ -1276,7 +1276,7 @@ html.soft-render .mask .modal{
   background:transparent;color:var(--faint);font:inherit;font-size:14px;font-weight:700;cursor:pointer;
   transition:color var(--mo-base) var(--mo-soft),border-color var(--mo-base) var(--mo-soft);
 }
-.te-clear:hover{color:var(--danger);border-color:var(--danger)}
+@media (hover:hover){ .te-clear:hover{color:var(--danger);border-color:var(--danger)} }
 /* 内联日历：直接复用既有的 .cal-* 视觉（同一个 .cal-d / .cal-nav / .cal-title），
    只把外层从 .sel-pop 浮层换成展开区里的一个普通块。
    ★ v3.41：去掉自造的浅色面板与边框 —— 全站日历本体从来就是"无面板"的；
@@ -1293,14 +1293,14 @@ html.soft-render .mask .modal{
   aspect-ratio:1;border:0;background:transparent;color:var(--fg);font:inherit;font-size:12.5px;
   border-radius:9px;cursor:pointer;transition:background var(--mo-fast) ease;
 }
-.te-cal .cal-d:hover{background:var(--pill)}
+@media (hover:hover){ .te-cal .cal-d:hover{background:var(--pill)} }
 /* 区间带：起点/终点实心（与 .cal-d.on 同一套蓝），中间连成一条带（不是三个孤立的点） */
 .te-cal .cal-d.inrange{background:color-mix(in srgb,var(--accent) 20%,transparent);border-radius:0}
 .te-cal .cal-d.rstart{border-radius:9px 0 0 9px}
 .te-cal .cal-d.rend{border-radius:0 9px 9px 0}
 .te-cal .cal-d.rboth{border-radius:9px}
 .te-cal .cal-d.edge{background:var(--accent);color:#fff;font-weight:800}
-.te-cal .cal-d.edge:hover{background:var(--accent)}
+@media (hover:hover){ .te-cal .cal-d.edge:hover{background:var(--accent)} }
 .te-cal .cal-d.today-d{box-shadow:inset 0 0 0 1.6px var(--line2)}
 /* 时刻行 */
 .te-tline{display:flex;gap:8px;align-items:center;margin-top:12px}
@@ -1329,7 +1329,7 @@ html.soft-render .mask .modal{
   font:inherit;font-size:12.5px;font-weight:800;padding:8px 10px;border-radius:9999px;cursor:pointer;
   transition:background 220ms ease,color 220ms ease,box-shadow 220ms ease;
 }
-.te-mode button:hover{color:var(--fg)}
+@media (hover:hover){ .te-mode button:hover{color:var(--fg)} }
 .te-mode button.on{
   background:var(--fg);color:var(--bg);
   box-shadow:0 2px 10px color-mix(in srgb,var(--glass-edge) 45%,transparent);
@@ -1338,7 +1338,7 @@ html.soft-render .mask .modal{
    pointer-events:none 会让 disabled 属性看不出来，所以这里只降透明度 + 换鼠标指针，
    交给 disabled 属性真的拦住点击（视觉与行为各管一件事）。 */
 .te-mode button:disabled{opacity:.4;cursor:not-allowed}
-.te-mode button:disabled:hover{color:var(--muted)}
+@media (hover:hover){ .te-mode button:disabled:hover{color:var(--muted)} }
 /* ★ 0B.7：勾了作业时那行灰字说明（循环为什么被锁住） */
 .te-hwnote{margin:10px 0 0;font-size:12.5px;line-height:1.7;font-weight:600;color:var(--faint)}
 .te-hwnote.hide{display:none}
@@ -1356,7 +1356,7 @@ html.soft-render .mask .modal{
   background:transparent;color:var(--fg);font:inherit;font-size:14px;font-weight:700;
   padding:11px 12px;border-radius:11px;cursor:pointer;
 }
-.pp-row:hover{background:color-mix(in srgb,var(--fg) 7%,transparent)}
+@media (hover:hover){ .pp-row:hover{background:color-mix(in srgb,var(--fg) 7%,transparent)} }
 .pp-row.on{background:var(--fg);color:var(--bg)}
 /* 原文只读备注 */
 .modal-note.raw-ro{
@@ -1515,7 +1515,7 @@ html.soft-render .site-header,html.soft-render .capture{background:color-mix(in 
 /* 揭示改成 animation 之后，这里要关的是 animation（原来关的是 transition）。
    ★ 0G：同 reduce 那条 —— 这里把元素强制成可见，指针也要一起交回去。 */
 html.soft-render .reveal-on-scroll{opacity:1;transform:none;filter:none;transition:none;animation:none;pointer-events:auto}
-html.soft-render .feature-card:hover{transform:none}
+@media (hover:hover){ html.soft-render .feature-card:hover{transform:none} }
 
 /* ---------- 统计页：布局切换（右上角）+ 完成量细分 ---------- */
 .stat-toolbar{
@@ -1755,7 +1755,7 @@ body[data-help="off"] .set-row .set-txt > span:not([data-keephelp]){
   font:inherit;font-size:13px;font-weight:800;line-height:1;
   transition:transform var(--mo-quick) var(--mo-soft);
 }
-.rbtn:hover{color:var(--fg);border-color:var(--fg)}
+@media (hover:hover){ .rbtn:hover{color:var(--fg);border-color:var(--fg)} }
 .rbtn:active{transform:scale(.94)}
 /* 焦点环：和 .tab 同一套中性描边，不用 outline */
 .rbtn:focus-visible{outline:none!important;box-shadow:0 0 0 2px var(--ring)}
@@ -2832,7 +2832,7 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
   background:var(--panel-solid,var(--bg));border:1px solid var(--line,var(--pill));
   color:var(--faint);transition:color var(--mo-fast) ease,border-color var(--mo-fast) ease;
 }
-.item.seed .spine .fold:hover{border-color:var(--fg);color:var(--fg)}
+@media (hover:hover){ .item.seed .spine .fold:hover{border-color:var(--fg);color:var(--fg)} }
 .item.seed .spine .fold[aria-expanded="true"]{color:var(--accent);border-color:var(--accent)}
 /* 圆珠占的下半截空间：不然它压住最后一步的正文 */
 .item.seed .spine.has-kids{padding-bottom:16px}
@@ -2929,7 +2929,7 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
   flex:0 0 auto;margin-left:auto;border:0;background:none;color:var(--faint);
   font-size:11px;padding:2px 6px;border-radius:8px;cursor:pointer;line-height:1;
 }
-.sp-x:hover{background:var(--tap,var(--pill));color:var(--fg)}
+@media (hover:hover){ .sp-x:hover{background:var(--tap,var(--pill));color:var(--fg)} }
 .sp-add{display:flex;align-items:center;gap:6px;padding:6px 0 8px}
 .sp-in{
   flex:1;min-width:0;background:var(--panel-solid,var(--bg));color:var(--fg);
@@ -2961,7 +2961,7 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
   border:1px solid var(--line,var(--pill));border-radius:7px;background:var(--bg);
   color:var(--muted);font-size:11px;line-height:1;cursor:pointer;padding:0;
 }
-.sp-go:hover,.sp-push:hover{color:var(--accent);border-color:var(--accent)}
+@media (hover:hover){ .sp-go:hover,.sp-push:hover{color:var(--accent);border-color:var(--accent)} }
 .sp-done{color:var(--accent);font-size:11px;margin-left:2px}
 .chip.promoted{cursor:pointer;border:1px solid var(--accent);color:var(--accent)}
 .chip.srcchip{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -3031,7 +3031,7 @@ html.soft-render .mask.sheet-mode .modal{max-height:calc(82vh - var(--kb,0px))}
   color:var(--fg);font-size:15px;font-family:inherit;
   transition:background var(--mo-base) ease;
 }
-.sheet-item:hover{background:var(--pill-hover,var(--pill))}
+@media (hover:hover){ .sheet-item:hover{background:var(--pill-hover,var(--pill))} }
 .sheet-item:active{background:var(--pill)}
 .si-label{flex:0 0 auto;font-weight:600;min-width:3.2em}
 /* ★ v5.0：图标一格固定宽度 + 居中，标签才竖着对齐（否则 ⑂ 比 ✎ 窄，整列就歪了） */
@@ -3198,7 +3198,7 @@ html.tree-full .merge-bar{z-index:85}
   border-radius:999px;padding:5px 11px;font:inherit;font-size:11.5px;font-weight:700;
   cursor:pointer;white-space:nowrap;
 }
-.tree-fullbtn:hover{color:var(--fg);border-color:var(--fg)}
+@media (hover:hover){ .tree-fullbtn:hover{color:var(--fg);border-color:var(--fg)} }
 .tree-fullbtn .np-ico{width:14px;height:14px}
 /* ★ v5.0 修订：`.tree-zone`（两区区名那小字）已按用户要求删除，
    规则一并删掉 —— 不留没人用的死样式。两区的划分还在，只是不再写名字。 */
