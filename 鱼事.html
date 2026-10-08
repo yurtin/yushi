@@ -4083,11 +4083,18 @@ const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', t
                要联网必须用户自己在这个开关上做一次明确的选择（第一次点 AI 按钮时引导）。
        aiBase / aiModel  预填 DeepSeek 的 OpenAI 兼容端点与官方模型名 deepseek-flash
                （= DeepSeek-V4.1-Flash，官方文档 2026-09-10 起启用的模型名）。
-       aiUse   配额计数 {d:'YYYY-MM-DD', n}，每天 3 次（1 次关联扫描 + 2 次质疑）。
+       ★ 2A（2026-10-08 用户定）：**「每天 3 次」的硬配额已拆掉** —— 改成两条护栏
+          （同一句重试 ≤ 1 次、两次调用间隔 ≥ 1 秒，见 aiGateWaitMs / aiGateNote），
+          失败不扣任何东西。原来那一格 aiUse 不再存在。
+       hotwords / hotwordSeen  常用词表（纠错偏置）与采集计数。
+               词表**只作为纠错偏置传进提示词，绝不进本地 ASR 偏置** ——
+               本地偏置错了就无从纠正（2026-10-07 定）。
+       aiAnchor  最近一次记下的条目标题。下一句交给模型理解时，"我刚刚说的是哪条"
+               是判断"要不要挂到刚才那条下面"的关键上下文（限量发，不全量塞）。
      ⚠️ API key **不在 S 里、也不进 save()/snapshot()** —— 它单独存在另一把 localStorage 键
         （见 AI_KEY_LS），这样导出的备份 JSON 永远不可能带上 key。 */
   aiMode: 'off', aiBase: 'https://api.deepseek.com', aiModel: 'deepseek-flash',
-  aiUse: { d: null, n: 0 },
+  hotwords: [], hotwordSeen: {}, aiAnchor: null,
   /* ★ v5.0：设置页展开了哪几栏（存的是栏目名，如 '外观与体感' / 'AI'）。
      默认**空数组 = 全部收起** —— 用户："设置栏目有点太长了"。 */
   setOpen: [],
@@ -4265,8 +4272,15 @@ function load(){
         ? o.aiBase.trim() : 'https://api.deepseek.com';
       S.aiModel = (typeof o.aiModel === 'string' && o.aiModel.trim())
         ? o.aiModel.trim() : 'deepseek-flash';
-      S.aiUse = (o.aiUse && typeof o.aiUse === 'object' && typeof o.aiUse.d === 'string')
-        ? { d: o.aiUse.d, n: Number.isFinite(o.aiUse.n) ? o.aiUse.n : 0 } : { d: null, n: 0 };
+      /* ★ 2A：常用词表与"上次焦点"。
+         词表建在这里、进 save()/snapshot()/恢复备份（任务卡：数据结构本卡先建好，
+         设置页界面留到 2B）。读进来时按上限截断 + 逐条过滤：
+         热词规格是"单词 ≤ 10 汉字"（腾讯云口径），超长的丢掉而不是截断 ——
+         截断后的词会与用户说的词不同音，等于往纠错里灌噪声。 */
+      S.hotwords = sanitizeHotwords(o.hotwords);
+      S.hotwordSeen = sanitizeHotwordSeen(o.hotwordSeen);
+      S.aiAnchor = (typeof o.aiAnchor === 'string' && o.aiAnchor.trim())
+        ? o.aiAnchor.trim().slice(0, 60) : null;
       /* ★ v5.0 设置页折叠：老存档没有这个字段 → 全收起（默认）；只收字符串，别的丢掉 */
       S.setOpen = Array.isArray(o.setOpen)
         ? o.setOpen.filter(k => typeof k === 'string' && k).slice(0, 12) : [];
@@ -4308,8 +4322,10 @@ function save(){
       ideaUsedAt: S.ideaUsedAt, lastOpenedSeed: S.lastOpenedSeed,
       lastScanAt: S.lastScanAt, ideaReview: S.ideaReview, ideaReviewDone: S.ideaReviewDone,
       captureZone: S.captureZone, ideaGestureSeen: S.ideaGestureSeen, ideaLayout: S.ideaLayout,
-      /* ★ v5.0 第 3 批（AI）：只有"设置"，**没有 key**（key 在 AI_KEY_LS 上单独存） */
-      aiMode: S.aiMode, aiBase: S.aiBase, aiModel: S.aiModel, aiUse: S.aiUse,
+      /* ★ v5.0 第 3 批（AI）：只有"设置"，**没有 key**（key 在 AI_KEY_LS 上单独存）。
+         ★ 2A：配额字段拆掉，换成常用词表 + 上次焦点。 */
+      aiMode: S.aiMode, aiBase: S.aiBase, aiModel: S.aiModel,
+      hotwords: S.hotwords, hotwordSeen: S.hotwordSeen, aiAnchor: S.aiAnchor,
       setOpen: S.setOpen,
       /* ★ v5.1.2：日期显示口径 + 震动档位 */
       dateShow: S.dateShow, haptic: S.haptic,
@@ -4340,8 +4356,10 @@ function snapshot(){
     lastScanAt: S.lastScanAt, ideaReview: S.ideaReview, ideaReviewDone: S.ideaReviewDone,
     captureZone: S.captureZone, ideaGestureSeen: S.ideaGestureSeen, ideaLayout: S.ideaLayout,
     /* ★ v5.0 第 3 批（AI）：**刻意不写 key** —— 设计稿 §14 I-50 的验收：
-       备份导出的 JSON 里不含 API key 字段。key 存在 AI_KEY_LS，永不进快照。 */
-    aiMode: S.aiMode, aiBase: S.aiBase, aiModel: S.aiModel, aiUse: S.aiUse,
+       备份导出的 JSON 里不含 API key 字段。key 存在 AI_KEY_LS，永不进快照。
+       ★ 2A：常用词表与上次焦点也进备份 —— 换设备后不用重新攒词。 */
+    aiMode: S.aiMode, aiBase: S.aiBase, aiModel: S.aiModel,
+    hotwords: S.hotwords, hotwordSeen: S.hotwordSeen, aiAnchor: S.aiAnchor,
     setOpen: S.setOpen,
     /* ★ v5.1.2：日期显示口径 + 震动档位也进备份 —— 换手机/换电脑后不用再调一遍 */
     dateShow: S.dateShow, haptic: S.haptic,
@@ -4521,8 +4539,12 @@ function dayPartKids(parent, times){
   }));
 }
 
-function addItem(text){
-  const p = parseSmart(text);
+/* ★ 2A：第二个参数是**预解析结果**（形状与 parseSmart 的返回值一致）。
+   理解内核（AI 或本地级联）先算好，这里只负责落库 —— 不传就照旧自己 parseSmart。
+   有这条口子才能让 AI 的产出走**同一条落库路径**（通知排期、标签库上限、
+   父子挂靠、作业字段全都不用各写一套）。 */
+function addItem(text, preset){
+  const p = preset || parseSmart(text);
   if (!p.title) return null;
   const it = {
     id: uid(), raw: text.trim(), title: p.title,
@@ -7021,20 +7043,33 @@ function renderStat(){
      ① 模式是**混合**的 —— 关联自动（每天最多 1 次静默扫描）、质疑手动（你点才问）
      ② 产物是**挂载建议**（要不要把这条挂到那条下面），不是"相关列表"
      ③ 一次只问一个问题，且必须引用你原文里的词；不给结论、不替你下判断
-     ④ 每天 3 次（1 扫描 + 2 质疑），本地计数，不需要服务端
+     ④ ★ 2A 起：**每天 3 次的硬配额拆掉了**（用户 2026-10-08 定）——
+        换成"同一句重试 ≤ 1 次 + 两次调用间隔 ≥ 1 秒"两条护栏，失败不扣任何东西
      ⑤ 隐私三档默认**关闭**；关着时页面零外部请求
      ⑥ 失败就是「AI 没接上」—— **绝不生成本地假结果**，失败不扣配额
 
    三条实现红线：
      · API key 单独存（AI_KEY_LS），**不进 S、不进 save()/snapshot()** → 备份 JSON 永不含 key
      · 所有入口在发请求之前先过 aiOn()（开关 + key 两个条件）
-     · 只有拿到结果才计配额 */
+     · 全文件 AI 的**唯一网络出口是 aiCall()** —— 谁都不许另写 fetch */
 
 const AI_KEY_LS = 'daibanji.ai.key';   // API key 的独立存储键（不进备份）
 const AI_TIMEOUT_MS = 8000;            // 设计稿 §8.6：超时 8 秒
-const AI_DAILY = 3;                    // 1 次关联扫描 + 2 次质疑
 const AI_MAX_SCAN = 12;                // 一次扫描最多发这么多条（成本控制）
 const AI_ROLES = ['投资人', '未来的用户', '唱反调的人', '三年后的你', '已经放弃这条想法的你'];
+/* ★ 2A 理解内核的三个上限：
+     AI_UNDERSTAND_MAX  一次最多接受几条（模型话痨时兜底，防一句话炸出 30 条待办）
+     AI_LISTEN_MAX      清单名限量 —— 未完成的取前 40 条当上下文，**不全量塞**
+                        （全量会让输入涨十几倍，且模型更容易选错）
+     HOTWORDS_MAX       词表规模上限 50~80（2026-10-07 定的口径：越多误伤越大）
+     HOTWORD_ASK_AT     用户把同一个词改对几次才问一次"要不要收进常用词" */
+const AI_UNDERSTAND_MAX = 8;
+const AI_LISTEN_MAX = 40;
+const HOTWORDS_MAX = 80;
+const HOTWORD_ASK_AT = 2;
+/* ★ 2A 的两条护栏（取代配额）：同一句最多发 2 次（首答 + 1 次重试）；两次调用间隔 ≥ 1 秒。 */
+const AI_RETRY_MAX = 2;
+const AI_CALL_GAP_MS = 1000;
 
 function aiKey(){ try { return localStorage.getItem(AI_KEY_LS) || ''; } catch (e){ return ''; } }
 function aiSetKey(v){
@@ -7051,16 +7086,58 @@ function aiKeyMask(){
 }
 /* AI 能不能用：开关不是 off **且** 有 key。缺一，入口一律不发请求。 */
 function aiOn(){ return S.aiMode !== 'off' && !!aiKey(); }
-function aiQuotaToday(){
-  const t = ymd(new Date());
-  return (S.aiUse && S.aiUse.d === t && Number.isFinite(S.aiUse.n)) ? S.aiUse.n : 0;
+/* ★ 2A：取代配额的**两条护栏**。
+   为什么拆配额：用户 2026-10-08 定"取消每天 3 次" —— 配额是给"静默后台扫描"设的刹车，
+   而理解内核是**用户每次主动按回车**才走一次，一次一句话本来就该立刻办。
+   留在原地的两条护栏只防"手抖连点 / 同一句反复重试"这种浪费：
+     · 同一句最多发 2 次（首答 + 1 次重试）；第 3 次直接退回本地，不再出网；
+     · 两次调用之间至少隔 1 秒 —— 不够就等，不等用户手动重试。
+   失败**不扣任何东西**（本来也没有可扣的计数了）。 */
+let aiLastCallAt = 0;
+let aiLastText = '';
+let aiLastRetry = 0;
+/* 返回 -1 = 这一句已经发够了，别再发；≥0 = 还要等这么多毫秒再发。
+   ★ 两条护栏的**适用范围**不一样，别合并：
+     · 「同一句重试 ≤ 1 次」只认**同一句**（换一句就重新算）；
+     · 「两次调用间隔 ≥ 1 秒」是**全局**的 —— 不分句子，任何两次出网之间都要隔开。 */
+function aiGateWaitMs(text){
+  const t = String(text || '');
+  if (t === aiLastText && aiLastRetry >= AI_RETRY_MAX) return -1;
+  return Math.max(0, AI_CALL_GAP_MS - (Date.now() - aiLastCallAt));
 }
-function aiQuotaLeft(){ return Math.max(0, AI_DAILY - aiQuotaToday()); }
-function aiQuotaSpend(){
-  const t = ymd(new Date());
-  if (!S.aiUse || S.aiUse.d !== t) S.aiUse = { d: t, n: 0 };
-  S.aiUse.n++;
-  save();
+function aiGateNote(text){
+  const t = String(text || '');
+  aiLastRetry = (t === aiLastText) ? aiLastRetry + 1 : 1;
+  aiLastText = t;
+  aiLastCallAt = Date.now();
+}
+/* 常用词的形状校验（读存档 / 恢复备份都走它）——
+   上限 HOTWORDS_MAX、单词 ≤ 10 汉字（超长的**丢掉**而不是截断：截断后与原词不同音，
+   等于往纠错里灌噪声）。 */
+function sanitizeHotwords(v){
+  const out = [];
+  if (Array.isArray(v)){
+    for (const w of v){
+      const s = String(w == null ? '' : w).trim();
+      /* 只收"一个词"：中英数字下划线、≤10 个字符。带空格/标点的直接丢掉 */
+      if (!s || s.length > 10 || !/^[\u4e00-\u9fa5A-Za-z0-9_]+$/.test(s)) continue;
+      if (out.indexOf(s) >= 0) continue;
+      out.push(s);
+      if (out.length >= HOTWORDS_MAX) break;
+    }
+  }
+  return out;
+}
+function sanitizeHotwordSeen(v){
+  const out = {};
+  if (v && typeof v === 'object'){
+    const keys = Object.keys(v).slice(0, 200);
+    for (const k of keys){
+      const n = Number(v[k]);
+      if (k && Number.isFinite(n) && n > 0) out[k] = Math.min(99, Math.floor(n));
+    }
+  }
+  return out;
 }
 /* 按隐私档组装要发出去的文本。**只发当前这一条**，不发全库。 */
 function aiSeedText(it, withBody){
@@ -7115,10 +7192,10 @@ function aiParseJSON(txt){
    而「问我一问」成功后会留一条带「怎么回」按钮的提示 —— 不清掉的话，紧跟着的
    「AI 没接上」会被整条吃掉，用户只看到上一条，等于报错静默。
    （2026-10-03 实测：连点两次提问，第二次失败时页面上什么都不显示。） */
-function aiFail(msg){ hideToast(); toast(msg || 'AI 没接上'); }
+function aiFail(msg, acts, dur){ hideToast(); return toast(msg || 'AI 没接上', acts, dur); }
 /* AI 的其它消息也走同一条路：先清掉当前那条再说，免得被上面那条带按钮的提示吃掉。
    （「问我一问」成功那条带「怎么回」，它自己就是被保护的那一条，不走这里。） */
-function aiSay(msg){ hideToast(); toast(msg); }
+function aiSay(msg, acts, dur){ hideToast(); return toast(msg, acts, dur); }
 
 /* ★ v5.0 真机反馈：key 输入框原来用 type=password —— 安卓一看到密码框就切**安全键盘**，
    而安全键盘（以及部分输入法的密码模式）**禁用粘贴**，于是 key 根本填不进去。
@@ -7187,7 +7264,6 @@ function openAiNeedOn(){
 async function aiAsk(it){
   if (!isSeed(it)) return;
   if (!aiOn()){ openAiNeedOn(); return; }
-  if (aiQuotaLeft() <= 0){ aiSay('今天先消化一下，明天再来'); return; }
   const r = AI_ROLES[Math.floor(Math.random() * AI_ROLES.length)];
   toast('以「' + r + '」的身份问着…');
   let txt;
@@ -7208,7 +7284,6 @@ async function aiAsk(it){
   if (!Array.isArray(it.sparks)) it.sparks = [];
   it.sparks.push({ at: ymd(new Date()), text: q, by: 'ai', role: r });
   S.ideaUsedAt = ymd(new Date());
-  aiQuotaSpend();
   save(); refresh();
   toast('它作为「' + r + '」问了你一句', '怎么回', () => { seedOpenInline(it); });
 }
@@ -7228,7 +7303,6 @@ async function aiScanLinks(manual){
      加一道会话级在途闸 —— 一次只跑一个。 */
   if (aiScanBusy) return;
   if (!aiOn()){ if (manual) openAiNeedOn(); return; }
-  if (aiQuotaLeft() <= 0){ if (manual) aiSay('今天先消化一下，明天再来'); return; }
   const pool = S.items.filter(i => isSeed(i) && !i.done)
     .sort((a, b) => ideaLastAt(b) - ideaLastAt(a)).slice(0, AI_MAX_SCAN);
   if (pool.length < 2){ if (manual) aiSay('想法还太少，再多记几条'); return; }
@@ -7276,7 +7350,6 @@ async function aiScanLinks(manual){
     return;
   }
   S.lastScanAt = Date.now();
-  aiQuotaSpend();
   save(); refresh();
   if (manual) aiSay(n ? ('找到 ' + n + ' 条可以挂的，卡片上有 ✦') : '这次没找到可挂的');
 }
@@ -7290,6 +7363,371 @@ function aiIsDescendant(cand, it){
   }
   return false;
 }
+
+/* ==================== ★ 2A：理解内核（把一句话变成结构化条目） ====================
+   由来（用户原话）："这个大于号太难用了，搞得跟还要我自己去学一套输入语言规范似的。"
+   所以这一块的目标不是"多支持几种说法"，而是：
+
+     **把输入语法从"必须学"降级成"可以学"。**
+     你想快，就按语法写（本地 parseSmart，秒出、不烧 token）；
+     你不想学，就随便说（模型听懂）。
+
+   结构是一条**级联**：本地判据 → 出网（唯一出口 aiCall）→ 校验 → 纠错 → 失败降级。
+
+   三条红线（改这块之前先读）：
+     ① 不新增 fetch 调用点：全文件 AI 的**唯一网络出口**是 aiCall()；
+     ② **失败绝不生成假数据**：网络 / 超时 / 非 2xx / JSON 坏 / 校验后为空，
+        一律退回本地 parseSmart 的结果，并把"用的是本地识别"说清楚；
+     ③ aiMode === 'off' 时**零请求**（一个字都不出这台手机）。
+
+   ★ 叠字去重已经在 normalizeSpeech 里做过了（阶段1，commit 8e31b5a）——
+     这里**只消费它的输出，绝不再写一遍**：JS 同名函数取最后一个定义，
+     重写会让新代码静默失效（本项目在 gStartView 与 goBack 上各撞过一次）。 */
+
+/* ---------- 本地级联：能本地解的，零调用 ---------- */
+/* 追加词：出现这些词，说明这句大概率是**接着刚才那句**说的 —— 要不要挂到"刚才那条"
+   下面需要模型判断，所以这一档交给模型。
+   没有追加词 → 一律**新建独立条目**（用户定的保守默认：自动做错比不做更烦）。 */
+const SMART_APPEND_WORDS = ['再加上', '还有', '顺便', '另外', '以及', '同时', '另外一个'];
+/* 列举式切分只认"动词 + 顿号并列"这一种明显形状（买 A、B、C）。
+   宁可不切 —— 把「研究」「东西」「资料」这类词切坏，比不切烦人得多。 */
+const SMART_LIST_VERBS = ['买', '拿', '带', '交', '写', '做', '查', '看', '发', '寄',
+  '准备', '预约', '订', '取', '还', '洗', '修', '送', '找', '领',
+  '打印', '下载', '提交', '复习', '通知', '问'];
+
+function smartAppendWord(text){
+  const s = String(text || '');
+  for (const w of SMART_APPEND_WORDS) if (s.indexOf(w) >= 0) return w;
+  return null;
+}
+/* 本地"语法命中"计数 —— 用户**主动写了语法**的证据。
+   命中 ≥1 且没有追加词 → 本地解析已经把这一行吃干净了，不必问模型。
+   这条就是"语法降级为可选"的闸门：`买西瓜 明天`、`论文> 查文献 921`
+   都从这里走掉，请求数为 0。 */
+function smartHintCount(text){
+  const s = String(text || '');
+  let n = 0;
+  if (/^\s*!{1,2}\s*\S/.test(s)) n++;                                    // !重要 / !!紧急
+  if (/#[\u4e00-\u9fa5A-Za-z0-9_]+/.test(s)) n++;                        // #标签
+  if (/[>＞]/.test(s)) n++;                                              // 父级路径
+  if (/[?？]\s*$/.test(s)) n++;                                          // 行尾 ? → 想法
+  if (/\d{1,2}\.\d{1,2}|\d{3,4}/.test(s)) n++;                           // 日期简写 921 / 9.21
+  if (/今天|今日|明天|明日|后天|大后天/.test(s)) n++;                      // 相对日期
+  if (/(本周|这周|这个|下?周|星期|礼拜)[一二三四五六日天]/.test(s)) n++;     // 星期
+  if (/\d{1,2}\s*号/.test(s)) n++;                                       // X 号
+  if (/(凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|晚)?\s*\d{1,2}\s*[点时]/.test(s)) n++;  // 钟点
+  if (/每\s*隔?\s*(\d+|[一二两三四五六七八九十]+)\s*天|每天/.test(s)) n++;    // 循环
+  if (/[\d一二两三四五六七八九十]+\s*[~～\-—－–−〜∼]\s*[\d一二两三四五六七八九十]+/.test(s)) n++;  // 区间
+  /* ★ 早中晚连写（`早中晚吃药`）也是**一条本地语法** —— 它是阶段1 的本地规则，
+     会在 addItem 里长出 3 条带钟点的子任务。漏了这一条，它就会被当成大白话送去模型，
+     而模型根本不知道「早中晚」在该项目里等于 08:00 / 12:00 / 19:00 三条子任务。 */
+  if (parseDayParts(s)) n++;
+  return n;
+}
+/* 这一行要不要交给模型？
+   交（true）：① 有追加词（要判断挂哪条）  ② 一句语法都没命中（纯大白话，只能靠模型听懂）
+   不交（false）：本地就能出结果 —— 写了语法，或者明显列举（本地会切成多条）。 */
+function smartNeedAI(text){
+  const s = String(text || '').trim();
+  if (!s) return false;
+  if (smartAppendWord(s)) return true;
+  if (smartHintCount(s)) return false;
+  const p = parseSmart(s);
+  /* 明显列举（`买西瓜、牛奶、鸡蛋`）：本地已经能切成 3 条，不必再问模型。
+     带路径（`论文> 买西瓜、牛奶`）的不切 —— 那种形状本地已经处理完了。 */
+  if (!(p.path && p.path.length) && smartLocalList(p.title)) return false;
+  return true;
+}
+/* 列举式切分：`买西瓜、牛奶、鸡蛋` → 三条。
+   只在"首个词是常见动词 + 顿号分成 2~5 段 + 每段都很短"时才切；
+   后续段自己不带那个动词时把动词补上（"买西瓜、牛奶" ≡ "买西瓜、买牛奶"）。 */
+function smartLocalList(title){
+  const s = String(title || '').trim();
+  if (!s) return null;
+  const verb = SMART_LIST_VERBS.find(v => s.indexOf(v) === 0);
+  if (!verb) return null;
+  const segs = s.split(/[、,，]/).map(x => x.trim()).filter(Boolean);
+  if (segs.length < 2 || segs.length > 5) return null;
+  if (segs.some(x => x.length > 12)) return null;
+  if (segs.some(x => /[。？！;；\s]/.test(x))) return null;
+  if (segs[0].indexOf(verb) !== 0) return null;
+  return segs.map((x, i) => (i === 0 || x.indexOf(verb) === 0) ? x : verb + x);
+}
+/* 本地级联的产出：与模型输出**同一种形状**（items[] + corrected + confidence + source），
+   这样上层（校验 / 落库 / 提示）只有一条路，不必为两种来源各写一套。
+
+   ⚠️ 每条还多带一个 `preset` —— 就是 parseSmart 的**完整返回值**。落库时优先用它
+   （`aiCommitPlan` 里 `x.preset || aiPlanPreset(x)`），因为 `aiPlanPreset` 是给**模型**的
+   输出准备的：它只认 date / time / tags / pri / parent 这几样，会把本地才有的
+   `path`（`论文> 查文献` 的父级）、`repeat`（每N天）、`goal`（目标 前缀）、
+   `dayParts`（早中晚三条子任务）、`monthOnly` 统统丢掉。这条口子是 2026-10-08 实测补上的：
+   当初本地也走 aiPlanPreset，`论文> 查文献 921` 落库后父级就没了。 */
+function smartLocalPlan(text){
+  const raw = String(text || '').trim();
+  const whole = parseSmart(raw);
+  /* 带父级路径的不做列举切分（`论文> 买西瓜、牛奶` 那种形状本地已经拆完了） */
+  const listed = (whole.path && whole.path.length) ? null : smartLocalList(whole.title);
+  const titles = listed || [whole.title];
+  const items = [];
+  const single = !listed;                 // 没有切分 = 这一行就是一条，可以整份继承 parseSmart 的结果
+  titles.forEach(t => {
+    const title = String(t || '').trim();
+    if (!title) return;
+    /* preset = 落库时真正喂给 addItem 的那份解析结果。
+       单条：原样用 parseSmart 的返回值（path / repeat / goal / dayParts / monthOnly 全在）。
+       切开的列举：每条改掉标题，并把"整行级"的三个语法摘掉 ——
+         dayParts（会按父标题长 3 条子任务，切成多条时不该各长一份）、
+         path / goal（父级与目标前缀对列举出来的小条目没有意义）。 */
+    const preset = single ? whole : Object.assign({}, whole, {
+      title: title, titleRaw: title, dayParts: null, path: [], goal: false
+    });
+    items.push({
+      title: title,
+      date: whole.date, dateEnd: whole.dateEnd, time: whole.time,
+      tags: (whole.tags || []).slice(), pri: whole.pri || 0,
+      parent: '', note: '',
+      preset: preset
+    });
+  });
+  return {
+    items: items,
+    corrected: raw,
+    confidence: items.length ? 1 : 0,
+    source: 'local',
+    reason: ''
+  };
+}
+
+/* ---------- 结构化解析：输出 schema 与提示词 ---------- */
+/* ⚠️ 请求体的**前缀必须逐字符固定**：系统提示词 + schema 说明放最前，变量全部放最后。
+   理由：DeepSeek 的缓存命中输入单价是未命中的 1/50 —— 前缀一变，整个缓存失效。
+   所以这两条是常量字符串，**不许拼接任何变量**。 */
+const AI_UNDERSTAND_SCHEMA = '{"items":[{"title":"","date":"","endDate":"","time":"","tags":[],"pri":0,"parent":"","note":""}],"corrected":"","confidence":0.0}';
+const AI_UNDERSTAND_SYS =
+  '你把用户随口说的一句话整理成待办条目。只输出 JSON，不要解释文字、不要 markdown 围栏。\n'
+  + '输出形状固定为：' + AI_UNDERSTAND_SCHEMA + '\n'
+  + '字段规则：\n'
+  + '· title 条目内容（中文，去掉时间词与语气词，不能为空）\n'
+  + '· date / endDate 只能是 YYYY-MM-DD（endDate 是区间的结束日，没有就写空串）\n'
+  + '· time 只能是 HH:MM 24 小时制（没有就写空串）\n'
+  + '· tags 字符串数组，每项只允许中文/字母/数字/下划线，最多 3 个\n'
+  + '· pri 0 普通 / 1 重要 / 2 紧急\n'
+  + '· parent 这一条要挂到**同一次回答里另一条**下面时，填那一条的 title；否则空串\n'
+  + '· note 补充说明，没有就空串\n'
+  + '· corrected 把原话里明显的同音错字改对之后的完整句子（没把握就原样回填）\n'
+  + '· confidence 0~1，你对这次解析的把握\n'
+  + '铁律：只做整理。不许新增用户没说的信息，不许下判断，不许替用户决定做不做。'
+  + '一句话里有多件事就拆成多条；一件事就是一条。';
+/* 变量部分（**放在最后**）。今天日期必须给，否则"明天 / 下周三"这类相对词会算错。
+   清单名**限量**（未完成的前 AI_LISTEN_MAX 条），不全量塞。 */
+function aiUnderstandUser(text){
+  const hot = sanitizeHotwords(S.hotwords);
+  const list = S.items.filter(i => !isSeed(i) && !i.done).slice(0, AI_LISTEN_MAX)
+    .map(i => '- ' + String(i.title || '').slice(0, 40));
+  const lines = ['今天是：' + ymd(new Date())];
+  if (hot.length) lines.push('我的常用词（只用来纠正同音错字，不要凭空塞进来）：' + hot.join('、'));
+  if (list.length) lines.push('我已经有的未完成条目：\n' + list.join('\n'));
+  if (S.aiAnchor) lines.push('我刚刚记下的一条是：' + S.aiAnchor);
+  lines.push('我的原话：' + String(text || '').trim());
+  return lines.join('\n');
+}
+
+/* ---------- 校验器（本卡的重点，不许省） ----------
+   落库之前逐条校验，**任一不过就丢弃该条**（宁可少收一条，也不收一条脏的）。
+   日期 / 时间只接受严格格式；模型给别的格式就丢掉那个字段 —— 不猜着转换。 */
+function aiValidDateStr(s){
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = dateFrom(s);
+  if (!d || isNaN(d.getTime())) return false;
+  const y = d.getFullYear();
+  if (y < 2000 || y > 2100) return false;
+  return ymd(d) === s;            // 2026-02-31 会被 Date 归一化成 3 月 3 日 → 拒
+}
+function aiValidTimeStr(s){
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
+}
+function aiValidTag(s){
+  return /^[\u4e00-\u9fa5A-Za-z0-9_]{1,12}$/.test(s);
+}
+function aiValidateItems(raw){
+  const out = [];
+  const src = Array.isArray(raw) ? raw : [];
+  /* 只扫前 4×上限 条（防模型话痨把我们拖死），但**上限卡在产出上** ——
+     脏条目不占名额：前 8 条全是废的，第 9 条好的也该收下。 */
+  const scan = src.slice(0, AI_UNDERSTAND_MAX * 4);
+  for (const r of scan){
+    if (out.length >= AI_UNDERSTAND_MAX) break;
+    if (!r || typeof r !== 'object' || Array.isArray(r)) continue;
+    if (typeof r.title !== 'string') continue;                   // title 必须是字符串
+    const title = r.title.trim();
+    if (!title) continue;                                        // 且非空
+    const x = { title: title, date: null, dateEnd: null, time: null,
+      tags: [], pri: 0, parent: '', note: '' };
+    if (typeof r.date === 'string' && aiValidDateStr(r.date.trim())) x.date = r.date.trim();
+    if (typeof r.endDate === 'string' && aiValidDateStr(r.endDate.trim())) x.dateEnd = r.endDate.trim();
+    if (!x.date) x.dateEnd = null;
+    if (x.date && x.dateEnd && x.dateEnd < x.date) x.dateEnd = null;   // endDate 不早于 date
+    if (typeof r.time === 'string' && aiValidTimeStr(r.time.trim())) x.time = r.time.trim();
+    if (Array.isArray(r.tags)){
+      x.tags = r.tags.map(t => String(t == null ? '' : t).trim())
+        .filter(aiValidTag).slice(0, TAG_PER_ITEM);
+    }
+    if (r.pri === 0 || r.pri === 1 || r.pri === 2) x.pri = r.pri;
+    const p = String(r.parent == null ? '' : r.parent).trim();
+    if (p && p !== title) x.parent = p;                          // parent 不能指自己
+    if (typeof r.note === 'string') x.note = r.note.trim().slice(0, 200);
+    out.push(x);
+  }
+  /* parent 不能指向自己的后代 —— 组内按 title 建边走一遍，回到自己就断开。
+     （标题级的父子引用只在这一次回答里有意义；成环会让渲染期的祖先遍历打转。） */
+  const byTitle = new Map(out.map(x => [x.title, x]));
+  out.forEach(x => {
+    let cur = x.parent, guard = 0;
+    while (cur && guard++ < 32){
+      if (cur === x.title){ x.parent = ''; break; }
+      const nx = byTitle.get(cur);
+      cur = nx ? nx.parent : '';
+    }
+  });
+  return out;
+}
+
+/* ---------- 唯一入口：一句话 → 结构化条目 ---------- */
+async function aiUnderstand(text){
+  const raw = String(text || '').trim();
+  const local = smartLocalPlan(raw);
+  /* ① 红线 3：开关关着（或没 key）→ 一个字都不出这台手机。 */
+  if (!aiOn()) return Object.assign(local, { reason: 'off' });
+  /* ② 本地级联已经够用 → 零请求（"语法仍然可选"就靠这一条）。 */
+  if (!smartNeedAI(raw)) return Object.assign(local, { reason: 'syntax' });
+  /* ③ 两条护栏（取代配额）：同一句最多 2 次；两次调用间隔 ≥ 1 秒（不够就等）。 */
+  const wait = aiGateWaitMs(raw);
+  if (wait < 0) return Object.assign(local, { reason: 'retry' });
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  aiGateNote(raw);
+  /* ④ 出网 —— 全文件 AI 的唯一出口。 */
+  let txt;
+  try {
+    txt = await aiCall([
+      { role: 'system', content: AI_UNDERSTAND_SYS },
+      { role: 'user', content: aiUnderstandUser(raw) }
+    ], { json: true });
+  } catch (e){ return Object.assign(local, { reason: 'network' }); }
+  /* ⑤ 坏 JSON / 校验后为空 → 一样退回本地。**绝不编一条内容出来。** */
+  let data = null;
+  try { data = aiParseJSON(txt); } catch (e){ return Object.assign(local, { reason: 'json' }); }
+  const items = aiValidateItems(data && data.items);
+  if (!items.length) return Object.assign(local, { reason: 'invalid' });
+  /* ⑥ 纠错层：只回传"我听到的是"，**不在这里改用户的数据** ——
+     与原句不同时留给 2B 展示确认。不许改语义、不许增删信息。 */
+  const corrected = (typeof data.corrected === 'string' && data.corrected.trim())
+    ? data.corrected.trim().slice(0, 200) : raw;
+  return {
+    items: items,
+    corrected: corrected,
+    confidence: Number.isFinite(data.confidence)
+      ? Math.max(0, Math.min(1, data.confidence)) : 0,
+    source: 'ai',
+    reason: ''
+  };
+}
+/* 把一条**模型**输出变成 addItem 认的"预解析结果"（形状与 parseSmart 的返回值对齐）。
+   parent 给的是**标题字符串**，落成真实父子关系交给 addItem 里的 findOrCreateGoal
+   —— 理解内核只负责"叫什么"，不负责"挂哪个 id"。
+   ⚠️ 本地级联的条目**不走这里**：它们自带 preset（parseSmart 的完整返回值），
+   走这里会把 path / repeat / goal / dayParts 丢掉。见 smartLocalPlan 的说明。 */
+function aiPlanPreset(x){
+  const date = x.date || null;
+  return {
+    title: x.title, titleRaw: x.title,
+    date: date, dateEnd: x.dateEnd || null, monthOnly: false,
+    time: x.time || null,
+    tags: (x.tags || []).slice(0, TAG_PER_ITEM),
+    zone: date ? (daysFromToday(date) <= 14 ? 'short' : 'long') : 'long',
+    repeat: null, pri: x.pri || 0, goal: false, dayParts: null,
+    path: x.parent ? [x.parent] : []
+  };
+}
+/* 按计划落库。返回真正建出来的条目（可能是 0 条 —— 调用方据此判断"什么都没收到"）。
+   本地条目自带 `preset`（parseSmart 的完整返回值，含 path / repeat / goal / dayParts），
+   模型条目没有，才用 aiPlanPreset 从 schema 字段拼一份。 */
+function aiCommitPlan(plan, raw){
+  const made = [];
+  const list = (plan && Array.isArray(plan.items)) ? plan.items : [];
+  list.forEach(x => {
+    const it = addItem(raw, x.preset || aiPlanPreset(x));
+    if (it) made.push(it);
+  });
+  return made;
+}
+/* 录入之后的**提示语分档** —— 抽成纯函数是为了能单测（它决定用户看到哪句话）。
+   三档的差别只在"用户该不该知道这次走了模型"：
+     · AI 听懂了            → aiSay（告诉他这次是模型理解的）
+     · 本地语法 / AI 关着    → toast（静默，与改动前完全一样；语法仍然可选，不该多一句嘴）
+     · 降级（网络/超时/JSON/校验）→ aiFail，**必须说清"用的是本地识别"** */
+function aiEntryReply(plan, where){
+  let via = 'toast';
+  if (plan && plan.source === 'ai') via = 'aiSay';
+  else if (plan && plan.reason && plan.reason !== 'syntax' && plan.reason !== 'off' && plan.reason !== '') via = 'aiFail';
+  const head = via === 'aiFail' ? 'AI 没接上，用的是本地识别 · '
+    : (via === 'aiSay' ? 'AI 听懂了 · ' : '');
+  return { via: via, msg: head + String(where == null ? '' : where) };
+}
+
+/* ---------- 纠错层的"常用词"采集 ----------
+   词表**只作为纠错偏置传进提示词，绝不进本地 ASR 偏置**（本地偏置错了无从纠正）。
+   采集靠"用户把某个词改对两次 → 弹一次要不要加进常用词"，不让用户从零录。 */
+/* 找出"同一位置被换掉的一小段"。逐字对齐（最长公共前缀 + 最长公共后缀），
+   中间那一段 ≤ 6 字才算一次"改对了某个词"。
+   两条经验规则（都是为了让问出来的那句话**像个词**）：
+     · 前后都**没有**共同上下文（i 与 j 都是 0）→ 那是整句重写，不算改词；
+     · 左右各多带最多 1 个汉字 —— 只取"变的那一个字"会问出「腐」是你的常用词吗
+       这种没头没脑的话（"豆腐"才是那个词）。 */
+function hotwordDiff(before, after){
+  const a = String(before || ''), b = String(after || '');
+  if (!a || !b || a === b) return null;
+  let i = 0;
+  while (i < a.length && i < b.length && a.charAt(i) === b.charAt(i)) i++;
+  let j = 0;
+  while (j < a.length - i && j < b.length - i
+    && a.charAt(a.length - 1 - j) === b.charAt(b.length - 1 - j)) j++;
+  if (i === 0 && j === 0) return null;
+  const CJK = /[\u4e00-\u9fa5]/;
+  const ds = (i > 0 && CJK.test(a.charAt(i - 1))) ? 1 : 0;
+  const de = (j > 0 && CJK.test(a.charAt(a.length - j))) ? 1 : 0;
+  const gone = a.slice(i - ds, a.length - j + de);
+  const got = b.slice(i - ds, b.length - j + de);
+  if (!gone || !got) return null;
+  if (gone.length > 6 || got.length > 6) return null;
+  return { from: gone, to: got };
+}
+function hotwordAdd(w){
+  const s = String(w == null ? '' : w).trim();
+  if (!s || s.length > 10) return false;              // 热词规格：单词 ≤ 10 汉字
+  if (!Array.isArray(S.hotwords)) S.hotwords = [];
+  if (S.hotwords.indexOf(s) >= 0) return false;
+  if (S.hotwords.length >= HOTWORDS_MAX) S.hotwords.shift();   // 满了丢最旧的
+  S.hotwords.push(s);
+  save();
+  return true;
+}
+function hotwordObserve(before, after){
+  const d = hotwordDiff(before, after);
+  if (!d) return null;
+  if (!S.hotwordSeen || typeof S.hotwordSeen !== 'object') S.hotwordSeen = {};
+  const n = (Number(S.hotwordSeen[d.to]) || 0) + 1;
+  S.hotwordSeen[d.to] = Math.min(99, n);
+  if (n !== HOTWORD_ASK_AT) return d;                 // 只在**第 2 次**问一次
+  if (S.hotwords.indexOf(d.to) >= 0) return d;
+  if (S.hotwords.length >= HOTWORDS_MAX) return d;
+  hideToast();
+  toast('「' + d.to + '」是你的常用词吗？', [
+    { label: '加进常用词', fn: () => { hotwordAdd(d.to); aiSay('已收进常用词：' + d.to); } },
+    { label: '不用' }
+  ], 8000);
+  return d;
+}
+
 /* ---------- 3.5 挂载建议的接受 / 拒绝 ---------- */
 function openSuggestSheet(it){
   const list = Array.isArray(it.suggest) ? it.suggest : [];
@@ -7689,8 +8127,10 @@ function renderSettings(){
         </div>
         <div class="set-row stack" style="margin-top:14px">
           <div class="set-txt">
-            <b>今天还剩 <span class="mono">${aiQuotaLeft()}</span> 次</b>
-            <span>每天 1 次自动找关联 + 2 次提问，本地计数，不需要服务端。用完会显示「今天先消化一下，明天再来」。</span>
+            <b>常用词 <span class="mono">${sanitizeHotwords(S.hotwords).length}</span> / ${HOTWORDS_MAX}</b>
+            <span>你在录入框里随便说一句话，鱼事会把它整理成条目 —— 用了语法就本地秒出，
+              没用语法才交给 AI 听懂。常用词只用来纠正同音错字（「豆付」→「豆腐」），
+              <b>不会用于本地识别</b>：本地偏置错了就无从纠正。把某个词改对两次，鱼事会问一次要不要收进来。</span>
           </div>
           <div class="seg-cap">
             <button type="button" class="pill" data-act="aitest">试连接</button>
@@ -8754,22 +9194,41 @@ document.addEventListener('wheel', e => {
 
 /* 录入提交只有一个入口：键盘 Enter（下方 keydown）和右侧「存」按钮都调它。
    原先是 keydown 里一段内联逻辑 —— 升级成按钮后必须抽出来共用，否则两条路径行为会漂移。 */
-function commitEntry(){
+/* ★ 2A：录入这一下改走**理解内核**（async）。
+   本地级联能解 → 零请求、跟以前一样秒出；
+   解不了（大白话）→ 交给模型听懂；模型任何一环出问题 → 退回本地结果，
+   并且**明确告诉用户"用的是本地识别"**（红线 2：绝不生成假数据）。
+   输入框在等待之前就清掉 —— 用户按回车是"我说完了"，不该盯着自己那句话等。 */
+async function commitEntry(){
   const el = document.getElementById('entry');
   const v = el.value.trim();
   if (!v) return;
-  const it = addItem(v);
   el.value = '';
-  /* 录入区手选的标签（可多选）优先加在最前面，再跟上正文里写的 #标签，去重后截断 */
-  if (it && entryTagSet.size){
-    it.tags = normTagList([...entryTagSet].concat(it.tags || [])).slice(0, TAG_PER_ITEM);
+  let plan;
+  try {
+    plan = await aiUnderstand(v);
+  } catch (e){
+    /* 内核自己就不该抛（内部每条失败路径都 return 本地结果）；真抛了也不能丢用户的话 */
+    plan = smartLocalPlan(v);
+    plan.reason = 'error';
+  }
+  const made = aiCommitPlan(plan, v);
+  const it = made[0] || null;
+  /* 录入区手选的标签（可多选）优先加在最前面，再跟上正文里写的 #标签，去重后截断。
+     多条目时**每条都套用** —— 用户是给这一整句选的标签，不是只给第一条。 */
+  if (made.length && entryTagSet.size){
+    made.forEach(x => { x.tags = normTagList([...entryTagSet].concat(x.tags || [])).slice(0, TAG_PER_ITEM); });
     save();
   }
   refresh();
   if (it){
+    /* 「上次焦点」：下一句交给模型理解时，"我刚刚记下的是哪条"是判断
+       "要不要挂到刚才那条下面"的关键上下文（限量发，不全量塞）。 */
+    S.aiAnchor = String(it.title || '').slice(0, 60);
+    save();
     /* 兜底 `|| '待办'`（代码审查补）：目前 parseSmart 只会给出 short / long / consider
        （循环任务被归入 short），所以取不到 undefined。但 ZONES 里是有 'repeat' 的，
-       一旦将来有代码把 zone 设成它，这行就会拼出「已加入「undefined」」这种用户可见的错。
+       一旦有代码把 zone 设成它，这行就会拼出「已加入「undefined」」这种用户可见的错。
        加个默认值，代价为零。 */
     const zl = { short:'短期', long:'长期', idea:'想法' }[it.zone] || '待办';
     /* ★ v5.0 录入提示条（1.14）：**没解析出日期**的**新建**条目，顺手给一个「存入想法」出口。
@@ -8778,7 +9237,12 @@ function commitEntry(){
        （调研的硬结论：捕捉那一刻不该要求决策），所以做成提示条上的一个按钮：
        不点就自己消失，不阻塞，也不改变"默认算待办"这件事。
        只在新建时给；编辑已有条目不弹（否则每次改长期都要被问一遍）。 */
-    const tActs = [{ label: '撤销', fn: () => { S.items = S.items.filter(x => x.id !== it.id); save(); refresh(); } }];
+    const ids = made.map(x => x.id);
+    const tActs = [{ label: '撤销', fn: () => {
+      const kill = new Set(ids);
+      S.items = S.items.filter(x => !kill.has(x.id));
+      save(); refresh();
+    } }];
     if (!it.date && !isSeed(it)){
       if (S.captureZone === 'idea'){
         /* ★ v5.0：设置里把默认落点切成「想法」→ 没写时间的一律直接长成想法。
@@ -8795,9 +9259,15 @@ function commitEntry(){
       }
       tActs.unshift({ label: '存入想法', fn: () => taskToSeed(it) });
     }
-    toast('已加入「' + zl + '」' + (it.date ? ' · ' + dateLabel(it) : '') +
-          ((it.tags && it.tags.length) ? ' · ' + it.tags.join('/') : ''),
-      tActs, 6000);
+    /* 提示语分档见 aiEntryReply（纯函数、可单测）：AI 听懂 → aiSay；
+       本地语法 / AI 关着 → 静默 toast；降级 → aiFail 且**必须说清"用的是本地识别"**。 */
+    const where = '已加入「' + zl + '」' + (it.date ? ' · ' + dateLabel(it) : '') +
+      ((it.tags && it.tags.length) ? ' · ' + it.tags.join('/') : '') +
+      (made.length > 1 ? ' · 共 ' + made.length + ' 条' : '');
+    const reply = aiEntryReply(plan, where);
+    if (reply.via === 'aiSay') aiSay(reply.msg, tActs, 6000);
+    else if (reply.via === 'aiFail') aiFail(reply.msg, tActs, 8000);
+    else toast(reply.msg, tActs, 6000);
     // 新增后把看板滚进视野，避免"存了但没看见"
     const sec = document.getElementById('view');
     if (sec && sec.getBoundingClientRect().top > window.innerHeight * 0.6)
@@ -11134,6 +11604,9 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
     const titleVal = document.getElementById('m_title').value.trim();
     const priVal = +selValue('m_pri') || 0;
     const t = teRead();
+    /* ★ 2A：改标题之前先留一份原样 —— 纠错层的"常用词"采集要拿它做差异
+       （用户把「豆付」改成「豆腐」两次 → 问一次要不要收进常用词）。 */
+    const titleBefore = String(it.title || '');
     it.title = titleVal || it.title;
     it.zone = selValue('m_zone');
     it.tags = [...modal.querySelectorAll('#m_tags .pill.on')].map(b => b.dataset.t);
@@ -11192,6 +11665,10 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
     /* 新建：原文栏只读，所以 parseSmart 的结果（分区/标签/重要程度）在 openEditNew 里就已落成初值，
        这里不再重解析 —— 否则用户在弹层里手动改的分区/优先级会被原文静默盖掉。 */
     if (isNew) S.items.push(it);   // 新建：先入库存，再统一 save/refresh（编辑则本来就在库里）
+    /* ★ 2A 纠错层：用户把某个词改对了 → 记一次账；同一个词第 2 次就**问一次**
+       要不要收进常用词。带按钮的提示不会被下面那句"已保存"顶掉（toast 的老规矩），
+       所以这里排在收尾提示之前。 */
+    hotwordObserve(titleBefore, it.title);
     /* ★ 阶段1 提醒：编辑保存后按新的日期 / 钟点重排这一条（约定 7 的唯一入口）。
        排在这里而不是上面各字段赋值处 —— 无论改了哪几个字段，收口都只有这一次。 */
     notifyFire(it);
@@ -11447,9 +11924,11 @@ window.addEventListener('drop', e => {
           if (o.aiMode === 'off' || o.aiMode === 'title' || o.aiMode === 'full') S.aiMode = o.aiMode;
           if (typeof o.aiBase === 'string') S.aiBase = o.aiBase;
           if (typeof o.aiModel === 'string') S.aiModel = o.aiModel;
-          if (o.aiUse && typeof o.aiUse === 'object' && typeof o.aiUse.d === 'string' && Number.isFinite(o.aiUse.n)){
-            S.aiUse = { d: o.aiUse.d, n: o.aiUse.n };
-          }
+          /* ★ 2A：常用词表与上次焦点也认（配额字段 aiUse 已拆掉，这里不再读它 ——
+             老备份里的 aiUse 自然被忽略，不影响其它字段恢复）。 */
+          S.hotwords = sanitizeHotwords(o.hotwords);
+          S.hotwordSeen = sanitizeHotwordSeen(o.hotwordSeen);
+          if (typeof o.aiAnchor === 'string' && o.aiAnchor.trim()) S.aiAnchor = o.aiAnchor.trim().slice(0, 60);
           /* ★ v5.1.2：日期显示口径 + 震动档位也要跟着备份回来（否则同一份备份恢复两次结果不同） */
           if (o.dateShow && typeof o.dateShow === 'object'){
             S.dateShow = { y: o.dateShow.y !== false, m: o.dateShow.m !== false, d: o.dateShow.d !== false };
@@ -11720,7 +12199,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.5.3';
+const APP_VERSION = '5.6.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
