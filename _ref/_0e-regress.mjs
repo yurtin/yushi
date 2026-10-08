@@ -86,7 +86,7 @@ if (!statPageDecl) { console.error('找不到 `let statPage = null;` 声明（0E
    renderZoneBody / statItemsHTML 都会去调真的 itemHTML（它依赖 chipDate / justAdded 等一堆
    只有页面里才有的东西）。这里统一用桩；真 itemHTML 的"统计页不画删除"由 _0e-dom.mjs 在
    真 DOM 上验（那边用的是文件里那份真代码）。 */
-const FN_NAMES = ['statPageHits', 'statTreeOf', 'statItemsHTML', 'statStreakDays', 'renderStatSub',
+const FN_NAMES = ['statPageHits', 'statTreeOf', 'statRootHits', 'statPageCount', 'statItemsHTML', 'statStreakDays', 'renderStatSub',
   'statGo', 'renderStat', 'renderZoneBody', 'ancestorIds', 'streak', 'statDoneItems', 'isSeed',
   'ymd', 'pad2', 'dateFrom', 'today0', 'daysFromToday', 'teDateLabelFromStr'];
 const appSrc = FN_NAMES.map(n => extractFn(html, n)).join('\n\n');
@@ -127,7 +127,7 @@ function makeEnv(items){
     STAT_PAGES_SRC + '\n' + statPageDecl + '\n'
       + 'let BASEDAY = null;\n'      // today0() 读它（导入历史笔记的基准日）；测试里恒为 null
       + appSrc + '\n'
-      + 'return { statPageHits, statTreeOf, statItemsHTML, statStreakDays, renderStatSub, statGo,'
+      + 'return { statPageHits, statTreeOf, statRootHits, statPageCount, statItemsHTML, statStreakDays, renderStatSub, statGo,'
       + ' renderStat, renderZoneBody, statDoneItems, streak, isSeed, itemHTML,'
       + ' getStatPage: () => statPage, setStatPage: v => { statPage = v; },'
       + ' getANIM: () => ANIM, view };'
@@ -197,6 +197,48 @@ console.log('[1] 0E  五个子页各自拿到正确的条目集合与条数');
   t('streak() 仍是 2（今天 + 昨天连着，想法不算）', env.streak(), 2);
 }
 
+/* ---------- 3b. 0G：两个口径分开 —— 成员口径（含子任务）/ 数字口径（根级） ---------- */
+console.log('\n[1b] 0G  数字口径（根级）与「按树算出来的根数」相等 · 显示口径一条不丢');
+{
+  /* 卡里点名的这一档：**父 + 2 个子任务都今天完成**。
+     0F 登记的缺陷就是这里 —— 入口写着「3 条」，点进去只有 1 张父卡。 */
+  const three = [
+    mk({ id: 'P', title: '父', zone: 'short', done: true, doneAt: Date.now() }),
+    mk({ id: 'C1', title: '子一', parent: 'P', done: true, doneAt: Date.now() }),
+    mk({ id: 'C2', title: '子二', parent: 'P', done: true, doneAt: Date.now() }),
+  ];
+  const { env: e3 } = makeEnv(three);
+  const tHits = e3.statPageHits('today');
+  const hHits = e3.statPageHits('history');
+
+  /* ① 成员口径没变：这一页仍然"包含"3 条（子任务也是成员，否则明细页会丢东西） */
+  t('0G：今日完成的**成员**仍是 3 条（子任务一条都没被踢出去）', tHits.map(x => x.id).sort(), ['C1', 'C2', 'P']);
+  t('0G：历史完成的**成员**同样是 3 条', hHits.map(x => x.id).sort(), ['C1', 'C2', 'P']);
+
+  /* ② 数字口径 = 根级，且必须等于"按树算出来的根数" */
+  t('0G：今日完成的数字口径 = 3 条按树算出来的根数',
+    e3.statPageCount('today'), e3.statTreeOf(tHits).roots.length);
+  t('0G：父 + 2 子全今天完成 → 数字口径是 1（不是 3）', e3.statPageCount('today'), 1);
+  t('0G：历史完成的数字口径 = 按树算出来的根数',
+    e3.statPageCount('history'), e3.statTreeOf(hHits).roots.length);
+  t('0G：历史完成也是 1（同一棵树）', e3.statPageCount('history'), 1);
+  t('0G：statRootHits 就是 statTreeOf 的 roots（口径同源，不是另写一份）',
+    e3.statRootHits(tHits).map(x => x.id), ['P']);
+
+  /* ③ 显示口径不动：明细页把 3 条全画出来，2 条嵌在父卡的 .goal-kids 里 */
+  const out3 = e3.statItemsHTML(tHits);
+  t('0G：明细页 3 条全画出来（显示口径没被这次改动碰到）', idsIn(out3).sort(), ['C1', 'C2', 'P']);
+  t('0G：其中 2 条嵌在父卡的一个 .goal-kids 里', (out3.match(/class="goal-kids"/g) || []).length, 1);
+  t('0G：清单页那行入口的 N = 数字口径（父 + 2 子 → 1）', entryN(e3.renderZoneBody()), e3.statPageCount('today'));
+
+  /* ④ 别的子页口径不变：已逾期 / 作业未交仍然逐条数（本卡未动） */
+  const { env: e4 } = makeEnv(fullItems());
+  t('0G：已逾期仍是逐条数（2 条，不是根级 1）', e4.statPageCount('overdue'), 2);
+  t('0G：作业未交仍是逐条数（2 项，不是根级 1）', e4.statPageCount('hw'), 2);
+  t('0G：已完成的回看页才数根级（today/history）',
+    [e4.statPageCount('today'), e4.statPageCount('history')], [1, 2]);
+}
+
 /* ---------- 4. 明细页的树：根级条目 + 挂在它们下面的子任务 ---------- */
 console.log('\n[2] 0E  明细页：根级条目 + 挂在它们下面的子任务（与清单页同构）');
 {
@@ -238,7 +280,9 @@ console.log('\n[2] 0E  明细页：根级条目 + 挂在它们下面的子任务
 console.log('\n[3] 0E  子页骨架：← 返回 + 标题 + 共 N 条');
 {
   const { env, view } = makeEnv(fullItems());
-  const spec = [['today', '今日完成', '共 2 条'], ['history', '历史完成', '共 3 条'],
+  /* ★ 0G：「共 N 条」改成根级口径（与看得见的卡片数一致）——
+     fullItems 里 t2 挂在 t1 下面，所以今日完成是 1 不是 2；历史完成 1 + 昨天的 t3 = 2。 */
+  const spec = [['today', '今日完成', '共 1 条'], ['history', '历史完成', '共 2 条'],
     ['overdue', '已逾期', '共 2 条'], ['hw', '作业未交', '共 2 条']];
   for (const [key, title, n] of spec){
     env.setStatPage(key);
@@ -272,23 +316,34 @@ console.log('\n[3] 0E  子页骨架：← 返回 + 标题 + 共 N 条');
 /* ---------- 6. 等式：统计卡 N == 清单页那行入口的 N ---------- */
 console.log('\n[4] 0E  等式：统计页「今日完成」卡的 N == 清单页那行入口的 N');
 {
+  /* ★ 0G：等式扩成**三处同源** —— 统计卡大数字 = 清单页那行入口的 N = 子页标题栏「共 N 条」。
+     口径是根级（子任务画在父卡里，不另算一条）。 */
   const check = (label, items, want) => {
     const { env, view } = makeEnv(items);
     env.renderStat();
     const c = cardN(view.innerHTML, 'today');
     const e = entryN(env.renderZoneBody());
-    t(label + '：卡上 N = 入口行 N', [c, e], [want, want]);
+    env.setStatPage('today'); env.renderStat();
+    const sub = +(view.innerHTML.match(/共 (\d+) 条/) || [0, null])[1];
+    t(label + '：卡上 N = 入口行 N = 子页「共 N 条」', [c, e, sub], [want, want, want]);
   };
-  check('今天完成父+子（N=2）', fullItems(), 2);
+  check('今天完成父+子（t2 挂在 t1 下面 → 根级 N=1）', fullItems(), 1);
   check('只有一条今天完成（N=1）', [
     mk({ id: 'a', title: '今天做完的', zone: 'short', done: true, doneAt: Date.now() }),
     mk({ id: 'b', title: '没做完的', zone: 'short' }),
   ], 1);
   /* ★ 关键的一档：父是**昨天**完成的、子是今天完成的 ——
-     卡的取数是"今天 doneAt 的条目"（子命中、父不命中），入口行必须同样只数这一条。 */
+     卡的取数是"今天 doneAt 的条目"（子命中、父不命中），子没有命中祖先 → 它是根，
+     入口行同样只数这一条（0E 起就有的断言，0G 不许把它带回 2）。 */
   check('父昨天完成、子今天完成（N=1，不是 2）', [
     mk({ id: 'old', title: '昨天完成的父', zone: 'short', done: true, doneAt: Date.now() - 86400000 }),
     mk({ id: 'kid', title: '今天完成的子', parent: 'old', done: true, doneAt: Date.now() }),
+  ], 1);
+  /* ★ 0G 的核心那一档：父 + 2 个子任务都今天完成 → 三处数字都必须是 1（不是 3） */
+  check('今天完成父 + 2 个子任务（根级 N=1，不是 3）', [
+    mk({ id: 'P', title: '父', zone: 'short', done: true, doneAt: Date.now() }),
+    mk({ id: 'C1', title: '子一', parent: 'P', done: true, doneAt: Date.now() }),
+    mk({ id: 'C2', title: '子二', parent: 'P', done: true, doneAt: Date.now() }),
   ], 1);
 
   /* N = 0 时那一行不显示；N > 0 时文案与无障碍标签都在 */
@@ -358,7 +413,7 @@ console.log('\n[6] 0E  红线：不新增浮层 / 不新增 S.view / 子页状�
 /* ---------- 9. 重复定义体检（本卡碰过的函数 / 选择器） ---------- */
 console.log('\n[7] 0E  重复定义体检（本卡新增 / 触碰的函数与选择器）');
 {
-  const NAMES = ['statPageHits', 'statTreeOf', 'statItemsHTML', 'statStreakDays', 'renderStatSub',
+  const NAMES = ['statPageHits', 'statTreeOf', 'statRootHits', 'statPageCount', 'statItemsHTML', 'statStreakDays', 'renderStatSub',
     'statGo', 'renderStat', 'renderZoneBody', 'statDoneItems', 'streak', 'itemHTML',
     'renderTree', 'goView', 'teDateLabelFromStr', 'ancestorIds'];
   let bad = 0;

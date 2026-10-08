@@ -28,8 +28,10 @@ const MOBILE = process.env.G0E_MOBILE !== '0';
 const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
 
 /* 种子数据：五个子页都有数，且都留了"子任务跟着父卡"的情形。
-   今日完成 2（父 pd + 子 kd）· 历史完成 3（+ 昨天 od）· 已逾期 2（父 ov_p + 子 ov_k）
-   作业未交 2（父 hw1 + 子 hw2；hw3 已交不算）· 连续打勾 2 天（今天 2 条、昨天 1 条）
+   ★ 0G 起数字口径是**根级**（= 明细页看得见的卡片数）：今日完成 2 条里 kd 挂在 pd 下面
+   → 数字 1；历史完成 3 条里 kd 挂在 pd 下面 → 数字 2。
+   已逾期 2（父 ov_p + 子 ov_k）· 作业未交 2（父 hw1 + 子 hw2；hw3 已交不算）
+   · 连续打勾 2 天（今天 2 条、昨天 1 条）
    外加一条用过的想法 sd —— 它必须被**所有**子页排除（0B.8 的口径）。 */
 const DAY = 86400000;
 const base = {
@@ -155,8 +157,9 @@ console.log('[0] 统计首页：五张卡都挂着"可点"的属性');
 /* ---------- [1] 五张卡都能点开 ---------- */
 console.log('\n[1] 五张卡都能点开 → 出现返回行、标题与条数正确');
 {
-  const want = [['today', '今日完成', '共 2 条'], ['streak', '连续打勾', '共 2 天'],
-    ['overdue', '已逾期', '共 2 条'], ['hw', '作业未交', '共 2 条'], ['history', '历史完成', '共 3 条']];
+  /* ★ 0G：数字口径 = 根级（kd 挂在 pd 下面不算独立一条），所以 today 1 / history 2。 */
+  const want = [['today', '今日完成', '共 1 条'], ['streak', '连续打勾', '共 2 天'],
+    ['overdue', '已逾期', '共 2 条'], ['hw', '作业未交', '共 2 条'], ['history', '历史完成', '共 2 条']];
   for (const [key, title, n] of want){
     await gotoHome();
     const r = await click('.feature-card[data-statpage="' + key + '"]');
@@ -325,7 +328,7 @@ console.log('\n[4] 子页里点标题 → 打开编辑弹层；关掉后仍停�
   await sleep(600);
   const after = await state();
   t('[4] 关掉弹层后仍停在同一个子页（历史完成）',
-    [after.view, after.statPage, after.back, after.title, after.n], ['stat', 'history', true, '历史完成', '共 3 条']);
+    [after.view, after.statPage, after.back, after.title, after.n], ['stat', 'history', true, '历史完成', '共 2 条']);
   t('[4] 子页列表内容没变', after.ids.slice().sort(), before.ids.slice().sort());
   await click('[data-statback]');
 }
@@ -358,13 +361,14 @@ console.log('\n[6] 清单页那行「今天已完成 N 条」→ 统计页的今
   await ev('hideToast(); goView("list"); ANIM=false; refresh(); return 1;'); await sleep(600);
   const s = await state();
   tOk('[6] 清单页出现了那一行入口', s.entry === true);
-  t('[6] 文案与数字', s.entryText, '今天已完成 2 条 ›');
+  /* ★ 0G：pd + kd（kd 挂在 pd 下面）→ 根级 1 条。 */
+  t('[6] 文案与数字', s.entryText, '今天已完成 1 条 ›');
   const aria = await ev(`
     var b = document.querySelector('.done-entry');
     return { tag: b.tagName, aria: b.getAttribute('aria-label'), zone: b.classList.contains('zone-wide'),
       oldZone: !!document.querySelector('.done-zone'), foldAttr: !!document.querySelector('[data-donefold]') };
   `);
-  t('[6] 它是一个真 button，且有 aria-label', [aria.tag, aria.aria, aria.zone], ['BUTTON', '今天已完成 2 条，点开看明细', true]);
+  t('[6] 它是一个真 button，且有 aria-label', [aria.tag, aria.aria, aria.zone], ['BUTTON', '今天已完成 1 条，点开看明细', true]);
   t('[6] 0B 那块可折叠「已完成」收纳区已经不在了', [aria.oldZone, aria.foldAttr], [false, false]);
   /* 位置：与原来那块收纳区一样压在三个分区脚下（0B："今天做完的东西不该占着第一屏"） */
   const pos = await ev(`
@@ -387,6 +391,59 @@ console.log('\n[6] 清单页那行「今天已完成 N 条」→ 统计页的今
   await click('[data-statback]');
 }
 
+/* ---------- [6b] 0G：三处数字同源（根级）+ 明细页子任务一条不丢 ---------- */
+console.log('\n[6b] 0G  入口 N = 统计卡数字 = 子页「共 N 条」· 明细页可见卡片数与树形一致');
+{
+  await ev('hideToast(); goView("list"); ANIM=false; refresh(); return 1;');
+  await sleep(700);
+  const home = await ev(`
+    var entryN = (document.querySelector('.done-entry .de-n') || {}).textContent || null;
+    goView('stat'); ANIM = false; refresh();
+    return { entryN: entryN, pageCount: String(statPageCount('today')) };`);
+  await sleep(800);   /* 切页的渲染与 countUpNumbers 的 DUR=460 —— 都等完再读 DOM */
+  const card = await ev(`
+    var c = document.querySelector('.feature-card[data-statpage="today"]');
+    return { v: c ? c.querySelector('.v').textContent : null,
+      aria: c ? c.getAttribute('aria-label') : null };`);
+  console.log('      三个数字：入口 ' + home.entryN + ' · 统计卡 ' + card.v +
+    ' · 子页「共 N 条」待读 · statPageCount("today")=' + home.pageCount);
+  tOk('[6b] 清单页那行入口的 N = statPageCount("today")', home.entryN === home.pageCount,
+    'entry=' + home.entryN + ' statPageCount=' + home.pageCount);
+  tOk('[6b] 统计卡上的大数字 = 同一个数', card.v === home.pageCount,
+    'card=' + card.v + ' statPageCount=' + home.pageCount);
+  tOk('[6b] 统计卡的 aria-label 也念同一个数（不受数字滚动动画影响）',
+    card.aria === '今日完成：' + home.pageCount + '条，点开看明细', String(card.aria));
+
+  await click('.feature-card[data-statpage="today"]');
+  const d = await ev(`
+    var hits = statPageHits('today');
+    var tree = statTreeOf(hits);
+    var want = tree.roots.map(function(x){ return x.id; });
+    tree.kids.forEach(function(arr){ arr.forEach(function(k){ want.push(k.id); }); });
+    var dom = [].slice.call(document.querySelectorAll('.stat-list .item')).map(function(e){ return e.dataset.id; });
+    return { subN: (document.querySelector('.stat-sub-n') || {}).textContent || null,
+      pageCount: statPageCount('today'), members: hits.length,
+      roots: tree.roots.map(function(x){ return x.id; }),
+      want: want.slice().sort(), dom: dom.slice().sort(),
+      kidsBoxes: document.querySelectorAll('.stat-list .goal-kids').length,
+      kidIds: [].slice.call(document.querySelectorAll('.stat-list .goal-kids .item')).map(function(e){ return e.dataset.id; }),
+      delBtns: document.querySelectorAll('.stat-list [data-act="del"]').length };`);
+  console.log('      子页「共 N 条」= ' + d.subN + ' · 树形根 = [' + d.roots.join(',') + ']' +
+    ' · 可见卡片 = [' + d.dom.join(',') + '] · 其中挂在 .goal-kids 里的 = [' + d.kidIds.join(',') + ']');
+  tOk('[6b] 子页「共 N 条」= 同一个数（三处同源）', d.subN === '共 ' + d.pageCount + ' 条',
+    'sub=' + d.subN + ' 期望 共 ' + d.pageCount + ' 条');
+  tOk('[6b] 明细页可见卡片数 = 树形给出的**全部成员**（子任务没丢）',
+    JSON.stringify(d.dom) === JSON.stringify(d.want),
+    'dom=' + d.dom.join(',') + ' 树=' + d.want.join(','));
+  tOk('[6b] 成员数（' + d.members + '）> 数字口径（' + d.pageCount + '）：差的正是挂在父卡里的子任务',
+    d.members > d.pageCount && d.members - d.pageCount === d.kidIds.length,
+    d.members + ' - ' + d.pageCount + ' = ' + (d.members - d.pageCount) + ' / kids=' + d.kidIds.length);
+  t('[6b] 子任务确实嵌在 .goal-kids 里（不是消失了，也不是另起一张根卡）',
+    [d.roots.length, d.kidsBoxes, d.kidIds.slice().sort()], [d.pageCount, 1, ['kd']]);
+  t('[6b] 统计页仍然不画删除按钮（0E 的口径没被这次改动带坏）', d.delBtns, 0);
+  await click('[data-statback]');
+}
+
 /* ---------- [8] N = 0 时那一行不显示 ---------- */
 console.log('\n[7] N = 0 时那一行入口不显示');
 {
@@ -403,7 +460,7 @@ console.log('\n[7] N = 0 时那一行入口不显示');
     save(); goView('list'); ANIM = false; refresh(); return 1;`);
   await sleep(600);
   const r = await state();
-  t('[7] 还原后又出现了', [r.entry, r.entryText], [true, '今天已完成 2 条 ›']);
+  t('[7] 还原后又出现了', [r.entry, r.entryText], [true, '今天已完成 1 条 ›']);
 }
 
 /* ---------- [9] 键盘可达 ---------- */

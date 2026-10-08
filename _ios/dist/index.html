@@ -841,7 +841,13 @@ body:not([data-view="settings"]) .pdaim-footer{display:none}
 }
 .done-entry:hover{color:var(--accent)}
 .done-entry .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:var(--accent);opacity:.45}
-.done-entry .de-n{font-size:12px;color:var(--muted)}
+/* ★ 0G：数字从 --muted 换成 --fg。两套主题都实测过（_ref/_0g-contrast.mjs）：
+   --fg 浅色 20.14 / 深色 20.38；原来的 --muted 浅色 5.01 / 深色 7.79 —— 两个都过
+   WCAG AA 的 4.5，所以这不是救火，而是把这个 12px 的数字与同一句话的主文案（本来就用
+   --fg）对齐，顺手把余量拉大。（0F 登记的"2.67"是脚本量错了：解析器把 Chrome 的
+   `color(srgb 1 1 1 / .54)` 当 0~255 读，浅色玻璃被算成近黑底 —— 详见 _0b-dom.mjs
+   里 _rgb 的注解。）**只改颜色**：字号、结构、`.mono` 一字未动。 */
+.done-entry .de-n{font-size:12px;color:var(--fg)}
 .done-entry .de-chev{margin-left:auto;opacity:.45;font-weight:800}
 /* 五张卡现在是可点的入口（role="button"）：给键盘用户一个看得见的焦点环 */
 .feature-card[data-statpage]{cursor:pointer}
@@ -5058,7 +5064,7 @@ function renderZoneBody(){
      "还没做的"。现在**整块撤掉**（折叠头、列表、把子任务补进 kids 的那段、S.doneOpen
      一起删），只留**一行入口**去统计页的「今日完成」子页：数据和渲染都在那边，
      一份不多、一份不少，也不再需要"把已完成子任务补进 kids"那种两套渲染的补丁。
-     N 与统计页「今日完成」卡同一个口径（排除想法 + doneAt 落在今天）。
+     N 与统计页「今日完成」卡同一个口径（排除想法 + doneAt 落在今天 + **根级**，见下面那段）。
      ⚠️ 这里**不调用** statPageHits，而是直接用 statDoneItems 拼同一个谓词：0B 的纯 Node
      回归脚本是把 renderZoneBody 整段切出来喂桩跑的，引用一个新增的全局函数会让那份脚本
      直接 ReferenceError 崩掉、把它本来绿的断言一起带走。两处口径一致由 _0e-regress.mjs
@@ -5066,7 +5072,19 @@ function renderZoneBody(){
      位置与原来那块一样：压在三个分区**脚下**（`.board` 的最后一个整行 item）——
      0B 那条理由仍然成立："今天做完的东西不该占着第一屏"，这一屏要回答的是"还剩什么没做"。 */
   const todayYmd = ymd(today0());
-  const doneTodayN = statDoneItems().filter(i => i.doneAt && ymd(new Date(i.doneAt)) === todayYmd).length;
+  const doneTodayAll = statDoneItems().filter(i => i.doneAt && ymd(new Date(i.doneAt)) === todayYmd);
+  /* ★ 0G：N 的口径是**根级**（= 明细页看得见的卡片数）。父任务完成时，被它一起勾掉的子任务
+     也带今天的 doneAt，但它们画在父卡里、不是独立的卡 —— 全算进去就会出现
+     「入口写着 3 条、点进去只有 1 张父卡」。
+     判据与 statTreeOf（明细页把命中集合折成"根 + 挂在根下面的子任务"的那一步）同源：
+     **在命中集合里没有命中祖先**的才是一条。ancestorIds 本来就带 PARENT_GUARD，脏数据成环
+     也能转出来。
+     ⚠️ 这里**不能改调** statPageHits / statRootHits：0B 的纯 Node 回归把 renderZoneBody
+     整段切出来喂桩跑，引用一个没桩的全局会直接 ReferenceError，把它一批本来绿的断言一起
+     带走。两处口径相等由 _0e-regress.mjs 的运行时等式断言钉住
+     （卡上数字 = 入口 N = 子页「共 N 条」）。 */
+  const doneTodayIds = new Set(doneTodayAll.map(i => i.id));
+  const doneTodayN = doneTodayAll.filter(i => !ancestorIds(i.id).some(a => doneTodayIds.has(a))).length;
 
   cols.forEach((c, zi) => {
     /* ★ 0B：分区列表**不收已完成的根条目** —— 它们沉到下面那条「已完成」里。
@@ -6630,7 +6648,10 @@ const STAT_PAGES = {
 /* 子页取数 —— **唯一真相源**：卡片上的大数字、子页标题栏的「共 N 条」、清单页那行入口的 N
    全都走这一个函数（三处各写一遍 filter，迟早对不上）。口径与统计卡原先完全一致：
    今日完成 = doneAt 落在今天；历史完成 = 全部已完成；已逾期 = 有日期且 daysFromToday<0；
-   作业未交 = 标了作业且状态没到已交。排除想法（种子）那条在 statDoneItems 里（0B.8）。 */
+   作业未交 = 标了作业且状态没到已交。排除想法（种子）那条在 statDoneItems 里（0B.8）。
+   ★ 0G：这里返回的是**成员口径** —— "这一页里有哪些条目"，子任务也算成员（明细页要把它
+   挂在父卡下面画出来，一条都不能少）。**数字口径**是另一件事，见下面的 statPageCount
+   （根级）。两个口径分开之后：「共 N 条」与看得见的卡片数一致，而条目一个都不丢。 */
 function statPageHits(key){
   if (key === 'today'){
     const today = ymd(today0());
@@ -6662,6 +6683,27 @@ function statTreeOf(hits){
   });
   kids.forEach(arr => arr.sort(cmpItem));
   return { roots: roots.sort(cmpItem), kids };
+}
+/* ★ 0G：**数字口径** = 根级条目数。
+   明细页画的是"根卡片 + 挂在它下面的子任务"（就是上面 statTreeOf 那一步），所以
+   **看得见的卡片数 = 根数**。今天这个坑：父任务完成时，被它一起勾掉的子任务也带今天的
+   doneAt，全算进去就会出现「入口写着 3 条、点进去只有 1 张父卡」—— 数字与视觉不一致，
+   用户会以为丢了东西。
+   ⚠️ 只改"数几条"，不改"画什么"：hits 依旧是 statPageHits 给的完整成员集合，
+   子任务照旧挂在父卡下面渲染（见 statItemsHTML）。
+   判据与 statTreeOf 的"根"完全同源：在命中集合里**没有命中祖先**的才算一条。 */
+function statRootHits(hits){
+  if (!hits || !hits.length) return [];
+  return statTreeOf(hits).roots;
+}
+/* 数字的唯一真相源：统计卡大数字 / 子页标题栏「共 N 条」都走它。
+   （清单页那行入口的 N 走 renderZoneBody 里的**等价内联谓词** —— 那儿不能引用新全局，
+   原因见 renderZoneBody 里那段说明；两处相等由 _0e-regress.mjs 的运行时等式断言钉住。）
+   口径分档：**已完成的两个回看页**（today / history）数根级，与卡片数一致；
+   已逾期 / 作业未交是"还剩几件事要办"，每一条都是一个独立的待办，照旧逐条数（本卡未动）。 */
+function statPageCount(key){
+  if (key === 'today' || key === 'history') return statRootHits(statPageHits(key)).length;
+  return statPageHits(key).length;
 }
 /* 明细列表的 HTML。复用清单页那一套 itemHTML + .goal-kids 结构。
    统计页是**回看**的地方，所以不折叠（不传 goalInfo → 没有 ▾ 角标），全部展开。 */
@@ -6711,7 +6753,9 @@ function renderStatSub(key){
         </div>`).join('')
       : `<div class="empty">${meta.empty}</div>`) + `</section>`;
   } else {
-    n = '共 ' + hits.length + ' 条';
+    /* ★ 0G：数字走 statPageCount（根级）—— 明细页画的是"根卡片 + 挂它下面的子任务"，
+       子任务不是独立的卡，所以「共 N 条」= 根数，与眼睛看到的一致。 */
+    n = '共 ' + statPageCount(key) + ' 条';
     body = `<section class="glass zone stat-list${rv()}">` + (hits.length
       ? statItemsHTML(hits)
       : `<div class="empty">${meta.empty}</div>`) + `</section>`;
@@ -6739,9 +6783,12 @@ function renderStat(){
      所以在最前面分流：有子页就画子页，没有再画五张卡。 */
   if (statPage && STAT_PAGES[statPage]){ view.innerHTML = renderStatSub(statPage); return; }
   /* ★ 0E：取数只有一处 —— 卡片数字 / 子页「共 N 条」/ 清单页那行入口的 N，全走 statPageHits。
-     （0B.8 的"一律排除想法"在 statDoneItems 里，而它现在只被 statPageHits 调。） */
-  const doneTodayList = statPageHits('today');
-  const doneItems = statPageHits('history');
+     （0B.8 的"一律排除想法"在 statDoneItems 里，而它现在只被 statPageHits 调。）
+     ★ 0G：这两行过一道 statRootHits —— **数字口径是根级**（与明细页看得见的卡片数一致，
+     父任务完成时被顺手收起的子任务不另算一条）。卡上的小字拆解也跟着这份根级列表走，
+     否则药丸加起来（3）会跟大数字（1）对不上。明细页的渲染仍用完整的 statPageHits。 */
+  const doneTodayList = statRootHits(statPageHits('today'));
+  const doneItems = statRootHits(statPageHits('history'));
   const doneAll = doneItems.length;
   const overdue = statPageHits('overdue').length;
   const hwOpen = statPageHits('hw').length;
@@ -11527,7 +11574,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.5.0';
+const APP_VERSION = '5.5.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：

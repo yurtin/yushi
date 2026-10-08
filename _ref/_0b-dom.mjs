@@ -106,6 +106,18 @@ const tOk = (label, cond, detail) => {
 };
 console.log('被测文件:', path.join(ROOT, '鱼事.html'), html.length, 'bytes\n');
 
+/* ★ 0G 修：`html.theme-changing *` 会给全站元素加 440ms 的 color/background-color 过渡，
+   切主题后必须等它走完（类在 560ms 后被摘掉）再 getComputedStyle —— 否则读到的是插值颜色，
+   对比度测量的是一半路程上的动画，不是配色。所有"切完主题就量颜色"的地方都过这个函数。 */
+const settleTheme = async () => {
+  for (let i = 0; i < 40; i++){
+    const busy = await ev('return document.documentElement.classList.contains("theme-changing");');
+    if (busy === false) break;
+    await sleep(80);
+  }
+  await sleep(140);
+};
+
 const reset = async () => {
   await ev(`S.view='list'; ANIM=false; closeModalNow(); hideToast(); save(); refresh(); return 1;`);
   await sleep(340);
@@ -186,9 +198,10 @@ await sleep(1200);
       noDoneZone: !document.querySelector('.done-zone'),
       entry: !!entry, entryN: entry ? entry.querySelector('.de-n').textContent : null,
       /* N 的**真相源**：0E 定的是"卡片数字 / 子页「共 N 条」/ 这行入口的 N 三处同源"。
-         所以这里断言它与 statPageHits('today') 相等，而不是钉一个魔法数字
-         （钉死数字的话，0E 那条"根级还是全部"的口径分歧会把断言变成假红）。 */
-      expectedN: String(statPageHits('today').length),
+         ★ 0G 把口径收成**根级**（子任务画在父卡里，不另算一条）——所以期望值不是
+         statPageHits('today').length（那是成员口径，含子任务），而是它的根级子集。
+         还是同源现算，不钉魔法数字。 */
+      expectedN: String(statRootHits(statPageHits('today')).length),
       entryAria: entry ? entry.getAttribute('aria-label') : null };`);
   if (process.env.REG_DEBUG) console.log('DBG=' + JSON.stringify(r));
   tOk('父被勾上', r.pDone === true, String(r.pDone));
@@ -233,7 +246,7 @@ await sleep(1200);
       liveCols: [].slice.call(document.querySelectorAll('#view .zone .item')).map(function(el){ return el.dataset.id; }),
       noDoneZone: !document.querySelector('.done-zone'),
       entry: !!entry2, entryN: entry2 ? entry2.querySelector('.de-n').textContent : null,
-      expectedN: String(statPageHits('today').length),
+      expectedN: String(statRootHits(statPageHits('today')).length),
       labels: [].slice.call(document.querySelectorAll('#toast button')).map(function(b){ return b.textContent; }),
       winErr: window.__winErr || [] };`);
   tOk('父被勾上（走真实元素的确认流，不再抛异常）', r2.pDone === true, JSON.stringify(r2.pDone));
@@ -243,7 +256,7 @@ await sleep(1200);
   tOk('三栏里没有残留的已完成条目（p/k1 都不在）',
     ['p', 'k1'].every(id => r2.liveCols.indexOf(id) < 0), r2.liveCols.join(','));
   tOk('清单页不再有「已完成」收纳区（0E 之后它只在统计页）', r2.noDoneZone === true);
-  tOk('那行入口的 N 跟着数据走（= statPageHits("today").length）',
+  tOk('那行入口的 N 跟着数据走（= statRootHits(statPageHits("today")).length）',
     r2.entry === true && r2.entryN === r2.expectedN,
     'entry=' + r2.entry + ' N=' + r2.entryN + ' 期望 ' + r2.expectedN);
   tOk('提示带「撤销」', r2.labels.indexOf('撤销') >= 0, r2.labels.join(','));
@@ -580,8 +593,15 @@ console.log('\n[10] 深色主题：新增的两处文字要看得清（对比度
      直接拿它当"字色"算会得出 19:1 的假绿 —— 实际观感是"38% 白叠在近黑底上"，
      所以要先把前景按 alpha 合成到背景上再量。 */
   const lum = `function _rgb(c){
-      var m = String(c).match(/[\\d.]+/g) || [0, 0, 0];
-      return [Number(m[0]), Number(m[1]), Number(m[2]), m.length > 3 ? Number(m[3]) : 1];
+      var s = String(c);
+      var m = s.match(/[\\d.]+/g) || [0, 0, 0];
+      var v = [Number(m[0]), Number(m[1]), Number(m[2]), m.length > 3 ? Number(m[3]) : 1];
+      /* ★ 0G 修：Chrome 把 color-mix(...) 的结果序列化成 color(srgb r g b / a)，三个分量是
+         0~1 的浮点、不是 0~255。旧解析器只捞数字，会把「白 54%」读成 (1,1,1) ≈ 近黑 ——
+         浅色下 .glass 的底色因此被算成 rgb(118,118,118)，所有浅色对比度都是错的。
+         这里按前缀归一化到 0~255。 */
+      if (/^color\\(/.test(s.trim())){ v[0] *= 255; v[1] *= 255; v[2] *= 255; }
+      return v;
     }
     function _over(fg, bg){
       var a = fg[3];
@@ -616,7 +636,7 @@ console.log('\n[10] 深色主题：新增的两处文字要看得清（对比度
     }
     function _bgOf(el){ var c = _bgStack(el); return 'rgb(' + c.map(Math.round).join(', ') + ')'; }`;
   await ev(`applyTheme('dark', true); return 1;`);
-  await sleep(520);
+  await settleTheme();   /* ★ 0G：等主题过渡走完再量颜色（旧的 sleep 520 会量到插值色） */
   {
     /* 先证明"真的进暗色了"—— 不证明的话量到的是浅色主题的对比度，
        会得出"深色下也没问题"的假绿。判据用**实际底色**（近黑），不猜类名。 */
@@ -709,8 +729,13 @@ console.log('\n[12] 确认条在屏时间足够手指点（8 秒窗口内）');
 /* ---------- [13] 「已完成」区的深色 / 窄屏实测 ---------- */
 console.log('\n[13] 「已完成」区：深色主题 + 窄屏（新 UI 区自己的两项实测）');
 {
-  const lum = `function _rgb(c){ var m = String(c).match(/[\\d.]+/g) || [0,0,0];
-      return [Number(m[0]), Number(m[1]), Number(m[2]), m.length > 3 ? Number(m[3]) : 1]; }
+  const lum = `function _rgb(c){
+      var s = String(c);
+      var m = s.match(/[\\d.]+/g) || [0,0,0];
+      var v = [Number(m[0]), Number(m[1]), Number(m[2]), m.length > 3 ? Number(m[3]) : 1];
+      /* ★ 0G 修：同上 —— color(srgb …) 的分量是 0~1 浮点，按 0~255 读会把浅色玻璃读成近黑。 */
+      if (/^color\\(/.test(s.trim())){ v[0] *= 255; v[1] *= 255; v[2] *= 255; }
+      return v; }
     function _over(fg, bg){
       var a = fg[3];
       return [fg[0]*a + bg[0]*(1-a), fg[1]*a + bg[1]*(1-a), fg[2]*a + bg[2]*(1-a)];
@@ -769,7 +794,7 @@ console.log('\n[13] 「已完成」区：深色主题 + 窄屏（新 UI 区自�
         entryRatio: _ratio(getComputedStyle(entry).color, entry),
         nRatio: _ratio(getComputedStyle(n).color, entry),
         nText: n ? n.textContent : null,
-        expectedN: String(statPageHits('today').length),
+        expectedN: String(statRootHits(statPageHits('today')).length),
         entryVisible: Math.round(entry.getBoundingClientRect().height),
         chevW: chev ? Math.round(chev.getBoundingClientRect().width) : 0,
         /* 收纳区没了之后，已完成条目在清单页**一条都不该剩**（这正是 0B.4 与 0E 的合流：
@@ -781,12 +806,21 @@ console.log('\n[13] 「已完成」区：深色主题 + 窄屏（新 UI 区自�
     tOk('（前置）清单页那行入口在页面上', r.missing !== true);
     /* 原来这里断言"收纳区标题与其它分区同色"。0E 之后这一行不是分区、是入口，
        于是换成两条更要紧的：①主文案的对比度仍按 3:1 门槛（它用 --fg，不是次要色）；
-       ②数字走的是 --muted 这个 token（源码级断言），不是临场调淡的一串色值。 */
+       ②数字走的是 token（源码级断言），不是临场调淡的一串色值 —— 0G 起这个 token 是 --fg
+       （12px 小字用 --muted 只有 2.67:1，达不到 AA 正文的 4.5，见下面实测那两条）。 */
     tOk('浅色下：入口主文案对比度 ≥ 3.0', (r.entryRatio || 0) >= 3.0,
       String(r.entryRatio) + ' bg=' + r.nBg);
-    tOk('浅色下：数字用的是 --muted token（与全站次要小字同一套，没有临场调淡）',
-      /\.done-entry \.de-n\{[^}]*color:var\(--muted\)/.test(html),
-      '数字实测对比度 ' + r.nRatio);
+    /* ★ 0G：数字从 --muted 换成 --fg。这里钉两件事：
+       ① 源码级 —— 那一条规则的颜色是 --fg、字号仍是 12px（只改颜色）；
+       ② 实测级 —— WCAG AA 正文门槛 4.5:1（旧的 --muted 只有 2.67，就是在这个位置被抓到的）。 */
+    console.log('      浅色实测：入口数字 ' + r.nFg + ' on ' + r.nBg + ' → 对比度 ' + r.nRatio +
+      '（主文案 ' + r.entryRatio + '）');
+    tOk('浅色下：数字走 --fg token、字号仍是 12px（只改颜色，不动结构）',
+      /\.done-entry \.de-n\{[^}]*color:var\(--fg\)/.test(html) &&
+      /\.done-entry \.de-n\{[^}]*font-size:12px/.test(html),
+      (html.match(/\.done-entry \.de-n\{[^}]*\}/) || [''])[0]);
+    tOk('浅色下：数字对比度 ≥ 4.5（WCAG AA 正文）', (r.nRatio || 0) >= 4.5,
+      '实测 ' + r.nRatio + '  ' + r.nFg + ' on ' + r.nBg);
     tOk('浅色下：入口数字 = 今天完成数，且有真实高度',
       r.nText === r.expectedN && (r.entryVisible || 0) > 0,
       'n=' + r.nText + ' 期望 ' + r.expectedN + ' h=' + r.entryVisible);
@@ -797,22 +831,27 @@ console.log('\n[13] 「已完成」区：深色主题 + 窄屏（新 UI 区自�
   /* ② 深色 + 400px */
   {
     await ev(`applyTheme('dark', true); return 1;`);
-    await sleep(460);
+    await settleTheme();   /* ★ 0G：等过渡走完 —— 旧的 sleep 460 量到的是一半路程上的插值色 */
     const r = await ev(`${lum}
       var entry = document.querySelector('#view .done-entry');
       if (!entry) return { missing: true };
       var n = entry.querySelector('.de-n');
       return { bodyBg: getComputedStyle(document.body).backgroundColor,
+        nFg: getComputedStyle(n).color, nBg: _bgOf(entry),
         nRatio: _ratio(getComputedStyle(n).color, entry),
         nText: n ? n.textContent : null,
-        expectedN: String(statPageHits('today').length),
+        expectedN: String(statRootHits(statPageHits('today')).length),
         entryVisible: Math.round(entry.getBoundingClientRect().height) };`);
     tOk('（前置）此刻是深色（背景近黑）',
       Number((r.bodyBg || 'rgb(0').match(/\d+/)[0]) < 60, r.bodyBg);
     tOk('（前置）深色下那行入口仍在', r.missing !== true && (r.entryVisible || 0) > 0,
       'h=' + r.entryVisible);
+    console.log('      深色实测：入口数字 ' + r.nFg + ' on ' + r.nBg + ' → 对比度 ' + r.nRatio);
     tOk('深色下：入口数字与今日完成数一致（深浅两套 token 下都跟着数据走）',
-      r.nText === r.expectedN, 'n=' + r.nText + ' 期望 ' + r.expectedN + ' 数字对比度 ' + r.nRatio);
+      r.nText === r.expectedN, 'n=' + r.nText + ' 期望 ' + r.expectedN);
+    /* ★ 0G：深色下同一个门槛 —— 对比度是"两套主题都要量"的东西 */
+    tOk('深色下：数字对比度 ≥ 4.5（WCAG AA 正文）', (r.nRatio || 0) >= 4.5,
+      '实测 ' + r.nRatio + '  ' + r.nFg + ' on ' + r.nBg);
     /* 已完成卡片的"划线 + 变灰"是既有表达（全站 .item.done）——0E 之后它只出现在
        统计子页里，那条链路由 [2] 段（点入口进子页）与 _0e-dom 覆盖；
        这里只断言清单页那行入口在深色下仍然可读、数字照旧。 */

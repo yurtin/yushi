@@ -234,12 +234,18 @@ console.log('\n[3] 0B.1  勾父任务：子任务不升格为根条目（跟着�
   tOk('分区列表里一条都不剩（子任务不升格、不留在栏里）', idsIn(out).length === 0, idsIn(out).join(','));
   /* ★ 0F 补（0E→0F 移交单第 一 节点名指派）：0E 把「已完成」收纳区整块搬去统计页之后，
      这三条查的是**已经不存在的东西**。改成 0E 之后的形态：清单页只剩一行入口
-     `.done-entry[data-statentry]`，N 与统计页「今日完成」同一口径。 */
+     `.done-entry[data-statentry]`，N 与统计页「今日完成」同一口径。
+     ★ 0G：口径再收一次 —— N 是**根级**（子任务画在父卡里，不另算一条）。 */
   tOk('清单页不再出现「已完成」收纳区（0E 已整块搬去统计页）', !/done-zone/.test(out));
-  t('清单页底部那行入口的 N = 今天完成的条数（p + 两条子任务）',
-    (out.match(/class="de-n mono">(\d+)</) || [])[1], '3');
+  /* ★ 0G：N 的口径改成**根级**（= 明细页看得见的卡片数）。p 是根，k1/k2 挂在它下面，
+     所以是 1 条、不是 3 条 —— 期望值用同一条取数接缝（statTreeOf）现算，不钉魔法数字。 */
+  const hitsG = S.items.filter(i => i.done && i.kind !== 'seed' && i.doneAt &&
+    new Date(i.doneAt).toDateString() === new Date().toDateString());
+  const rootsG = env.statTreeOf(hitsG).roots.map(x => x.id);
+  t('清单页底部那行入口的 N = 今天完成的**根级**条数（p + 两条子任务 → 1，不是 3）',
+    (out.match(/class="de-n mono">(\d+)</) || [])[1], String(rootsG.length));
   tOk('入口指向统计页「今日完成」子页（data-statentry + aria 说明）',
-    /data-statentry="1"/.test(out) && /aria-label="今天已完成 3 条/.test(out),
+    /data-statentry="1"/.test(out) && out.indexOf('aria-label="今天已完成 ' + rootsG.length + ' 条') >= 0,
     (out.match(/aria-label="[^"]*"/) || [''])[0]);
   tOk('已完成根条目不再占分区列表（长期/短期/循环三栏里都找不到 p）',
     !/data-z="(long|short|repeat)"[^]*?<div class="item[^"]*" data-id="p"/.test(out));
