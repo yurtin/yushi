@@ -283,6 +283,55 @@ if (typeof g2 === 'string'){
 await ev('closeModalNow(); return 1;');
 await sleep(300);
 
+/* ---------- [2b] 0D.2 压测：把按钮撑宽，模拟真机更宽的中文字形 ---------- */
+console.log('\n[2b] 0D.2  压测：按钮比桌面宽时，整行会不会往右溢出、把右留白吃掉');
+await ev('openItemEditor(S.items.find(function(x){ return x.id === "p"; }), false); return 1;');
+await sleep(650);
+/* 真机截图逐像素量的结果：4 个按钮合计比桌面宽约 17px（中文度量不同）。
+   这里用 letter-spacing 给每个按钮加宽，把同样量级的"变宽"搬到无头浏览器里；
+   并顺手把规则还原成改动前的样子（.foot 不换行、按钮内边距 18px），
+   好让"改前 / 改后"在**同一台浏览器、同一份数据**上对照。 */
+const stress = `
+  var foot = document.querySelector('#modal .foot');
+  var btns = [].slice.call(foot.querySelectorAll('.btn'));
+  btns.forEach(function(b){ b.style.letterSpacing = '0.22em'; });
+  var m = document.getElementById('modal'), mr = m.getBoundingClientRect();
+  var cs = getComputedStyle(m);
+  var contentRight = mr.left + (m.clientLeft || 0) + m.clientWidth - parseFloat(cs.paddingRight);
+  var contentLeft  = mr.left + (m.clientLeft || 0) + parseFloat(cs.paddingLeft);
+  var fr = foot.getBoundingClientRect();
+  var last = btns[btns.length - 1].getBoundingClientRect();
+  return { contentLeft:+contentLeft.toFixed(2), contentRight:+contentRight.toFixed(2),
+    footW:+fr.width.toFixed(2), rowW:+(last.right - btns[0].getBoundingClientRect().left).toFixed(2),
+    lastRight:+last.right.toFixed(2), overflow:+(last.right - contentRight).toFixed(2),
+    lines: new Set(btns.map(function(b){ return Math.round(b.getBoundingClientRect().top); })).size,
+    modalRight:+mr.right.toFixed(2) };
+`;
+const oldStyle = await ev(`document.querySelectorAll('#modal .foot .btn').forEach(function(b){
+    b.style.paddingLeft = '18px'; b.style.paddingRight = '18px'; });
+  var f = document.querySelector('#modal .foot');
+  f.style.flexWrap = 'nowrap'; f.style.justifyContent = 'flex-start';
+  ` + stress);
+console.log('     【还原改动前的规则（不换行 + 18px 内边距）后压测】');
+console.log('     内容盒 ' + oldStyle.contentLeft + ' .. ' + oldStyle.contentRight + '   行宽 ' + oldStyle.rowW + '   按钮占 ' + oldStyle.lines + ' 行');
+console.log('     保存右边缘 = ' + oldStyle.lastRight + '   → 超出内容盒 ' + oldStyle.overflow + 'px；离弹层右边缘只剩 ' + (oldStyle.modalRight - oldStyle.lastRight).toFixed(2) + 'px');
+tOk('[2b] 压测复现：旧规则下整行确实往右溢出（> 5px）', oldStyle.overflow > 5, 'overflow=' + oldStyle.overflow);
+const newStyle = await ev(`document.querySelectorAll('#modal .foot .btn').forEach(function(b){
+    b.style.removeProperty('padding-left'); b.style.removeProperty('padding-right'); });
+  var f2 = document.querySelector('#modal .foot');
+  f2.style.removeProperty('flex-wrap'); f2.style.removeProperty('justify-content');
+  ` + stress);
+console.log('     【本轮修好的规则（可换行右对齐 + 编辑弹层 14px 内边距）下压测】');
+console.log('     内容盒 ' + newStyle.contentLeft + ' .. ' + newStyle.contentRight + '   行宽 ' + newStyle.rowW + '   按钮占 ' + newStyle.lines + ' 行');
+console.log('     保存右边缘 = ' + newStyle.lastRight + '   → 超出内容盒 ' + newStyle.overflow + 'px；离弹层右边缘 ' + (newStyle.modalRight - newStyle.lastRight).toFixed(2) + 'px');
+tOk('[2b] 修好后同一压力下不再溢出（≤ 0.5px）', newStyle.overflow <= 0.5, 'overflow=' + newStyle.overflow);
+tOk('[2b] 修好后同一压力下仍是一行（没换行）', newStyle.lines === 1, '行数=' + newStyle.lines);
+tOk('[2b] 压测后右留白仍等于左留白（都 = 弹层 padding）',
+  near(newStyle.modalRight - newStyle.lastRight, newStyle.contentLeft - 20, 0.5),
+  (newStyle.modalRight - newStyle.lastRight).toFixed(2) + ' vs ' + (newStyle.contentLeft - 20).toFixed(2));
+await ev('closeModalNow(); return 1;');
+await sleep(300);
+
 /* ---------- [3] 0D.3 三屏滚动判定 ---------- */
 console.log('\n[3] 0D.3  三屏滚动判定（基准线 vs 内容底）');
 const views = [

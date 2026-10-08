@@ -1390,7 +1390,20 @@ html.soft-render .mask .modal{
 .tagbox{display:flex;gap:6px;flex-wrap:wrap}
 .row{display:flex;gap:12px}
 .row>*{flex:1;min-width:0}
-.foot{display:flex;gap:10px;margin-top:22px;align-items:center}
+/* ★ 0D.2（真机复测定案）：底部按钮行的真凶是**整行比弹层内容盒宽**，flex 一行放不下时
+   不会收缩（.btn 是 nowrap + min-width:auto），于是整行往右溢出、把弹层右内边距吃光
+   ——「保存」因此贴到弹层右边缘。真机截图逐像素量（见 _ref/_0d-user-row-ruler.png）：
+   保存黑块右边缘在 CSS 376.7，而内容盒右边界是 358，溢出 18.7px、离弹层边只剩 3px，
+   左边「删除」却是正常的 22px。这台机器的中文字形比桌面宽（4 个按钮合计宽约 17px），
+   桌面 headless 里恰好还剩 7px 余量，所以一直没复现出来。
+   两件事一起做：
+     ① flex-wrap:wrap + justify-content:flex-end —— 万一真的放不下（更窄的屏 / 更大的字体），
+        宁可换行右对齐，也绝不允许往右溢出贴边；
+     ② .edit-foot 这个变体（只有条目编辑弹层挂）把按钮左右内边距 18 → 14px，
+        4 个按钮共省 32px，真机上留出约 11px 余量，仍然是一行。
+       只收紧编辑弹层这一处 —— 别的弹层最多两三个按钮，本来就不会溢出，不该跟着变样。 */
+.foot{display:flex;gap:10px;margin-top:22px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.foot.edit-foot .btn{padding-left:14px;padding-right:14px}
 .spacer{flex:1}
 .checkline{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:600;cursor:pointer}
 
@@ -10286,7 +10299,7 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
         <div class="field"><label>命名要求</label><input type="text" id="m_naming" value="${esc(it.hw ? it.hw.naming : '')}"></div>
       </div>
     </div>
-    <div class="foot">
+    <div class="foot edit-foot">
       <button class="btn danger" id="m_del"${isNew ? ' style="display:none"' : ''}>删除</button>
       ${(!isNew && !isSeed(it)) ? '<button class="btn" id="m_rethink" title="做不下去了？把这条重新种成一条想法（原待办不动）">重新想</button>' : ''}
       <div class="spacer"></div>
@@ -11040,7 +11053,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.3.2';
+const APP_VERSION = '5.3.3';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
