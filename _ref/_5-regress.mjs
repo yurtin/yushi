@@ -40,6 +40,24 @@ if (a < 0 || b < 0){ console.error('切片失败', a, b); process.exit(2); }
 const P = new Function(html.slice(a, b) + '\nreturn {parseSmart, stripShell};')();
 const { parseSmart, stripShell } = P;
 
+/* smartHintCount 在应用层（要 parseDayParts 才完整）—— 单独按名切出来，桩掉一个依赖。 */
+function extractFn(src, name){
+  const key = 'function ' + name + '(';
+  let i = src.indexOf(key);
+  if (i < 0) throw new Error('miss fn ' + name);
+  let d = 0, k = src.indexOf('{', i);
+  for (; k < src.length; k++){
+    const c = src[k];
+    if (c === '{' || c === '}'){ d += (c === '{' ? 1 : -1); if (!d) break; }
+    else if (c === "'" || c === '"' || c === '`'){ const q = c; k++; while (k < src.length && src[k] !== q){ if (src[k] === '\\') k++; k++; } }
+    else if (c === '/' && src[k + 1] === '/'){ while (k < src.length && src[k] !== '\n') k++; }
+    else if (c === '/' && src[k + 1] === '*'){ k += 2; while (k < src.length && !(src[k] === '*' && src[k + 1] === '/')) k++; k++; }
+  }
+  return src.slice(i, k + 1);
+}
+const hintCount = new Function('const parseDayParts = () => null;\n'
+  + extractFn(html, 'smartHintCount') + '\nreturn smartHintCount;')();
+
 console.log('被测文件:', FILE, html.length, 'bytes');
 console.log('原生源码:', JAVA, '\n');
 
@@ -60,6 +78,43 @@ t('16:9 视频 标题/日期都不被吃（以前标题 16 + 9月1日）',
   (p => [p.title, p.date])(parseSmart('16:9 视频')), ['16:9 视频', null]);
 t('11点5（一位裸分钟）→ 整句不认，标题原样', (p => [p.time, p.title])(parseSmart('晚上11点5 看书')), [null, '晚上11点5 看书']);
 t('11点05看书 → 标题不含 05', (p => p.title)(parseSmart('晚上11点05看书')), '看书');
+
+console.log('\n[1b] 相对时间「N 分钟后 / N 小时后」（5B：用户实测 1分钟后 落长期且不提醒）');
+{
+  /* 期望时刻依赖当前钟表 —— 用同一条算式现算，并给 90 秒容差（跨过整分钟也不假红）。 */
+  const ts = p => new Date(p.date + 'T' + p.time + ':00').getTime();
+  const near = (p, mins) => !!p.date && !!p.time && Math.abs(ts(p) - (Date.now() + mins * 60000)) <= 90000;
+  const P1 = parseSmart('帮我设置一个1分钟后看书的待办');
+  t('帮我设置一个1分钟后看书的待办 → 标题只剩「看书」', P1.title, '看书');
+  t('   → 分区不再是长期（有具体时刻就是短期）', P1.zone, 'short');
+  tOk('   → 时刻 ≈ 现在 + 1 分钟', near(P1, 1), P1.date + ' ' + P1.time);
+  const P10 = parseSmart('十分钟后提醒我打电话');
+  t('十分钟后提醒我打电话 → 标题「打电话」', P10.title, '打电话');
+  tOk('   → 时刻 ≈ 现在 + 10 分钟', near(P10, 10), P10.date + ' ' + P10.time);
+  const P30 = parseSmart('半小时后 开会');
+  t('半小时后 开会 → 标题「开会」', P30.title, '开会');
+  tOk('   → 时刻 ≈ 现在 + 30 分钟', near(P30, 30), P30.date + ' ' + P30.time);
+  const P120 = parseSmart('2小时后 交表');
+  t('2小时后 交表 → 标题「交表」', P120.title, '交表');
+  tOk('   → 时刻 ≈ 现在 + 120 分钟（跨零点时 date 自动是明天）', near(P120, 120), P120.date + ' ' + P120.time);
+  tOk('1个小时后 ≈ +60 分钟', near(parseSmart('1个小时后 交表'), 60));
+  tOk('一个小时后 ≈ +60 分钟', near(parseSmart('一个小时后 交表'), 60));
+  tOk('30分后 ≈ +30 分钟', near(parseSmart('30分后 出发'), 30));
+  console.log('   —— 反面：句子里的「分」不许被当时间');
+  t('五分钟就到 → 不产生 time（没有「后」）', parseSmart('五分钟就到').time, null);
+  t('五分钟就到 → 标题原样', parseSmart('五分钟就到').title, '五分钟就到');
+  t('十分后悔 → 不是「10 分钟后」', (p => [p.time, p.title])(parseSmart('十分后悔')), [null, '十分后悔']);
+  t('一个半小时后 → 宁可漏认（标题原样、不排提醒）',
+    (p => [p.time, p.title])(parseSmart('一个半小时后 开会')), [null, '一个半小时后 开会']);
+  t('1441 分钟后（超一天）→ 不认', parseSmart('1441分钟后 开会').time, null);
+  console.log('   —— smartHintCount 要把它数成"用户写了语法"（否则白出一次网）：');
+  tOk('1分钟后 交表 → hint ≥ 1', hintCount('1分钟后 交表') >= 1, hintCount('1分钟后 交表'));
+  tOk('半小时后 开会 → hint ≥ 1', hintCount('半小时后 开会') >= 1, hintCount('半小时后 开会'));
+  /* ★ 4D 的漏项：汉字钟点当时没加进 smartHintCount（AI 开着时会白出一次网）。 */
+  tOk('晚上九点五十一 看书 → hint ≥ 1（4D 漏的，一并补上）', hintCount('晚上九点五十一 看书') >= 1,
+    hintCount('晚上九点五十一 看书'));
+  tOk('9:30 → hint ≥ 1（冒号写法）', hintCount('9:30 开会') >= 1, hintCount('9:30 开会'));
+}
 
 console.log('\n[2] 指令壳剥离（用户原话："像『帮我设置一个什么的待办』这一段不该弄上去"）');
 t('帮我设置一个今天晚上11:05看书的待办', 
