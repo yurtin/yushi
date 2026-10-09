@@ -121,7 +121,8 @@ const APP_FNS = ['isSeed', 'uid', 'syncTags', 'dayPartKids', 'addItem', 'findOrC
 const AI_FNS = ['aiKey', 'aiOn', 'aiCall', 'aiParseJSON', 'aiSay', 'aiFail', 'aiIsDescendant',
   'sanitizeHotwords', 'sanitizeHotwordSeen', 'aiGateWaitMs', 'aiGateNote',
   'smartAppendWord', 'smartHintCount', 'smartNeedAI', 'smartLocalList', 'smartLocalPlan',
-  'aiUnderstandUser', 'aiValidDateStr', 'aiValidTimeStr', 'aiValidTag', 'aiValidateItems',
+  'aiUnderstandUser', 'aiContextTitles', 'aiDropEcho',
+  'aiValidDateStr', 'aiValidTimeStr', 'aiValidTag', 'aiValidateItems',
   'aiUnderstand', 'aiPlanPreset', 'aiCommitPlan', 'aiEntryReply',
   'hotwordDiff', 'hotwordAdd', 'hotwordObserve'];
 

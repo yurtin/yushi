@@ -74,11 +74,12 @@ function extractLet(src, name){
 
 const FNS = ['isSeed', 'sanitizeHotwords', 'sanitizeHotwordSeen', 'hotwordDiff', 'hotwordAdd',
   'hotwordObserve', 'taskToSeed',
-  'aiValidDateStr', 'aiValidTimeStr', 'aiValidTag', 'aiValidateItems', 'aiPlanPreset'];
+  'aiValidDateStr', 'aiValidTimeStr', 'aiValidTag', 'aiValidateItems', 'aiPlanPreset',
+  'aiDropEcho', 'aiContextTitles'];
 const srcAll = pure + '\n'
-  + ['HOTWORDS_MAX', 'HOTWORD_ASK_AT', 'AI_UNDERSTAND_MAX'].map(n => extractConst(html, n)).join('\n') + '\n'
+  + ['HOTWORDS_MAX', 'HOTWORD_ASK_AT', 'AI_UNDERSTAND_MAX', 'AI_LISTEN_MAX'].map(n => extractConst(html, n)).join('\n') + '\n'
   + FNS.map(n => extractFn(html, n)).join('\n\n') + '\n'
-  + 'return { dateText, taskToSeed, hotwordObserve, hotwordDiff, sanitizeHotwordSeen, HOTWORD_ASK_AT, HOTWORDS_MAX, aiValidateItems, aiPlanPreset };';
+  + 'return { dateText, taskToSeed, hotwordObserve, hotwordDiff, sanitizeHotwordSeen, HOTWORD_ASK_AT, HOTWORDS_MAX, aiValidateItems, aiPlanPreset, aiDropEcho, aiContextTitles };';
 
 const toasts = [];
 const S = { items: [], tags: [], hotwords: [], hotwordSeen: {}, dateShow: { y: true, m: true, d: true }, ideaUsedAt: null };
@@ -227,6 +228,36 @@ console.log('\n[5] AI 判落点（长期 / 想法）与子想法的门槛');
   tOk('默认是「自动」', /captureZone: 'auto'/.test(html), '');
 }
 
+
+/* ---------- [5b] 上下文回声护栏（2026-10-09 真机实证：标题被填成了上一条的标题） ---------- */
+console.log('\n[5b] 回声护栏：模型把「背景」当成「内容」抄回来时要拦住');
+{
+  const G = box.aiDropEcho;
+  const CTX = ['学做菜', '交房租'];
+  t('★ 标题等于「上次焦点」、原话里没这几个字 → 丢掉（这就是真机上那次）',
+    G([{ title: '学做菜' }], '我在想要不要把交房租做成网页形式出现的', CTX), []);
+  t('标题等于上下文里的某条、但原话也提到了 → 放行（用户真的又提了一次同一件事）',
+    G([{ title: '交房租' }], '下个月交房租', CTX).map(x => x.title), ['交房租']);
+  t('标题不在上下文里 → 一律放行',
+    G([{ title: '买西瓜' }], '随便说点什么', CTX).map(x => x.title), ['买西瓜']);
+  t('上下文为空时不做任何过滤',
+    G([{ title: '学做菜' }], '别的话', []).map(x => x.title), ['学做菜']);
+  t('混合时只丢回声那一条',
+    G([{ title: '学做菜' }, { title: '买西瓜' }], '随便说点什么', CTX).map(x => x.title), ['买西瓜']);
+  t('它只做过滤、不做校验：上下文为空时原样返回',
+    G([{ title: '' }, { title: 'x' }], '随便说点什么', []).length, 2);
+  /* 源码级：护栏真的接在链路里，而且没有多出第七条失败路径 */
+  const au = extractFn(html, 'aiUnderstand');
+  tOk('aiUnderstand 真的调了 aiDropEcho（接在 aiValidateItems 之后）',
+    /aiDropEcho\(aiValidateItems\(/.test(au), '');
+  t('失败路径仍然是 6 条（护栏复用 invalid 那条，没有新开一条）',
+    (au.match(/return Object\.assign\(local/g) || []).length, 6);
+  /* 提示词要把背景块标出来，并点名"只整理这一行" */
+  const user = extractFn(html, 'aiUnderstandUser');
+  tOk('背景块有显式起止标注 + 明确"不要写进 title"',
+    /以下是背景/.test(user) && /背景结束/.test(user) && /写进 title/.test(user), '');
+  tOk('原话被单独点名"只整理这一行"', /只整理这一行/.test(user), '');
+}
 
 console.log('\n[6] 真浏览器抽检（桩 fetch：不联网、不需要真 key）');
 const PORT = 8906, CDP = 9446;
@@ -386,6 +417,28 @@ t('★ 全程只有 1 条（本地那条是**被换掉**，不是并排两条）
 tOk('★ 那一条被打上了 ai-swapped（亮 0.5 秒让用户看见改成了什么）', fin.swapped, fin.cls);
 await ev(`window.__ai.delay = 0; S.items.length=0; return 1;`);
 await sleep(150);
+
+/* 6e：回声护栏端到端 —— 桩把「上次焦点」当标题回填，必须被拦住、退回本地 */
+await ev(`closeModalNow(); S.items.length=0; S.captureZone='auto';
+  S.view='list'; ANIM=false; refresh();
+  S.aiAnchor = '学做菜';
+  window.__ai.next = { items: [{ title:'学做菜', date:'', endDate:'', time:'', tags:[], pri:0, parent:'', note:'', zone:'' }], corrected:'', confidence:0.9 };
+  window.__ai.reqs = 0; return 1;`);
+await sleep(260);
+await ev(`voicePending='我在想要不要把交房租做成网页形式出现的'; voiceLeft(); return 1;`);
+await sleep(1900);
+const echo = await ev(`var it=S.items[0];
+  return it ? { title: it.title, n: S.items.length, reqs: window.__ai.reqs,
+    toast: (document.getElementById('toast') || {}).textContent || '' } : { none: true };`);
+tOk('★ 标题没有被填成「学做菜」（回声被拦住了）', !!echo.title && echo.title !== '学做菜', JSON.stringify(echo));
+tOk('   落下来的是本地解析的结果（标题带原话里的词）',
+  !!echo.title && /网页/.test(echo.title), String(echo.title));
+tOk('   确实问过模型（不是没发请求）', echo.reqs >= 1, String(echo.reqs));
+tOk('   提示语说清"用的是本地识别"', /本地识别/.test(echo.toast), echo.toast || '(空)');
+t('   全程只有 1 条', echo.n, 1);
+await ev(`S.aiAnchor = null; S.items.length=0; return 1;`);
+await sleep(150);
+
 ws.close(); chrome.kill(); srv.close();
 console.log('\n' + (fail ? 'FAIL ' : 'PASS ') + pass + ' / ' + (pass + fail) + (fail ? '  —— ' + fail + ' 条失败' : '  全绿'));
 process.exit(fail ? 1 : 0);

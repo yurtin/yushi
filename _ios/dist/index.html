@@ -7579,17 +7579,61 @@ const AI_UNDERSTAND_SYS =
   + '铁律：只做整理。不许新增用户没说的信息，不许下判断，不许替用户决定做不做。'
   + '一句话里有多件事就拆成多条；一件事就是一条。';
 /* 变量部分（**放在最后**）。今天日期必须给，否则"明天 / 下周三"这类相对词会算错。
-   清单名**限量**（未完成的前 AI_LISTEN_MAX 条），不全量塞。 */
+   清单名**限量**（未完成的前 AI_LISTEN_MAX 条），不全量塞。
+
+   ★ 2B 修（2026-10-09 真机）：**背景块必须显式标注、并与原话隔开**。
+   用户先记了一条「学做菜」，紧接着录别的句子，标题却被填成「学做菜」——
+   原话里一个字都不沾，而提示词里唯一出现「学做菜」的地方就是下面这行"我刚刚记下的一条是"。
+   模型把**背景**当成了**要整理的句子**回填。所以：
+     · 背景（已有条目 / 上次焦点）用一行说明包起来，并明确"不要把它们写进 title"；
+     · 原话单独起一行、用「只整理这一行」点名，放在最末 —— 模型对最后一行最敏感。
+   前缀（系统提示词 + schema）仍然逐字符不动，缓存不受影响。 */
 function aiUnderstandUser(text){
   const hot = sanitizeHotwords(S.hotwords);
   const list = S.items.filter(i => !isSeed(i) && !i.done).slice(0, AI_LISTEN_MAX)
     .map(i => '- ' + String(i.title || '').slice(0, 40));
+  const ctx = [];
+  if (list.length) ctx.push('我已经有的未完成条目：\n' + list.join('\n'));
+  if (S.aiAnchor) ctx.push('我刚刚记下的一条是：' + S.aiAnchor);
   const lines = ['今天是：' + ymd(new Date())];
   if (hot.length) lines.push('我的常用词（只用来纠正同音错字，不要凭空塞进来）：' + hot.join('、'));
-  if (list.length) lines.push('我已经有的未完成条目：\n' + list.join('\n'));
-  if (S.aiAnchor) lines.push('我刚刚记下的一条是：' + S.aiAnchor);
+  if (ctx.length){
+    lines.push('--- 以下是背景，只用来判断"是不是同一件事、要不要挂到哪"，'
+      + '**不要**把它们当成要整理的句子，更不要把其中任何一条写进 title ---');
+    lines.push(ctx.join('\n'));
+    lines.push('--- 背景结束 ---');
+  }
+  lines.push('只整理这一行，title 必须来自它：');
   lines.push('我的原话：' + String(text || '').trim());
   return lines.join('\n');
+}
+/* 用于"回声护栏"的上下文清单 —— 必须与 aiUnderstandUser 塞进提示词的那几行同源 */
+function aiContextTitles(){
+  const out = [];
+  const a = String(S.aiAnchor || '').trim();
+  if (a) out.push(a);
+  S.items.filter(i => !isSeed(i) && !i.done).slice(0, AI_LISTEN_MAX)
+    .forEach(i => { const t = String(i.title || '').slice(0, 40).trim(); if (t) out.push(t); });
+  return out;
+}
+/* ★ 2B 护栏：**模型把上下文当成内容抄回来**时把它拦住。
+   判据（两条同时成立才算回声）：
+     ① 它给的 title **整条等于**我们塞进上下文的某个字符串；
+     ② **原话里根本没出现过这几个字**。
+   为什么留 ②：用户真的又提了一次同一件事时必须放行（"交房租"本来就在清单里，原话也说了）。
+   纯函数，便于离线单测。 */
+function aiDropEcho(items, raw, ctxTitles){
+  const list = Array.isArray(items) ? items : [];
+  const ctx = (Array.isArray(ctxTitles) ? ctxTitles : [])
+    .map(t => String(t == null ? '' : t).trim()).filter(Boolean);
+  if (!ctx.length) return list;
+  const text = String(raw == null ? '' : raw);
+  return list.filter(x => {
+    const t = String((x && x.title) || '');
+    if (!t) return false;
+    if (ctx.indexOf(t) < 0) return true;     // 不在上下文里 → 放行
+    return text.indexOf(t) >= 0;             // 在上下文里：原话也提到过才放行
+  });
 }
 
 /* ---------- 校验器（本卡的重点，不许省） ----------
@@ -7688,7 +7732,7 @@ async function aiUnderstand(text){
   /* ⑤ 坏 JSON / 校验后为空 → 一样退回本地。**绝不编一条内容出来。** */
   let data = null;
   try { data = aiParseJSON(txt); } catch (e){ return Object.assign(local, { reason: 'json' }); }
-  const items = aiValidateItems(data && data.items);
+  const items = aiDropEcho(aiValidateItems(data && data.items), raw, aiContextTitles());
   if (!items.length) return Object.assign(local, { reason: 'invalid' });
   /* ⑥ 纠错层：只回传"我听到的是"，**不在这里改用户的数据** ——
      与原句不同时留给 2B 展示确认。不许改语义、不许增删信息。 */
@@ -12358,7 +12402,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.7.0';
+const APP_VERSION = '5.7.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
