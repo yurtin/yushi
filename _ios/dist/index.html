@@ -4641,6 +4641,10 @@ function addItem(text, preset){
   const dpKids = (p.dayParts && p.dayParts.length >= 2) ? dayPartKids(it, p.dayParts) : [];
   if (dpKids.length) S.items.splice(1, 0, ...dpKids);
   justAdded = { id: it.id, t: Date.now() };   // 渲染时给这一条挂 .just-added，播一次落位
+  /* ★ 3A 决策 3：创建时更新焦点（只存内存 + sessionStorage，不进 S、不进备份）。
+     用 typeof 守卫是因为纯 Node 回归会把 addItem 整段切进隔离环境跑，那里没有焦点层
+     —— 与 notifyFire 那条"转发口"是同一个写法。 */
+  if (typeof aiFocusSet === 'function') aiFocusSet(it.id);
   save();
   /* ★ 约定 7：新增也要过排期对账 —— 页面侧算时间只有 syncNotify 这一处。 */
   notifyFire(it);
@@ -7944,6 +7948,648 @@ function aiMaybeAutoScan(){
   }, 4000);   // 让首屏先画完，别和入场动画抢
 }
 
+/* ==================== ★ 3A：指向与执行内核（把语音从"录音笔"变成"遥控器"） ====================
+   2A / 2B 解决的是"能听懂人话"，但听懂之后只会**新建**条目。这一块补的是另一半：
+   **说一句话就能改已有数据** —— 改期、改标题、改分区、挂到某条下面、批量完成 / 删除。
+
+   本卡只做**内核**（纯逻辑，可用桩 fetch 全部离线验）：判断意图 → 挑出说哪一条 →
+   出一个可校验的操作计划 → 原子执行 → 能回滚。
+   界面上那层（焦点高亮、改前→改后确认页、改挂出口、语音入口接线）是 3B 的事。
+
+   四条红线（改这块之前先读）：
+     ① AI 输出的必须是**操作**（结构化 ops），不是一段话 —— 落库前每一条都过校验器；
+     ② 一次操作**要么全成要么全不做** —— 逐字段快照 + try/catch 整体还原；
+     ③ **破坏性 / 批量操作必须先出计划**（计划对象在这里产出，确认页在 3B）；
+     ④ **焦点永不进 S、永不进备份** —— 只存内存 + sessionStorage。
+
+   另外三条继承自 2A：`aiMode === 'off'` 零请求；不新增 fetch 调用点（只用 aiCall）；
+   失败绝不生成假数据（退回"什么都没做"并把话说清楚）。 */
+
+/* ---------- 3A.0 常量 ---------- */
+const AI_TOP_N = 3;                  // 发给模型的候选条数（全量塞会让输入涨十几倍且更易选错）
+const AI_OPS_MAX = 6;                // 一次最多接受几条操作
+const AI_OPS_KINDS = ['reschedule', 'retitle', 'rezone', 'remount', 'done', 'delete'];
+/* 破坏性 = 会丢信息或改结构；批量 = 一次动好几条。两种都要先出「改前 → 改后」的计划。 */
+const AI_OPS_DESTRUCTIVE = ['delete', 'done', 'remount'];
+/* 焦点：只活这一次会话。**绝不放 S** —— 清单/统计/想法三个视图共享 S，
+   一个纯交互态放进去会被 save() 与 snapshot() 顺带写进存档和备份（红线 ④）。 */
+const AI_FOCUS_LS = 'daibanji.aiFocus';
+const AI_FOCUS_MS = 5 * 60 * 1000;   // 5 分钟超时
+
+/* "改"字样的强提示词 —— 命中就直接判 update，**零请求**。
+   ⚠️ 「完成 / 去掉 / 放到」这几个**故意不收**：`完成作业`、`去掉重复的` 都是普通的新建描述，
+   收进来会把它们误判成"改"（然后因为候选为空而什么都不做，等于把用户要记的事吞掉）。
+   那几个字交给下面那句"判不出来才出网"的模型路由去分。 */
+const AI_UPDATE_CUES = ['改成', '改到', '改为', '换成', '换到', '换为', '推迟', '延期', '提前', '延后',
+  '挪到', '移到', '删掉', '删了', '删除', '勾掉', '勾上', '打勾', '标记完成', '标记为完成',
+  '改标题', '改个标题', '改名字', '重命名', '挂到', '加到', '归到'];
+
+/* ---------- 3A.1 意图路由：这句是"新建"还是"改已有" ---------- */
+/* 返回本地能判的那一档：命中"改"字样 → 'update'；其余返回 ''（= 本地判不出来）。
+   拆成纯函数是为了让"本地优先"这条能被源码级断言钉住（见 _3a-regress 的 [1]）。 */
+function aiUpdateCue(text){
+  const s = String(text || '');
+  for (const c of AI_UPDATE_CUES) if (s.indexOf(c) >= 0) return c;
+  return null;
+}
+function aiCancelCue(text){
+  /* 明确说"取消勾选"时，已完成的条目**要**留在候选里（否则没有可取消的对象）。 */
+  return /取消勾选|取消完成|撤销完成|还没做|改回没做|变成没做|取消打勾/.test(String(text || ''));
+}
+/* 路由结果只有两个值：'create' | 'update'。
+   本地判据的**先后顺序**是有讲究的：
+     ① 有"改"字样 → update（零请求）；
+     ② 有本地语法（smartHintCount > 0）→ 这是一句"写给新建的描述"→ create（零请求）；
+     ③ 一条候选都没有 → 没有可改的东西 → create（零请求）；
+     ④ 剩下才是判不出来的大白话 → 出网问一次（走 2A 同一套闸门）。
+   ④ 失败 / 关着 / 超时 → 一律回落 'create'。理由：create 是**既有行为**，
+   而 update 会真的改用户的数据 —— 判不准时宁可什么都不改。 */
+async function aiRouteIntent(text){
+  const s = String(text || '').trim();
+  if (!s) return 'create';
+  if (aiUpdateCue(s)) return 'update';
+  if (!aiOn()) return 'create';
+  if (!smartNeedAI(s)) return 'create';
+  if (!aiRankCandidates(s).length) return 'create';
+  const wait = aiGateWaitMs(s);
+  if (wait < 0) return 'create';
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  aiGateNote(s);
+  let txt;
+  try { txt = await aiCall([{ role: 'system', content: AI_ROUTE_SYS }, { role: 'user', content: '我的原话：' + s }], { json: true }); }
+  catch (e){ return 'create'; }
+  let data = null;
+  try { data = aiParseJSON(txt); } catch (e){ return 'create'; }
+  return (data && data.route === 'update') ? 'update' : 'create';
+}
+
+/* ---------- 3A.2 焦点（{id, at}）：内存 + sessionStorage ---------- */
+let aiFocus = null;                   // { id, at }
+const aiTouched = new Map();          // id → 最后一次被操作的时间（只活这一次会话）
+function aiFocusSave(){
+  try {
+    if (aiFocus) sessionStorage.setItem(AI_FOCUS_LS, JSON.stringify(aiFocus));
+    else sessionStorage.removeItem(AI_FOCUS_LS);
+  } catch (e){}
+}
+function aiFocusLoad(){
+  try {
+    const raw = sessionStorage.getItem(AI_FOCUS_LS);
+    if (!raw) return;
+    const o = JSON.parse(raw);
+    if (o && o.id && Number.isFinite(o.at)){
+      aiFocus = { id: String(o.id), at: o.at };
+      aiTouched.set(aiFocus.id, aiFocus.at);
+    }
+  } catch (e){}
+}
+/* 读的时候才判超时 —— 5 分钟没人碰就自动作废，不需要定时器。 */
+function aiFocusGet(){
+  if (aiFocus && Date.now() - aiFocus.at > AI_FOCUS_MS) aiFocus = null;
+  return aiFocus;
+}
+function aiFocusId(){ const f = aiFocusGet(); return f ? f.id : null; }
+function aiFocusSet(id){
+  const s = String(id == null ? '' : id);
+  if (!s) return;
+  aiFocus = { id: s, at: Date.now() };
+  aiTouched.set(s, Date.now());
+  aiFocusSave();
+}
+function aiFocusClear(){ aiFocus = null; aiFocusSave(); }
+/* 5 分钟内被操作过的条数。两条及以上才需要"反问一次"（决策 3 的后半句）。 */
+function aiFocusCount5m(){
+  const now = Date.now();
+  let n = 0;
+  aiTouched.forEach((t, id) => { if (now - t <= AI_FOCUS_MS && it_byId(id)) n++; });
+  return n;
+}
+/* ★ 焦点只做"默认押"，不是"乱猜"。用户的纪律是"自动做错比不做更烦"：
+   追加类指令（顺便/还有/再加上…）**默认作用于焦点条、不反问**；
+   只有**两条都在 5 分钟内被操作过**时才反问一次（反问由 3B 的确认页承担）。 */
+function aiFocusAmbiguous(){
+  const f = aiFocusGet();
+  if (!f || !it_byId(f.id)) return false;
+  return aiFocusCount5m() >= 2;
+}
+try { aiFocusLoad(); } catch (e){}
+
+/* ---------- 3A.3 本地候选打分：一分钱不花，挑出"说哪一条" ---------- */
+/* 字面重合用**字符二元组**而不是分词 —— 中文没有词边界，二元组对短语（"暑假计划"）足够准，
+   而且不需要任何词表。 */
+function aiBigrams(s){
+  const t = String(s == null ? '' : s).replace(/[^\u4e00-\u9fa5A-Za-z0-9]/g, '');
+  const out = [];
+  for (let i = 0; i + 1 < t.length; i++) out.push(t.slice(i, i + 2));
+  if (!out.length && t) out.push(t);
+  return out;
+}
+/* 打分权重按**用户亲自定的优先级**排（关键词重合 > 时间近 > 同视图 > 焦点 > 同标签）：
+   二元组一次 1000 分，时间最多 900 分 —— 保证"一个字面上重合的旧条目"永远压得住
+   "三天前新加但一个字都不沾的条目"。 */
+function aiScoreCandidate(it, text, now, focusId, appendHit){
+  if (!it || !it.id) return null;
+  const t = String(text || '');
+  let score = 0;
+  const why = [];
+  const bg = aiBigrams(String(it.title || '') + ' ' + String(it.raw || ''));
+  const qg = aiBigrams(t);
+  let hit = 0;
+  qg.forEach(g => { if (bg.indexOf(g) >= 0) hit++; });
+  if (hit){ score += hit * 1000; why.push('字面重合 ' + hit); }
+  const title = String(it.title || '');
+  const bare = t.replace(/[^\u4e00-\u9fa5A-Za-z0-9]/g, '');
+  if (title && (t.indexOf(title) >= 0 || (bare.length >= 2 && title.indexOf(bare) >= 0))){
+    score += 2000; why.push('整名命中');
+  }
+  let timeScore;
+  if (typeof it.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(it.date)){
+    timeScore = Math.max(0, 900 - Math.abs(daysFromToday(it.date)) * 30);
+  } else {
+    const age = Math.floor((now - (Number(it.createdAt) || 0)) / 86400000);
+    timeScore = Math.max(0, 600 - age * 20);
+  }
+  score += timeScore;
+  if ((S.view === 'idea') === isSeed(it)){ score += 300; why.push('同视图'); }
+  if (focusId && it.id === focusId){
+    /* 追加类指令默认押在焦点条上 —— 加一个压倒性权重，等价于"默认押、不反问"。 */
+    score += appendHit ? 20000 : 200;
+    why.push('焦点');
+  }
+  const tags = Array.isArray(it.tags) ? it.tags : [];
+  if (tags.length && Array.isArray(S.filterTags) && S.filterTags.length
+      && tags.some(x => S.filterTags.indexOf(x) >= 0)){ score += 100; why.push('同标签'); }
+  return { it: it, id: it.id, title: title, score: score, kw: hit, why: why };
+}
+/* 排序后的候选。**一票否决**：未完成的优先 —— 已完成的一律排除，
+   除非这句明确是"取消勾选"（见 aiCancelCue）。 */
+function aiRankCandidates(text){
+  const t = String(text || '').trim();
+  const now = Date.now();
+  const focus = aiFocusGet();
+  const cancel = aiCancelCue(t);
+  const appendHit = !!smartAppendWord(t);
+  const out = [];
+  S.items.forEach(it => {
+    if (!it || !it.id) return;
+    if (it.done && !cancel) return;
+    const s = aiScoreCandidate(it, t, now, focus ? focus.id : null, appendHit);
+    if (!s) return;
+    /* 完全沾不上关系的条目不进候选：字面上零重合、又既不新也无日期（score < 300）
+       —— 把它们塞进 top3 只会误导模型。 */
+    if (!s.kw && s.score < 300) return;
+    out.push(s);
+  });
+  out.sort((a, b) => (b.score - a.score) || String(a.title).localeCompare(String(b.title)));
+  return out;
+}
+
+/* ---------- 3A.4 本地能直接定的操作（有它才能"零请求"） ---------- */
+/* 命令句里的钟点读取器。**不是 parseSmart 的复制品**：
+   解析层那个 tpat 只吃阿拉伯数字（`下午3点` 认、`下午三点` 不认），因为它面向"记一条事"；
+   而遥控器面对的是"改到明天下午三点"这种**口述命令**，汉字钟点才是常态。
+   规则：时段词（下午/晚上…）+ 数字（阿拉伯或汉字）+ 点/时 [+ 半/N分]。
+   解不出来就返回空串，由调用方决定"是交给模型、还是当没说过" —— 这里**绝不猜**。 */
+const AI_CN_DIGIT = { '零': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5,
+  '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 };
+function aiCnNum(s){
+  const t = String(s == null ? '' : s).trim();
+  if (/^\d+$/.test(t)) return parseInt(t, 10);
+  if (!t || !/^[零一二两三四五六七八九十]+$/.test(t)) return null;
+  if (t === '十') return 10;
+  if (t.length === 1) return AI_CN_DIGIT[t];
+  const x = t.indexOf('十');
+  if (x === 0) return 10 + (AI_CN_DIGIT[t.charAt(1)] || 0);
+  if (x === 1) return (AI_CN_DIGIT[t.charAt(0)] || 0) * 10 + (AI_CN_DIGIT[t.charAt(2)] || 0);
+  return null;
+}
+function aiCommandClock(text){
+  const s = String(text || '');
+  const m = s.match(/(凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|夜里|晚)?\s*([0-9]{1,2}|[零一二两三四五六七八九十]{1,3})\s*[点時时]\s*(半|[0-9]{1,2}\s*分)?/);
+  if (!m) return '';
+  let h = aiCnNum(m[2]);
+  if (h == null || h > 24) return '';
+  const seg = m[1] || '';
+  const min = m[3] === '半' ? 30 : (m[3] ? (aiCnNum(String(m[3]).replace(/[^\d零一二两三四五六七八九十]/g, '')) || 0) : 0);
+  if (seg === '下午' || seg === '傍晚' || seg === '晚上' || seg === '夜里' || seg === '晚'){
+    if (h < 12) h += 12;
+  } else if (seg === '中午'){ if (h < 12) h = 12; }
+  /* 没说时段的不猜 —— 直接交回空串，由调用方决定"是交给模型、还是当没说过"。 */
+  else if (!seg) return '';
+  if (h > 23 || min > 59) return '';
+  return String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0');
+}
+/* 只有**一条候选**时才本地直判 —— 多条候选里挑哪一条是模型更擅长的事。
+   本地判不出来就返回 null，交给模型（那才是"判不出来才出网"的真含义）。 */
+function aiLocalOps(text, top){
+  const s = String(text || '').trim();
+  if (!s || !Array.isArray(top) || top.length !== 1) return null;
+  const it = top[0].it;
+  if (!it) return null;
+  const cue = aiUpdateCue(s);
+  if (!cue) return null;
+  const p = parseSmart(s);
+  const say = (ops, confidence) => ({ ops: ops, confidence: confidence, source: 'local' });
+  if (/删掉|删了|删除/.test(s)) return say([{ kind: 'delete', ids: [it.id] }], 1);
+  if (/勾掉|勾上|打勾|标记完成|标记为完成/.test(s)) return say([{ kind: 'done', ids: [it.id], undo: false }], 1);
+  if (/挂到|加到|归到/.test(s)){
+    const m = s.match(/(?:挂到|加到|归到)\s*(.+?)\s*(?:下面|下边|里头|里面|里|中|下面了)/);
+    const name = m ? String(m[1]).trim() : '';
+    if (name){
+      const hits = S.items.filter(x => !isSeed(x) && x.id !== it.id
+        && (x.title === name || x.title.startsWith(name)) && !aiIsDescendant(x, it));
+      if (hits.length === 1) return say([{ kind: 'remount', id: it.id, parent: hits[0].id }], 0.9);
+    }
+    return null;
+  }
+  if (/改标题|改个标题|改名字|重命名/.test(s)){
+    const m = s.match(/(?:改标题|改个标题|改名字|重命名)\s*(?:为|成|叫)?\s*(.+)$/);
+    const t2 = m ? String(m[1]).trim() : '';
+    if (t2) return say([{ kind: 'retitle', id: it.id, title: t2 }], 0.9);
+    return null;
+  }
+  /* 改期：日期 / 钟点至少给一个。两个都没给（"推迟一天"这种相对位移）本地不算 —— 交给模型。
+     句子里出现了「点 / 时」却解不出钟点 → 也交给模型：宁可多问一次，也不把"下午三点"吃掉。 */
+  const date = (p && p.date) || '';
+  const time = (p && p.time) || aiCommandClock(s) || teParseTime(s) || '';
+  if (!time && /[点時时]/.test(s)) return null;
+  if (!date && !time) return null;
+  return say([{ kind: 'reschedule', id: it.id, date: date, time: time }], 1);
+}
+
+/* ---------- 3A.5 请求体：前缀逐字符固定（照 2A 的 AI_UNDERSTAND_SYS 写法） ---------- */
+/* ⚠️ 这两个常量**不许拼接任何变量** —— 变量全在最后那条 user 消息里。
+   DeepSeek 缓存命中输入单价是未命中的 1/50，前缀一变整个缓存失效。 */
+const AI_ROUTE_SCHEMA = '{"route":"create"}';
+const AI_ROUTE_SYS =
+  '你判断用户这句话是想**新建**一条待办，还是想**修改已有的**那条。只输出 JSON，不要解释、不要 markdown 围栏。\n'
+  + '输出形状固定为：' + AI_ROUTE_SCHEMA + '\n'
+  + '· route 只能是 "create" 或 "update" 两个值之一。\n'
+  + '· "create"：在说一件要新记下来的事（明天买西瓜、交实验报告、想想换工作）。\n'
+  + '· "update"：在改一件已经记下的事（把它改到后天、删掉那条、勾掉这个、挂到另一个下面）。\n'
+  + '· 拿不准一律 "create" —— 改错别人的数据比多记一条烦得多。';
+
+const AI_OPS_SCHEMA = '{"ops":[{"kind":"reschedule","id":"","date":"","time":"","title":"","zone":"","parent":"","ids":[],"undo":false}],"confidence":0.0}';
+const AI_OPS_SYS =
+  '你把用户随口说的一句话翻译成**对已有条目的一组操作**。只输出 JSON，不要解释文字、不要 markdown 围栏。\n'
+  + '输出形状固定为：' + AI_OPS_SCHEMA + '\n'
+  + 'kind 只能是下面 6 种之一，每种只填自己那几个字段，其余留空串或空数组：\n'
+  + '· reschedule 改期：id + date（YYYY-MM-DD）/ time（HH:MM），至少给一个\n'
+  + '· retitle    改标题：id + title（新的标题，不超过 60 字）\n'
+  + '· rezone     改分区：id + zone（long 长期 / short 短期 / idea 想法）\n'
+  + '· remount    换父级：id（要挪的那条）+ parent（挪到哪条的 id）\n'
+  + '· done       完成或取消完成：ids（数组）+ undo（false 表示勾上，true 表示取消勾选）\n'
+  + '· delete     删除：ids（数组）\n'
+  + '铁律：\n'
+  + '1) id / parent 只能从下面候选里**原样照抄**，绝对不许自己编一个 id。\n'
+  + '2) 挑不出该操作哪一条时，**这条操作就不要给**，不要猜。\n'
+  + '3) 只做用户明确说出口的改动。没说的一律不动。\n'
+  + '4) confidence 0~1，你对这组操作的把握。';
+/* 候选只发 top3（**不全量塞**）。今天日期必须给，否则"后天 / 下周三"会算错。
+   变量全在最后。 */
+function aiOpsUser(text, top){
+  const lines = ['今天是：' + ymd(new Date())];
+  lines.push('--- 只能从下面这几条里挑，id 必须原样照抄，不许自己编 ---');
+  if (!top.length) lines.push('（没有候选）');
+  top.forEach(c => {
+    const it = c.it || {};
+    const bits = ['id=' + it.id, '标题：' + String(it.title || '')];
+    if (it.date) bits.push('日期：' + it.date);
+    if (it.time) bits.push('钟点：' + it.time);
+    bits.push('分区：' + aiZoneLabel(it.zone));
+    if (it.done) bits.push('已完成');
+    lines.push('- ' + bits.join(' '));
+  });
+  lines.push('--- 候选结束 ---');
+  lines.push('我的原话：' + String(text || '').trim());
+  return lines.join('\n');
+}
+function aiZoneLabel(z){ return z === 'idea' ? '想法' : (z === 'short' ? '短期' : (z === 'long' ? '长期' : '未定')); }
+
+/* ---------- 3A.6 校验器（本卡的重点） ---------- */
+/* 逐条校验，**任一不过就作废那一条操作**（不是整个计划）——
+   模型给三条里有一条是编的 id，另外两条该照做。
+   `allowedIds` = 这次发给模型的候选 id 集合：**防模型编 id** 就靠它。 */
+function aiValidateOps(raw, allowedIds){
+  const allow = new Set(Array.isArray(allowedIds) ? allowedIds.map(String) : []);
+  const src = Array.isArray(raw) ? raw : [];
+  const out = [];
+  const live = id => !!id && S.items.some(i => i.id === id);
+  for (const r of src){
+    if (out.length >= AI_OPS_MAX) break;
+    if (!r || typeof r !== 'object' || Array.isArray(r)) continue;
+    const kind = String(r.kind == null ? '' : r.kind).trim();
+    if (AI_OPS_KINDS.indexOf(kind) < 0) continue;               // kind 白名单
+    if (kind === 'done' || kind === 'delete'){
+      const ids = [];
+      (Array.isArray(r.ids) ? r.ids : []).forEach(x => {
+        const id = String(x == null ? '' : x).trim();
+        if (id && allow.has(id) && live(id) && ids.indexOf(id) < 0) ids.push(id);
+      });
+      const undo = r.undo === true;
+      /* done：排掉"已经完成"的（重复勾选无意义）；undo 方向反过来，排掉没完成的。 */
+      const use = kind === 'done'
+        ? ids.filter(id => { const it = it_byId(id); return it && (undo ? it.done === true : !it.done); })
+        : ids;
+      if (!use.length) continue;
+      out.push({ kind: kind, ids: use, undo: kind === 'done' ? undo : false });
+      continue;
+    }
+    const id = String(r.id == null ? '' : r.id).trim();
+    if (!id || !allow.has(id) || !live(id)) continue;
+    const it = it_byId(id);
+    if (kind === 'reschedule'){
+      let date = typeof r.date === 'string' ? r.date.trim() : '';
+      let time = typeof r.time === 'string' ? r.time.trim() : '';
+      if (date && !aiValidDateStr(date)) date = '';             // `明天昨天` 这种直接丢字段
+      if (time && !aiValidTimeStr(time)) time = '';
+      if (!date && !time) continue;                             // 一个都没剩 → 这条作废
+      out.push({ kind: kind, id: id, date: date, time: time });
+    } else if (kind === 'retitle'){
+      const t2 = String(r.title == null ? '' : r.title).trim();
+      if (!t2 || t2.length > 60) continue;
+      out.push({ kind: kind, id: id, title: t2 });
+    } else if (kind === 'rezone'){
+      const z = String(r.zone == null ? '' : r.zone).trim();
+      if (z !== 'long' && z !== 'short' && z !== 'idea') continue;
+      out.push({ kind: kind, id: id, zone: z });
+    } else if (kind === 'remount'){
+      const pid = String(r.parent == null ? '' : r.parent).trim();
+      if (!pid || pid === id) continue;                         // 不能挂到自己
+      const to = it_byId(pid);
+      if (!to) continue;                                        // 目标必须在库
+      if (aiIsDescendant(to, it)) continue;                     // 不能挂到自己的后代（防环）
+      out.push({ kind: kind, id: id, parent: pid });
+    }
+  }
+  return out;
+}
+
+/* ---------- 3A.7 出网：把候选 + 原话交给模型，换回一组操作 ---------- */
+async function aiUnderstandOps(text, top){
+  const s = String(text || '').trim();
+  if (!aiOn()) return { ops: [], confidence: 0, reason: 'off' };         // 红线：关着零请求
+  const wait = aiGateWaitMs(s);                                          // 与 2A 共用同一个闸
+  if (wait < 0) return { ops: [], confidence: 0, reason: 'retry' };
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  aiGateNote(s);
+  let txt;
+  try { txt = await aiCall([{ role: 'system', content: AI_OPS_SYS }, { role: 'user', content: aiOpsUser(s, top) }], { json: true }); }
+  catch (e){ return { ops: [], confidence: 0, reason: 'network' }; }
+  let data = null;
+  try { data = aiParseJSON(txt); } catch (e){ return { ops: [], confidence: 0, reason: 'json' }; }
+  const ops = aiValidateOps(data && data.ops, top.map(c => c.id));
+  if (!ops.length) return { ops: [], confidence: 0, reason: 'invalid' };
+  const c = Number(data && data.confidence);
+  return { ops: ops, confidence: Number.isFinite(c) ? Math.max(0, Math.min(1, c)) : 0, reason: '' };
+}
+
+/* ---------- 3A.8 计划对象（「改前 → 改后」） ---------- */
+/* 只读，不改数据。3B 的确认页直接渲染它。 */
+function aiOpsPlan(ops){
+  const rows = [];
+  (Array.isArray(ops) ? ops : []).forEach(op => {
+    if (op.kind === 'delete' || op.kind === 'done'){
+      (op.ids || []).forEach(id => {
+        const x = it_byId(id);
+        if (!x) return;
+        const from = op.kind === 'delete' ? '在库里' : (x.done ? '已完成' : '未完成');
+        const to = op.kind === 'delete' ? '删除' : (op.undo ? '未完成' : '已完成');
+        rows.push({ kind: op.kind, id: id, title: x.title, undo: !!op.undo,
+          changes: [{ field: op.kind === 'delete' ? '整条' : '完成', from: from, to: to }] });
+      });
+      return;
+    }
+    const it = it_byId(op.id);
+    if (!it) return;
+    const ch = [];
+    if (op.kind === 'reschedule'){
+      if (op.date) ch.push({ field: '日期', from: it.date || '（没写）', to: op.date });
+      if (op.time) ch.push({ field: '钟点', from: it.time || '（没写）', to: op.time });
+    } else if (op.kind === 'retitle'){
+      ch.push({ field: '标题', from: it.title || '', to: op.title });
+    } else if (op.kind === 'rezone'){
+      ch.push({ field: '分区', from: aiZoneLabel(it.zone), to: aiZoneLabel(op.zone) });
+    } else if (op.kind === 'remount'){
+      const fromP = it.parent ? it_byId(it.parent) : null;
+      const toP = it_byId(op.parent);
+      ch.push({ field: '挂在', from: fromP ? fromP.title : '（顶层）', to: toP ? toP.title : '（顶层）' });
+    }
+    if (ch.length) rows.push({ kind: op.kind, id: it.id, title: it.title, changes: ch });
+  });
+  return rows;
+}
+/* 红线 ③：破坏性 / 批量必须先出计划、确认后才落库（确认页在 3B，本卡把计划产出好）。 */
+function aiOpsNeedConfirm(ops){
+  const list = Array.isArray(ops) ? ops : [];
+  if (!list.length) return { need: false, why: '' };
+  if (list.length >= 2) return { need: true, why: '批量' };
+  if (AI_OPS_DESTRUCTIVE.indexOf(list[0].kind) >= 0) return { need: true, why: '破坏性' };
+  return { need: false, why: '' };
+}
+
+/* ---------- 3A.9 原子执行 + 回滚 ---------- */
+/* 逐**字段**快照（不是整条浅拷）：整条浅拷只记住对象引用，字段改了照样一起变。 */
+function aiSnapField(map, it, key){
+  let rec = map.get(it.id);
+  if (!rec){ rec = { it: it, f: {}, removed: false, index: -1 }; map.set(it.id, rec); }
+  if (!Object.prototype.hasOwnProperty.call(rec.f, key)){
+    rec.f[key] = { had: Object.prototype.hasOwnProperty.call(it, key), v: it[key] };
+  }
+  return rec;
+}
+function aiRestoreSnap(map){
+  map.forEach(rec => {
+    if (rec.removed){                       // 被删掉的整条：按原下标插回去
+      if (S.items.indexOf(rec.it) < 0){
+        const at = Math.max(0, Math.min(rec.index, S.items.length));
+        S.items.splice(at, 0, rec.it);
+      }
+    }
+    Object.keys(rec.f).forEach(k => {
+      const o = rec.f[k];
+      if (o.had) rec.it[k] = o.v; else delete rec.it[k];
+    });
+  });
+}
+/* 分区切换的字段清理 —— 与 openItemEditor 保存分支、taskToSeed 保持**同一份口径**，
+   否则同一个动作两条路造出两种形状（一条还挂着待办父、一条没有）。 */
+function aiApplyZone(it, zone){
+  it.zone = zone;
+  if (zone === 'idea'){
+    it.kind = 'seed';
+    if (!Array.isArray(it.sparks)) it.sparks = [];
+    if (!Array.isArray(it.suggest)) it.suggest = [];
+    if (it.reviewedAt === undefined) it.reviewedAt = null;
+    if (it.aiUse === undefined) it.aiUse = null;
+    it.parent = null;
+    delete it.foldedByParent;
+  } else {
+    delete it.kind;
+    delete it.sparks; delete it.bornFrom; delete it.promoted;
+    delete it.foldedByParent;
+  }
+}
+/* 执行一组操作。返回 { ok, changed, snapshot }；snapshot 供 3B 的撤销用。
+   红线 ②：全部操作在一个 try 里跑，任一步抛异常 → **用快照整体还原**。 */
+function aiExecOps(ops, opts){
+  const list = Array.isArray(ops) ? ops : [];
+  const map = new Map();
+  const changed = [];
+  const o = opts || {};
+  try {
+    list.forEach(op => {
+      if (op.kind === 'delete'){
+        (op.ids || []).forEach(id => {
+          const it = it_byId(id);
+          if (!it) return;
+          const rec = aiSnapField(map, it, 'title');
+          rec.removed = true;
+          rec.index = S.items.indexOf(it);
+          S.items.splice(rec.index, 1);
+          changed.push(id);
+        });
+        return;
+      }
+      if (op.kind === 'done'){
+        (op.ids || []).forEach(id => {
+          const it = it_byId(id);
+          if (!it) return;
+          aiSnapField(map, it, 'done');
+          aiSnapField(map, it, 'doneAt');
+          it.done = !op.undo;
+          it.doneAt = it.done ? Date.now() : null;
+          if (it.done && it.hw && it.hw.status !== 'submitted'){
+            aiSnapField(map, it, 'hw');
+            it.hw = Object.assign({}, it.hw, { status: 'submitted', submittedAt: ymd(new Date()) });
+          }
+          changed.push(id);
+        });
+        return;
+      }
+      const it = it_byId(op.id);
+      if (!it) throw new Error('op target gone');
+      if (op.kind === 'reschedule'){
+        if (op.date){
+          aiSnapField(map, it, 'date');
+          aiSnapField(map, it, 'dateEnd');
+          aiSnapField(map, it, 'monthOnly');
+          it.date = op.date;
+          if (it.dateEnd && it.dateEnd < op.date) it.dateEnd = null;
+          it.monthOnly = false;
+        }
+        if (op.time){ aiSnapField(map, it, 'time'); it.time = op.time; }
+      } else if (op.kind === 'retitle'){
+        aiSnapField(map, it, 'title');
+        it.title = op.title;
+      } else if (op.kind === 'rezone'){
+        ['zone','kind','sparks','suggest','parent','foldedByParent','bornFrom','promoted','reviewedAt','aiUse']
+          .forEach(k => aiSnapField(map, it, k));
+        aiApplyZone(it, op.zone);
+      } else if (op.kind === 'remount'){
+        aiSnapField(map, it, 'parent');
+        it.parent = op.parent;
+      } else {
+        throw new Error('unknown kind');
+      }
+      changed.push(it.id);
+    });
+  } catch (e){
+    aiRestoreSnap(map);
+    return { ok: false, changed: [], snapshot: [] };
+  }
+  /* 落库 + 通知提醒层。凡碰了 date / time / done 的条目都要走这条路
+     （syncNotify 自己判"该排还是该撤"，唯一真相源没有被复制）。 */
+  const uniq = [...new Set(changed)];
+  uniq.forEach(id => { const it = it_byId(id); if (it) aiFocusSet(it.id); });
+  if (typeof save === 'function') save();
+  uniq.forEach(id => {
+    const it = it_byId(id);
+    if (it) notifyFire(it);
+    else notifyFire({ id: id });            // 已经删掉的：syncNotify 会判"不在库里"→ 只撤不排
+  });
+  if (o.refresh !== false && typeof refreshAfterChange === 'function') refreshAfterChange(0);
+  const snapshot = [];
+  map.forEach(rec => {
+    const f = {};
+    Object.keys(rec.f).forEach(k => { f[k] = { had: rec.f[k].had, v: rec.f[k].v }; });
+    snapshot.push({ id: rec.it.id, fields: f, removed: rec.removed, index: rec.index });
+  });
+  return { ok: true, changed: uniq, snapshot: snapshot };
+}
+
+/* ---------- 3A.10 总入口（内核） ---------- */
+/* 返回一份**完整可测**的结果对象：
+     { route, ops, plan, needConfirm, confirmWhy, confidence, source,
+       executed, ok, changed, snapshot, reason }
+   - needConfirm 为真时**一行数据都没动**（计划交给 3B 的确认页）；
+   - reason 非空 = 降级（route 仍是 'update'，ok 为 false）—— 调用方据此说"这条没改"。 */
+function aiOpsFail(reason, extra){
+  return Object.assign({ route: 'update', ops: [], plan: [], needConfirm: false, confirmWhy: '',
+    confidence: 0, source: '', executed: false, ok: false, changed: [], snapshot: [], reason: reason || '' },
+    extra || {});
+}
+async function aiRunCommand(text, opts){
+  const s = String(text == null ? '' : text).trim();
+  if (!s) return aiOpsFail('empty');
+  const route = await aiRouteIntent(s);
+  if (route !== 'update') return { route: 'create', ops: [], plan: [], needConfirm: false, confirmWhy: '',
+    confidence: 0, source: '', executed: false, ok: false, changed: [], snapshot: [], reason: 'create' };
+  const cands = aiRankCandidates(s);
+  if (!cands.length) return aiOpsFail('cand');            // 候选为空 → 什么都不做
+  const top = cands.slice(0, AI_TOP_N);
+  let res = aiLocalOps(s, top);
+  if (!res || !res.ops.length){ res = await aiUnderstandOps(s, top); }
+  if (!res.ops || !res.ops.length) return aiOpsFail(res.reason || 'invalid');
+  const plan = aiOpsPlan(res.ops);
+  if (!plan.length) return aiOpsFail('invalid');          // 计划渲染不出任何一条 → 等于没操作
+  const gate = aiOpsNeedConfirm(res.ops);
+  const base = { route: 'update', ops: res.ops, plan: plan,
+    needConfirm: gate.need, confirmWhy: gate.why,
+    confidence: Number(res.confidence) || 0, source: res.source || 'ai',
+    executed: false, ok: true, changed: [], snapshot: [], reason: '' };
+  /* ★ 决策 3 的后半句：追加类指令默认押焦点、不反问；只有"两条都在 5 分钟内被操作过"时反问一次。 */
+  if (!gate.need && aiFocusAmbiguous() && top.some(c => c.id === aiFocusId())
+      && ['reschedule', 'retitle', 'rezone'].indexOf(res.ops[0].kind) >= 0){
+    return Object.assign(base, { needConfirm: true, confirmWhy: '两条都在 5 分钟内动过' });
+  }
+  if (gate.need) return base;                              // 红线 ③：先出计划，不落库
+  const run = aiExecOps(res.ops, opts);
+  return Object.assign(base, { executed: true, ok: run.ok, changed: run.changed, snapshot: run.snapshot });
+}
+/* 播报分档 —— 与 2A 的 aiEntryReply 同一个形状，抽成纯函数才好单测。
+   降级（网络 / 超时 / JSON 坏 / 校验后无有效操作 / 候选为空）**必须说清"这条没改"**。 */
+function aiOpsReply(result){
+  const r = result || {};
+  if (r.route === 'create') return { via: 'create', msg: '' };
+  if (!r.ok){
+    const why = {
+      empty: '没听清',
+      cand: '没找到你说的是哪一条',
+      off: 'AI 关着',
+      retry: '这一句试过了',
+      network: 'AI 没接上',
+      json: 'AI 没答好',
+      invalid: 'AI 没答好'
+    }[r.reason] || 'AI 没接上';
+    return { via: 'aiFail', msg: 'AI 没接上，这条没改 · ' + why };
+  }
+  if (r.needConfirm){
+    return { via: 'aiSay', msg: '要动 ' + r.plan.length + ' 处，先给你看改前 → 改后'
+      + (r.confirmWhy ? '（' + r.confirmWhy + '）' : '') };
+  }
+  const n = (r.changed || []).length;
+  return { via: 'aiSay', msg: n ? ('改好了 ' + n + ' 条') : '什么都没改' };
+}
+/* 3B 直接调这个（内核 + 播报）。本卡只保证它可被调用，不做语音入口接线。 */
+async function aiCommand(text, opts){
+  const r = await aiRunCommand(text, opts);
+  const rep = aiOpsReply(r);
+  if (rep.via === 'aiFail') aiFail(rep.msg);
+  else if (rep.via === 'aiSay') aiSay(rep.msg);
+  return r;
+}
+
 /* ---------- 设置页 ---------- */
 
 /* 「外观与体感 → 页面说明文字」的总开关。
@@ -10645,6 +11291,10 @@ function remove(it, el){
      删除不该换页：refresh() 按 S.view 分派渲染，删完停在原来的页。 */
   const commit = () => {
     S.items.splice(idx, 1);
+    /* ★ 3A：删掉的正好是焦点条 → 焦点必须跟着消失（否则下一句"改成明天"会指向一条
+       已经不在库里的条目）。只动内存 + sessionStorage。 */
+    if (typeof aiFocusId === 'function' && typeof aiFocusClear === 'function'
+        && aiFocusId() === it.id) aiFocusClear();
     /* ★ 0A.1：删掉的可能是别人的父节点 → 立刻收口（悬空置 null、断环），
        不留到下次启动才自愈 —— 否则这一屏里就有条目挂在一个不存在的父上。 */
     sanitizeParents();
@@ -11529,6 +12179,8 @@ function teRead(){
 /* 编辑弹层：既有条目编辑（isNew=false）与"语音 / 快捷录入"新建（isNew=true）共用同一套。
    复用现有的 .mask/.modal/.sel/makeSel，焦点陷阱 / 滚动锁 / Escape 关闭都靠 openMask 那套，不新造。 */
 function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
+  /* ★ 3A 决策 3：打开详情也算一次"操作过它" → 更新焦点（内存 + sessionStorage，不进 S/备份）。 */
+  if (!isNew && it && it.id && typeof aiFocusSet === 'function') aiFocusSet(it.id);
   /* ★ v5.0：「考虑」并入想法，下拉里不再有它 */
   const zoneOpts = [['short','短期'], ['long','长期'], ['idea','想法']];
   const stOpts = [['todo','未开始'], ['doing','在做'], ['submitted','已交']];
@@ -12402,7 +13054,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.7.1';
+const APP_VERSION = '5.8.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
@@ -13157,6 +13809,10 @@ function goView(v, opts){
     return;
   }
   S.view = v;
+  /* ★ 3A 决策 3：切换视图时清除焦点 —— 焦点是"我刚才在跟哪一条打交道"，
+     换了页面这句话就不再成立。只清内存 + sessionStorage，不碰 S、不碰备份。
+     用 typeof 守卫：纯 Node 回归把 goView 整段切进隔离环境时没有焦点层。 */
+  if (typeof aiFocusClear === 'function') aiFocusClear();
   if (v !== 'idea'){ ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); ideaUI.sparkOpen = null; }
   if (v !== 'idea' || S.ideaLayout !== 'tree') setTreeFull(false);
   if (o.anim !== false) ANIM = true;
