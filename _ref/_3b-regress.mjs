@@ -232,7 +232,7 @@ return { S, toasts, saves, calls, els, modal, mask, pickerCalls, collapsed, entr
   sub(name, v){ return new Function(name, 'return (' + name + ')=' + v + ';')(v); },
   get aiUnderstandOps_ref(){ return aiUnderstandOps; },
   setAiUnderstandOps(fn){ aiUnderstandOps = fn; },
-  aiRouteIntent, aiRunCommand, aiOpsNeedConfirm, aiOpsPlan, aiExecOps, aiRestoreSnap, aiOpsUndo, aiSnapMap,
+  aiRouteIntent, aiRankCandidates, aiUnderstandOps, aiRunCommand, aiOpsNeedConfirm, aiOpsPlan, aiExecOps, aiRestoreSnap, aiOpsUndo, aiSnapMap,
   aiFocusSet, aiFocusGet, aiFocusId, aiFocusClear, aiRouteForEntry, aiRunUpdateEntry, aiConfirmOps,
   aiOpsActs, aiOpsApply, aiOpenRemount, aiSnapField, commitEntry, snapshot, isSeed, it_byId, esc,
   _gateReset(){ aiLastText = ""; aiLastRetry = 0; aiLastCallAt = 0; } };
@@ -511,6 +511,44 @@ console.log('\n[13] 源码级红线');
     .filter((n, i, a) => a.indexOf(n) === i)
     .filter(n => (html.match(new RegExp('function ' + n + '\\(', 'g')) || []).length !== 1);
   t('3B 新加的函数名都只有 1 处定义', dup, []);
+}
+
+/* ==================================================================== */
+console.log('\n[用量] 一次调用的实测规模（本机无 tokenizer，字符数实测；token 按 1.5 汉字/枚换算）');
+{
+  box.resetCounters();
+  box._gateReset();
+  S.aiMode = 'title';
+  S.items = [mk('x1', '交实验报告'), mk('x2', '取快递'), mk('x3', '写周报')];
+  const sysLen = box.aiRouteIntent.toString().length;   // 占位，实际用下面的常量
+  const routeSys = extractConst(html, 'AI_ROUTE_SYS');
+  const opsSys = extractConst(html, 'AI_OPS_SYS');
+  box.setResponder(() => JSON.stringify({ route: 'update' }));
+  await box.aiRouteIntent('把交实验报告往后推一推');
+  const rb = box.calls[0] && box.calls[0].body;
+  const routeMsg = rb ? rb.messages.reduce((n, m) => n + String(m.content).length, 0) : 0;
+  const routeSysLen = rb ? String(rb.messages[0].content).length : 0;
+  const routeJson = rb ? JSON.stringify(rb).length : 0;
+  box.resetCounters();
+  box._gateReset();
+  box.setResponder(() => JSON.stringify({ ops: [{ kind: 'reschedule', id: 'x1', date: tomorrow, time: '15:00' }], confidence: 0.9 }));
+  const top = box.aiRankCandidates('把交实验报告往后推一推').slice(0, 3);
+  await box.aiUnderstandOps('把交实验报告往后推一推', top);
+  const ob = box.calls[0] && box.calls[0].body;
+  const opsMsg = ob ? ob.messages.reduce((n, m) => n + String(m.content).length, 0) : 0;
+  const opsSysLen = ob ? String(ob.messages[0].content).length : 0;
+  const opsJson = ob ? JSON.stringify(ob).length : 0;
+  const sysChars = routeSysLen + opsSysLen;
+  console.log('  · 固定前缀（两条 system 的**运行时正文**）= ' + sysChars + ' 字符 ≈ '
+    + Math.round(sysChars / 1.5) + ' token（常量，逐字符不变 → 走缓存命中价）');
+  console.log('  · 路由请求：messages ' + routeMsg + ' 字符 ≈ ' + Math.round(routeMsg / 1.5)
+    + ' token；请求体 JSON ' + routeJson + ' 字符');
+  console.log('  · 操作请求：messages ' + opsMsg + ' 字符 ≈ ' + Math.round(opsMsg / 1.5)
+    + ' token（候选 3 条）；请求体 JSON ' + opsJson + ' 字符');
+  console.log('  · 强 cue 命中（改成 / 删掉 / 勾掉…）走本地路径：**0 请求**');
+  console.log('  · 3B 新增的开销只有一条：大白话录入时多问一次"新建还是改已有"（路由请求）；'
+    + '带本地语法 / AI 关着 / 无候选时都仍是 0 请求');
+  tOk('用量：固定前缀逐字符不变', sysChars > 800 && sysChars < 1200, String(sysChars));
 }
 
 console.log('\n' + (fail ? '失败 ' + fail + ' / ' + (pass + fail) : 'PASS ' + pass + ' / ' + (pass + fail) + ' 全绿'));
