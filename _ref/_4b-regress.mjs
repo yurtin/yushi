@@ -91,9 +91,12 @@ const FNS = ['aiKey', 'aiOn', 'aiCall', 'aiParseJSON', 'aiFail', 'aiSay',
   'aiValidDateStr', 'aiValidTimeStr', 'aiValidTag', 'aiValidateItems',
   'aiPlanPreset', 'aiImageUser', 'imgFitSide',
   'imageAsk', 'imageTodos', 'openImageConfirm', 'imageCommit', 'pickImage',
+  /* ★ 4D：确认页改成"每条可点开编辑"之后，openImageConfirm 内部改用这两个纯函数
+     渲染那行灰字（icRowBits）与写回字段（icApplyEdit）—— 沙箱里必须一起切进来。 */
+  'icRowBits', 'icApplyEdit', 'imageConfirmEdit',
   'it_byId', 'isSeed', 'snapshot', 'ymd', 'pad2',
   'dateFrom', 'today0', 'daysFromToday'];
-const LETS = ['aiLastCallAt', 'aiLastText', 'aiLastRetry'];
+const LETS = ['aiLastCallAt', 'aiLastText', 'aiLastRetry', 'icItems'];
 
 const body = CONSTS.map(n => extractConst(html, n)).join('\n') + '\n'
   + LETS.map(n => extractLet(html, n)).join('\n') + '\n'
@@ -146,7 +149,8 @@ const aiCommitPlan = (plan, raw) => {
 const els = {};
 const mkEl = () => ({ value: '', textContent: '', hidden: false, onclick: null,
   addEventListener(){}, click(){}, classList: { toggle(){}, add(){}, remove(){}, contains(){ return false; } } });
-const modal = { innerHTML: '', scrollTop: 0, querySelector: () => null, focus(){}, setAttribute(){}, removeAttribute(){} };
+const modal = { innerHTML: '', scrollTop: 0, querySelector: () => null, querySelectorAll: () => [],
+  focus(){}, setAttribute(){}, removeAttribute(){} };
 const mask = { classList: { contains: () => false, add(){}, remove(){}, toggle(){} } };
 const openMask = () => { openMaskCount++; };
 const closeModal = () => { closeModalCount++; };

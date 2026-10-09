@@ -1585,6 +1585,14 @@ body.has-focus #toast{top:calc(var(--focus-h) + 10px)}
    用 .cf-ch 同一套盒模型，所以视觉上与 3B 的确认页是同一族，不引入第二种长相。 */
 .cf-bits{color:var(--muted);font-size:12.5px;font-weight:600;word-break:break-word}
 .cf-row .cf-t:last-child{margin-bottom:0}
+/* ★ 4D：图片确认页的每条做成**可点按钮**（点开编辑）。基类 .cf-row 与 3B 的确认页共用，
+   所以"可点"这套盒模型只加在 .cf-row-go 上 —— 3B 那版行内布局一个字不动。 */
+.cf-row-go{display:flex;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;
+  color:inherit;cursor:pointer}
+.cf-row-go .cf-main{flex:1 1 auto;min-width:0}
+.cf-row-go .cf-t{display:block}
+.cf-row-go .cf-go{flex:0 0 auto;color:var(--faint);font-size:15px;line-height:1}
+.cf-row-go:active{opacity:.72}
 /* 「改挂到…」单独用时的占位壳：撑出与编辑页同量级的高度，面板才有地方铺（见 aiOpenRemount）。 */
 .cf-holder{height:min(420px,58vh)}
 @media (max-width:560px){
@@ -4064,14 +4072,49 @@ function parseSmart(input){
     }
   }
   // 时间点：下午5点 / 5点半 / 晚上
-  const tpat = /(凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|晚)?\s*(\d{1,2})\s*[点时](半|\d{1,2}\s*分)?\s*(之?[前后])?/;
-  const tm = text.match(tpat);
+  /* ★ 4D：现在也认**汉字数字钟点**（`九点五十一`）。
+     本机语音识别吐的是汉字数字，而这条正则原来只吃 \d，于是用户那句
+     「晚上九点五十一提醒我去看看书的」整句进了标题、time 为 null →
+     notifyTimeOf 默认 09:00 → 已过 → 不排期（真机事故，任务卡里那条链）。
+     照下面 4158「行首汉字数字日期」那一支的先例，用现成的 cnNum 转。
+     ⚠️ 歧义防护（宁可漏认，也不猜错 —— 猜错会把标题吃掉）：
+       · 前一字是「有差这那第」→ 那是"有一点累 / 第三点要说"，不是钟点，整条跳过；
+       · 裸「一」+ 前面还粘着一个汉字（"好一点 / 大一点 / 吃一点儿 / 明天一点"）→
+         汉语里这是个程度副词，不是钟点。有双字时段词的（下午一点）不受这条影响；
+       · 裸「晚」+「一点」= 稍后（"晚一点再说"），不是 13:00；
+       · 后面紧跟「儿/水/点」的（"一点儿""三点水旁""一点点"）也不是钟点；
+       · 小时/分钟转不出数字（cnNum 返回 null）→ 跳过，交给别的分支。
+     阿拉伯数字那条路**一个字符都没动**：tm 的取法从 match 换成 exec 循环，
+     但阿拉伯匹配第一发就命中并直接收下，行为逐字符不变。 */
+  const tpat = /(凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|晚(?!一点))?\s*(\d{1,2}|[一二两三四五六七八九十]{1,3})\s*[点时](半|\d{1,2}\s*分|[一二两三四五六七八九十]{1,3}\s*分?)?\s*(之?[前后])?/;
+  let tm = null;
+  {
+    const tRe = new RegExp(tpat.source, 'g');
+    let m;
+    while ((m = tRe.exec(text))){
+      const arabic = /^\d/.test(m[2] || '');
+      if (!arabic){
+        const pre = m.index > 0 ? text.charAt(m.index - 1) : '';
+        if (/[有差这那第]/.test(pre)) continue;
+        if (m[2] === '一' && !m[1] && /[\u4e00-\u9fa5]/.test(pre)) continue;
+        if (/^晚\s*一点/.test(m[0])) continue;
+        if (/[儿水点]/.test(text.charAt(m.index + m[0].length))) continue;
+        if (cnNum(m[2]) == null) continue;
+      }
+      const mraw = m[3] || '';
+      if (mraw && mraw !== '半'
+        && cnNum(String(mraw).replace(/\s*分\s*$/, '').replace(/\s+/g, '')) == null) continue;
+      tm = m; break;
+    }
+  }
   if (!tm){
     const bare = text.match(/(凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|晚)\s*$/);
     if (bare) text = text.slice(0, bare.index).trim();
   } else {
-    let hh = +tm[2];
-    const mm = tm[3] ? (tm[3] === '半' ? 30 : parseInt(tm[3])) : 0;
+    let hh = /^\d/.test(tm[2]) ? +tm[2] : cnNum(tm[2]);
+    const mstr = (tm[3] || '') === '半' ? '30'
+      : String(tm[3] || '').replace(/\s*分\s*$/, '').replace(/\s+/g, '');
+    const mm = mstr ? (/^\d+$/.test(mstr) ? +mstr : (cnNum(mstr) || 0)) : 0;
     const per = tm[1] || '';
     if (/下午|傍晚|晚上|晚/.test(per) && hh < 12) hh += 12;
     if (/凌晨/.test(per) && hh === 12) hh = 0;
@@ -8032,10 +8075,13 @@ function aiValidateItems(raw, fromText){
     if (x.date && x.dateEnd && x.dateEnd < x.date) x.dateEnd = null;   // endDate 不早于 date
     if (typeof r.time === 'string' && aiValidTimeStr(r.time.trim())) x.time = r.time.trim();
     /* ★ 2B：落点由模型判（用户 2026-10-08 定："让用户接入的 AI 模型去区分，应该归入
-       「长期待办」还是「想法」"）。只收 long / idea 两个值；**写了日期的一律不认 idea**
-       —— 有具体安排的事就是待办，不是念头（模型偶尔会把带日期的事也判成想法）。 */
+       「长期待办」还是「想法」"）。只收 long / idea 两个值；**带了日期或钟点的一律不认
+       idea** —— 有具体安排的事就是待办，不是念头（模型偶尔会把带日期的事也判成想法）。
+       ★ 4D：原来只挡 `x.date`，漏了 `time` —— 而 taskToSeed / 编辑器里"改成想法"会把
+       date/time/repeat 一起清掉，于是"只有钟点、没有日期"的句子一旦被判成想法，
+       钟点被清 → 永不提醒（一条静默失效的路）。补上 time，代价为零。 */
     if (r.zone === 'long' || r.zone === 'idea') x.zone = r.zone;
-    if (x.zone === 'idea' && x.date) x.zone = '';
+    if (x.zone === 'idea' && (x.date || x.time)) x.zone = '';
     /* ★ 2C：**事已定、只差细节** → 不许写 idea。
        「什么时候 / 哪天 / 几点 / 在哪 / 跟谁 / 怎么弄 / 该怎么办」表示这件事**要做了**，
        只是细节还没定 —— 那是待办（"想一想什么时候开个会" != 念头）。
@@ -9949,26 +9995,58 @@ async function imageAsk(dataUrl){
   openImageConfirm(items);
 }
 /* 确认页：住在现有的 #mask / .modal 里，复用 3B 的 .cf-* 样式，**不新造浮层**。
-   取消 = 零落库：取消 / Esc / 点遮罩三条路都只走 closeModal，一个字段都不碰。 */
+   取消 = 零落库：取消 / Esc / 点遮罩三条路都只走 closeModal，一个字段都不碰。
+   ★ 4D（用户点名要）：每一条现在**点得开** —— 点它开现有的编辑弹层改，
+   改完回到这一页，改的值写回这份 items；点「确认添加」才落库，落的是改后的值。 */
+/* 这一份就是确认页的数据源，也是"确认添加"要落库的那份 —— 所以它必须活在模块级：
+   编辑器打开时会把 .modal 的 DOM 整个换掉，闭包里的局部变量活不过那一下。 */
+let icItems = [];
+/* 一行灰字（日期 · 钟点 · 重要度 · 标签 · 挂在）—— 抽成纯函数，改完能单测它跟着变。 */
+function icRowBits(x){
+  const bits = [];
+  if (x.date) bits.push('日期 ' + x.date + (x.dateEnd ? '~' + x.dateEnd : ''));
+  if (x.time) bits.push('钟点 ' + x.time);
+  if (x.pri) bits.push(x.pri === 2 ? '紧急' : '重要');
+  if (x.tags && x.tags.length) bits.push(x.tags.join('/'));
+  if (x.parent) bits.push('挂在「' + x.parent + '」下');
+  return bits;
+}
+/* 编辑器保存回来的字段 → 写回确认页那一条。
+   **只写编辑器真正管得着、且落库真正会读的那几样**（aiPlanPreset 读的字段）：
+   title/date/dateEnd/time/pri/tags/zone。
+   刻意**不写 parent** —— 确认页那儿的 parent 是"标题"，编辑器里的是真 id，
+   两个口径不能混（编辑器那条「挂在…下面」在这条路上是关掉的）。 */
+function icApplyEdit(src, it){
+  if (!src || !it) return src;
+  src.title = String(it.title || src.title || '');
+  src.date = it.date || null;
+  src.dateEnd = it.dateEnd || null;
+  src.time = it.time || null;
+  src.pri = Number(it.pri) || 0;
+  src.tags = Array.isArray(it.tags) ? it.tags.slice() : [];
+  if (it.zone === 'idea' || it.zone === 'long' || it.zone === 'short') src.zone = it.zone;
+  return src;
+}
 function openImageConfirm(items){
   /* 「看图识别中…」那条提示要在这里收掉：确认页一出来它就没意义了，
      而且它会浮在弹层上方（#toast 的 z-index 比 .mask 还高）挡着标题。 */
   hideToast();
-  const list = Array.isArray(items) ? items : [];
-  const body = list.map(x => {
-    const bits = [];
-    if (x.date) bits.push('日期 ' + x.date + (x.dateEnd ? '~' + x.dateEnd : ''));
-    if (x.time) bits.push('钟点 ' + x.time);
-    if (x.pri) bits.push(x.pri === 2 ? '紧急' : '重要');
-    if (x.tags && x.tags.length) bits.push(x.tags.join('/'));
-    if (x.parent) bits.push('挂在「' + x.parent + '」下');
-    return '<div class="cf-row"><div class="cf-t">' + esc(x.title) + '</div>'
-      + (bits.length ? '<div class="cf-ch"><span class="cf-bits">' + esc(bits.join(' · ')) + '</span></div>' : '')
-      + '</div>';
+  if (Array.isArray(items)) icItems = items;
+  const list = icItems;
+  const body = list.map((x, i) => {
+    const bits = icRowBits(x);
+    /* 用真 <button>（不是给 div 挂 onclick）：键盘能 Tab 到、读屏会播"按钮"。
+       类名 .cf-row-go 只加"可点"这套盒模型 —— .cf-row 基类与 3B 的确认页共用，
+       不能动（那儿的行是普通列表，改成 flex 会散架）。 */
+    return '<button type="button" class="cf-row cf-row-go" data-i="' + i + '"'
+      + ' aria-label="编辑「' + esc(x.title) + '」">'
+      + '<span class="cf-main"><span class="cf-t">' + esc(x.title) + '</span>'
+      + (bits.length ? '<span class="cf-ch"><span class="cf-bits">' + esc(bits.join(' · ')) + '</span></span>' : '')
+      + '</span><span class="cf-go" aria-hidden="true">✎</span></button>';
   }).join('');
   modal.innerHTML =
     '<h3 id="modalTitle">图里认出了 ' + list.length + ' 条</h3>'
-    + '<p class="cf-sub">确认之前，一条都不会存。</p>'
+    + '<p class="cf-sub">确认之前，一条都不会存。<b>点一条可以改它。</b></p>'
     + '<div class="cf-list">' + body + '</div>'
     + '<div class="foot">'
     +   '<button type="button" class="btn" id="ic_cancel">取消</button>'
@@ -9976,10 +10054,42 @@ function openImageConfirm(items){
     +   '<button type="button" class="btn primary" id="ic_ok">确认添加</button>'
     + '</div>';
   openMask();
+  modal.querySelectorAll('.cf-row-go').forEach(b => {
+    b.onclick = () => imageConfirmEdit(+b.dataset.i);
+  });
   const no = document.getElementById('ic_cancel');
   const ok = document.getElementById('ic_ok');
   if (no) no.onclick = () => closeModal();
-  if (ok) ok.onclick = () => { closeModal(); imageCommit(items); };
+  if (ok) ok.onclick = () => { closeModal(); imageCommit(icItems); };
+}
+/* ★ 4D：点确认页的一条 → 借现有的 openItemEditor 改它（不新造编辑器）。
+   三个坑都在这里处理：
+    ① 编辑器住在**同一个 .modal** 里，打开会把确认页 DOM 整个换掉 → 所以数据在模块级
+       `icItems`，关掉编辑器后重建确认页（不是回到一片空白）。
+    ② 编辑器改的是**一份草稿副本**，只有点「改好了」才把字段写回 icItems ——
+       取消时那条一个字都不变（0B/3B 的老红线）。
+    ③ 确认页的「取消 / Esc / 点遮罩」走的是全局 closeModal，没法逐个改写 ——
+       用弹层自带的"关闭后回调"（setModalAfterClose）把确认页接回来，一处收口。
+       编辑器保存走的是我们给它的 opts.onSave：**不落库、不关弹层**，
+       直接重建确认页（这就是"改完回到确认页"）。 */
+function imageConfirmEdit(i){
+  const src = icItems[i];
+  if (!src) return;
+  const draft = Object.assign({}, src);
+  let done = false;
+  const back = () => {
+    if (done) return;
+    done = true;
+    setModalAfterClose(null);
+    openImageConfirm(icItems);
+  };
+  setModalAfterClose(back);
+  openItemEditor(draft, true, null, null, {
+    title: '改这一条',
+    okLabel: '改好了',
+    noParent: true,                       // 确认页的 parent 是"标题"，与编辑器的 id 口径不能混
+    onSave: it => { icApplyEdit(src, it); back(); }
+  });
 }
 /* 确认后落库。走 aiCommitPlan → addItem(text, preset) —— 落库的**唯一路径**
    （通知排期 / 标签上限 / 父子挂靠 / 作业字段都在 addItem 里，一条都不用另写）。
@@ -12759,6 +12869,14 @@ function teParseTime(str){
   let pm = null, am = null;
   if (/下午|晚上|傍晚|夜里/.test(s)) pm = true;
   if (/凌晨|早上|上午/.test(s)) am = true;
+  /* ★ 4D：汉字数字钟点（语音输入法吐的是汉字，手打「九点五十一」也是）。
+     这一步必须在「点→冒号」与剥非数字**之前** —— 否则 `九点五十一` 会被 [^\d:]
+     整段剥成 `:` 判成 null（改前实测就是 null）；`十一点半` 更糟：剥成 `:30`
+     编出 00:30。整段认不出的（如 `零`）原样留着交给后面的剥离逻辑（宁可漏认）。 */
+  s = s.replace(/[零一二两三四五六七八九十]+/g, w => {
+    const n = cnNum(w);
+    return n == null ? w : String(n);
+  });
   /* ★ 0F.1：「半」必须在「点→冒号」之后、剥非数字之前换掉。
      以前没有这一步时，`9点半` 走成 `9:半` → 被 [^\d:] 连"半"一起剥成 `9:` → 分钟取空 = 0，
      半小时被丢掉（现象：打 9点半 存成 09:00）。 */
@@ -13114,7 +13232,7 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
           <button type="button" class="btn ghost srcseed" id="m_srcseed" data-id="${esc(src.id)}">💡 ${esc(src.title)}</button></div>` : '';
       })()}
     </div>
-    <div class="field" id="m_parentfield"><label>挂在…下面</label>
+    <div class="field" id="m_parentfield"${(opts && opts.noParent) ? ' style="display:none"' : ''}><label>挂在…下面</label>
       <button type="button" class="btn ghost parentpick" id="m_parent">
         <span id="m_parenttxt"></span><span class="pp-chev" aria-hidden="true">›</span>
       </button>
@@ -13492,6 +13610,12 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
       it.hw.naming = document.getElementById('m_naming').value.trim();
       if (it.hw.status === 'submitted' && !it.hw.submittedAt) it.hw.submittedAt = ymd(new Date());
     } else it.hw = null;
+    /* ★ 4D：图片确认页借这个编辑器改一条草稿（它**不在** S.items 里）。
+       给了 opts.onSave 就把收尾交回调用方：不落库、不关弹层、不进 S.items、
+       不排提醒 —— 由调用方把改后的字段写回确认页那份。
+       放在所有字段都收集完之后、`if (isNew) S.items.push(it)` **之前**，
+       这样调用方拿到的是一份"和真实保存时一模一样"的字段集合。 */
+    if (opts && typeof opts.onSave === 'function'){ opts.onSave(it); return; }
     /* 新建：原文栏只读，所以 parseSmart 的结果（分区/标签/重要程度）在 openEditNew 里就已落成初值，
        这里不再重解析 —— 否则用户在弹层里手动改的分区/优先级会被原文静默盖掉。 */
     if (isNew) S.items.push(it);   // 新建：先入库存，再统一 save/refresh（编辑则本来就在库里）
@@ -14051,7 +14175,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.12.0';
+const APP_VERSION = '5.13.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：

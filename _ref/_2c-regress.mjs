@@ -299,8 +299,11 @@ console.log('\n[3] 源码级不变量：机制没动，只有措辞 + 一条窄�
     '{"items":[{"title":"","date":"","endDate":"","time":"","tags":[],"pri":0,"parent":"","note":"","zone":"","steps":[]}],"corrected":"","confidence":0.0}');
 
   /* ---- 3d. 既有两条门户一字不动 ---- */
-  tOk('★ 红线：带日期不认 idea 那一行**逐字符**还在',
-    val.indexOf("if (x.zone === 'idea' && x.date) x.zone = '';") >= 0, '');
+  /* ★ 4D 更新：任务卡 4D 的红线 3 把这一行从「只看 date」补成「也看 time」——
+     这是**有意改的代码**（"只有钟点没有日期"被判成想法时，钟点会被 taskToSeed 清掉 →
+     永不提醒）。所以断言跟着改成新原文，功能口径没变（带日期依然不认 idea）。 */
+  tOk('★ 红线：带日期（或钟点）不认 idea 那一行**逐字符**还在',
+    val.indexOf("if (x.zone === 'idea' && (x.date || x.time)) x.zone = '';") >= 0, '');
   tOk('★ 红线：steps 少于 2 当没有，判据没动',
     val.indexOf('x.steps = st.length >= 2 ? st : [];') >= 0, '');
   tOk('candidate 两值白名单没动（只收 long / idea）',

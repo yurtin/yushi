@@ -130,6 +130,10 @@ const NAMES = [
   /* 注意：只收页面侧新加的三个 —— 原生 Java 那批（exactAllowed / armAlarm / AlarmActivity…）
      不在这个脚本的覆盖范围里（它读的是 鱼事.html）。 */
   'notifyExact', 'notifyFullScreen', 'refreshNotifyExact',
+  /* ================= 4D 汉字钟点 + 图片确认页可编辑 ================= */
+  /* 钟点那两处（tpat / teParseTime）不是新函数；这里收的是确认页新加的三个。
+     icItems 是 let，不进清单（清单只数 function 声明）。 */
+  'icRowBits', 'icApplyEdit', 'imageConfirmEdit',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }
