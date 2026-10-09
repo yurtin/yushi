@@ -4047,8 +4047,8 @@ function parseSmart(input){
   if (!date){
     /* `(?:每)?` 是为了「每周三 开会」：星期分支只认「周三」，会把「每」剩在标题里，
        变成标题「每 开会」。这里顺手把前缀的「每」一起吃掉。
-       注意这**不会**把它变成循环任务 —— 循环的模型是"每 N 天"，表达不了"每周三"，
-       所以「每周三」目前仍是"最近的那个周三"。要做真·按周的循环得另加一套锚点。 */
+       （4A 起这里已经能产出 `repeatKind:'week'`，见解析层上方那段 —— 「每周三」现在
+       真的会变成按周的循环，不再是"最近的那个周三"。） */
     const wm = text.match(/(?:每)?(本周|这周|这个|下?周|星期|礼拜)([一二三四五六日天])\s*(之前|以前|前)?/);
     if (wm){
       const target = WEEK[wm[2]], base = today0();
@@ -8341,6 +8341,12 @@ function aiBigrams(s){
 /* 打分权重按**用户亲自定的优先级**排（关键词重合 > 时间近 > 同视图 > 焦点 > 同标签）：
    二元组一次 1000 分，时间最多 900 分 —— 保证"一个字面上重合的旧条目"永远压得住
    "三天前新加但一个字都不沾的条目"。 */
+/* ★ 3C：门槛与「同视图」加分分家。
+   原来两处都写 300，而判据是 `score < 300` 才丢 → 只要一条在你当前看的这一屏里、
+   还没做完，它就自带 300 分、恰好**不**被丢 → 列表里每条未完成条目都是候选
+   （见 aiRankCandidates 里那段注释）。现在明确成两个常量，含义不再碰巧相等。 */
+const AI_CAND_MIN = 300;      // 候选门槛：**去掉「同视图」之后**仍要达到这么多分
+const AI_VIEW_BONUS = 300;    // 「同视图」加分：只做"同分排序辅助"，不参与"够不够格"
 function aiScoreCandidate(it, text, now, focusId, appendHit){
   if (!it || !it.id) return null;
   const t = String(text || '');
@@ -8364,7 +8370,8 @@ function aiScoreCandidate(it, text, now, focusId, appendHit){
     timeScore = Math.max(0, 600 - age * 20);
   }
   score += timeScore;
-  if ((S.view === 'idea') === isSeed(it)){ score += 300; why.push('同视图'); }
+  let viewBonus = 0;
+  if ((S.view === 'idea') === isSeed(it)){ viewBonus = AI_VIEW_BONUS; score += viewBonus; why.push('同视图'); }
   if (focusId && it.id === focusId){
     /* 追加类指令默认押在焦点条上 —— 加一个压倒性权重，等价于"默认押、不反问"。 */
     score += appendHit ? 20000 : 200;
@@ -8373,7 +8380,7 @@ function aiScoreCandidate(it, text, now, focusId, appendHit){
   const tags = Array.isArray(it.tags) ? it.tags : [];
   if (tags.length && Array.isArray(S.filterTags) && S.filterTags.length
       && tags.some(x => S.filterTags.indexOf(x) >= 0)){ score += 100; why.push('同标签'); }
-  return { it: it, id: it.id, title: title, score: score, kw: hit, why: why };
+  return { it: it, id: it.id, title: title, score: score, kw: hit, why: why, view: viewBonus };
 }
 /* 排序后的候选。**一票否决**：未完成的优先 —— 已完成的一律排除，
    除非这句明确是"取消勾选"（见 aiCancelCue）。 */
@@ -8389,9 +8396,16 @@ function aiRankCandidates(text){
     if (it.done && !cancel) return;
     const s = aiScoreCandidate(it, t, now, focus ? focus.id : null, appendHit);
     if (!s) return;
-    /* 完全沾不上关系的条目不进候选：字面上零重合、又既不新也无日期（score < 300）
-       —— 把它们塞进 top3 只会误导模型。 */
-    if (!s.kw && s.score < 300) return;
+    /* 完全沾不上关系的条目不进候选 —— ★ 3C：判据里**把「同视图」那 300 分剔掉**。
+       它只是"和你现在看的这一屏一致"这种环境信号，最多给已经够格的条目做同分排序；
+       一算进去，门槛就恰好等于它 → 列表里每条未完成条目都进候选，`aiLocalOps` 那个
+       "只有一条候选才本地直判"的置信门控就永远不成立（遥控器因此基本用不了）。
+       剔掉之后仍要够 AI_CAND_MIN，也就是下面**至少占一条**：
+         · 有字面重合（二元组 1000/次）或整名命中（+2000）—— 你说的那句里出现了它的字；
+         · 时间分 ≥ 300 —— 有日期的离今天 ≤20 天，没日期的按"最近 15 天内建的"算；
+         · 焦点（+200，带追加词时 +20000）或同标签（+100）把它顶上去。
+       "一个字都不沾、又不是刚记的、也没个近期的日子"才丢 —— 这才对应原注释的本意。 */
+    if (!s.kw && s.score - s.view < AI_CAND_MIN) return;
     out.push(s);
   });
   out.sort((a, b) => (b.score - a.score) || String(a.title).localeCompare(String(b.title)));
@@ -13717,7 +13731,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.10.0';
+const APP_VERSION = '5.10.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
