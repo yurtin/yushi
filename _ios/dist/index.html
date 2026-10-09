@@ -7864,9 +7864,14 @@ const AI_UNDERSTAND_SYS =
   + '· pri 0 普通 / 1 重要 / 2 紧急\n'
   + '· parent 这一条要挂到**同一次回答里另一条**下面时，填那一条的 title；否则空串\n'
   + '· note 补充说明，没有就空串\n'
-  + '· zone 只管**没写日期**的那一条：写 "idea" 表示它其实只是个念头（想做的事、还没定的打算），'
-  + '写 "long" 表示它是一件要认真做的长期事（有明确交代、必须完成的）。'
-  + '写了日期的一律空串；拿不准也空串。这两个词只能二选一，别自创。\n'
+  + '· zone 只管**没写日期**的那一条，两个值**互不重叠**：'
+  + '写 "idea" = **现在还没法动手**的事，还在纠结"要不要做"、方向都没定的念头'
+  + '（该不该换工作、要不要学个乐器这类）；'
+  + '写 "long" = **已经确定要做、只是还没排日期**的事（开个会、交材料、给谁回个电话）。'
+  + '判据：这句话里只要有一个**能直接去做的动作**（开会 / 买 / 写 / 交 / 打 / 发 / 约 / 找 / 问 / 准备 / 整理…），'
+  + '它就是待办，**不许**写 "idea"。'
+  + '写了日期的一律空串；拿不准**一律当待办**（写空串），别去猜"他是不是只是想想"。'
+  + '这两个词只能二选一，别自创。\n'
   + '· steps 子想法：**只有这件事明显能拆成两个及以上步骤时才给**，每项一句话、不超过 30 字。'
   + '一个动作就能做完的事（交房租、喝酸奶、买个生日礼物）一律写空数组 —— '
   + '宁可少给，也不要硬把一句话拆成几步。\n'
@@ -7949,9 +7954,12 @@ function aiValidTimeStr(s){
 function aiValidTag(s){
   return /^[\u4e00-\u9fa5A-Za-z0-9_]{1,12}$/.test(s);
 }
-function aiValidateItems(raw){
+function aiValidateItems(raw, fromText){
   const out = [];
   const src = Array.isArray(raw) ? raw : [];
+  /* ★ 2C：这一句的**原话**（图片入口没有原话，传空串即可）——
+     下面那条"事已定、只差细节"的护栏要用它。 */
+  const cue = String(fromText == null ? '' : fromText);
   /* 只扫前 4×上限 条（防模型话痨把我们拖死），但**上限卡在产出上** ——
      脏条目不占名额：前 8 条全是废的，第 9 条好的也该收下。 */
   const scan = src.slice(0, AI_UNDERSTAND_MAX * 4);
@@ -7973,6 +7981,12 @@ function aiValidateItems(raw){
        —— 有具体安排的事就是待办，不是念头（模型偶尔会把带日期的事也判成想法）。 */
     if (r.zone === 'long' || r.zone === 'idea') x.zone = r.zone;
     if (x.zone === 'idea' && x.date) x.zone = '';
+    /* ★ 2C：**事已定、只差细节** → 不许写 idea。
+       「什么时候 / 哪天 / 几点 / 在哪 / 跟谁 / 怎么弄 / 该怎么办」表示这件事**要做了**，
+       只是细节还没定 —— 那是待办（"想一想什么时候开个会" != 念头）。
+       ⚠️ **「要不要 / 该不该 / 值不值得」不在名单里，也绝不能加**：那才是真的"还没定要不要做"，
+       正是 idea 该管的。所以这里是白名单式列举，不是"带疑问词就否掉"。 */
+    if (x.zone === 'idea' && /什么时候|哪天|几点|在哪|跟谁|怎么弄|该怎么办/.test(cue)) x.zone = '';
     /* ★ 2B：子想法。**少于 2 步一律当没有** —— 用户的原话是"只有那种明显的可以拆成
        多个步骤，两个及以上步骤的，再把它录入子想法"。1 步不叫"能拆开"。 */
     if (Array.isArray(r.steps)){
@@ -8028,7 +8042,7 @@ async function aiUnderstand(text){
   /* ⑤ 坏 JSON / 校验后为空 → 一样退回本地。**绝不编一条内容出来。** */
   let data = null;
   try { data = aiParseJSON(txt); } catch (e){ return Object.assign(local, { reason: 'json' }); }
-  const items = aiDropEcho(aiValidateItems(data && data.items), raw, aiContextTitles());
+  const items = aiDropEcho(aiValidateItems(data && data.items, raw), raw, aiContextTitles());
   if (!items.length) return Object.assign(local, { reason: 'invalid' });
   /* ⑥ 纠错层：只回传"我听到的是"，**不在这里改用户的数据** ——
      与原句不同时留给 2B 展示确认。不许改语义、不许增删信息。 */
@@ -13963,7 +13977,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.11.0';
+const APP_VERSION = '5.11.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
