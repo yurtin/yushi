@@ -45,6 +45,10 @@
   --bar-rim-lo:rgba(0,0,0,.30);
   --bar-cast:rgba(0,0,0,.22);
   --ok:#2f8f5b; --danger:#c8443c; --accent:#2f6fed;
+  /* ★ 3B：焦点条的高度基准（安全区 + 32px）。焦点条是 fixed 的，这同时也是"让位"的
+     基准 —— .capture-wrap 吸顶的 top 与 .page-shell 的顶部内边距都读它，
+     所以"条有多高"只有这一处真相源，改高度不用去追三处硬编码。与主题无关，故只写在 :root。 */
+  --focus-h:calc(max(env(safe-area-inset-top),var(--sat,12px)) + 32px);
   /* 键盘焦点环。刻意**不用** --accent：那个蓝是整个界面里最鲜艳的一笔，
      拿它描一圈 2px 在米白的卡片上非常跳。焦点环要的是"看得见"而不是"抢戏"，
      所以用中性灰 —— 和全站的描边/文字同一套灰阶，键盘用户一样能找到位置。 */
@@ -1479,6 +1483,78 @@ html.soft-render .mask .modal{
 #toast.at-top{bottom:auto;top:calc(var(--sat,12px) + 10px);transform:translateX(-50%) translateY(-20px)}
 #toast.at-top.on{transform:translateX(-50%) translateY(0)}
 #toast button{border:0;background:transparent;color:var(--accent);font:inherit;font-weight:800;cursor:pointer;white-space:nowrap}
+
+/* ---------- ★ 3B 焦点条（「正在改：XXX」）与卡片高亮 ----------
+   用户原话的理由："状态不可见，用户就会当成 bug 报"。所以遥控器的焦点必须有**两处**可见：
+   卡片左侧一道细高亮（跟着这一条走）+ 屏幕顶部一行「正在改：XXX」（永远看得见）。
+   三条硬门槛都在这里兑现：
+    ① 实底：焦点条 background:var(--bg)、高亮用 --accent 实色，**都不用 backdrop-filter**
+       （禁用 blur 的环境里半透明会整条透出下层文字）；
+    ② 不新增层叠上下文：焦点条是 body 的**直接子元素**（不在 .page-shell / #view 里），
+       所以不会被 .pdaim-section{z-index:2} 那种内部层序困住（本项目踩过：容器内再高的
+       z-index 也压不过容器外的兄弟）；
+    ③ z-index 64 < .mask(90) < #toast(130) —— 焦点条永不盖住弹层与提示。
+   高度基准 --focus-h 同时给"让位"用：它是 fixed 的，不腾出空间就会盖住录入条与首屏第一行
+   （--focus-h 的声明在文件头的 :root 里，与主题无关，不重复声明）。 */
+.focus-strip{
+  position:fixed;left:0;right:0;top:0;z-index:64;
+  display:none;align-items:center;gap:8px;
+  padding:calc(max(env(safe-area-inset-top),var(--sat,12px)) + 6px) 14px 6px;
+  background:var(--bg);border-bottom:1px solid var(--line);
+  font-size:12px;font-weight:700;color:var(--fg);
+}
+/* 用 [hidden] 而不是类名收放 —— 但 display:flex 会盖掉浏览器默认的 [hidden]{display:none}
+   （本项目的老坑，见 .notify-perm）。这条 :not([hidden]) 写法天然绕开它：不显示就没有 display。 */
+.focus-strip:not([hidden]){display:flex}
+.focus-strip .fs-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:var(--accent)}
+.focus-strip .fs-txt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.focus-strip .fs-txt b{font-weight:900}
+.focus-strip .fs-x{margin-left:auto;flex:0 0 auto;border:0;background:transparent;color:var(--muted);
+  font:inherit;font-size:13px;font-weight:900;cursor:pointer;padding:2px 7px;border-radius:8px}
+.focus-strip .fs-x:active{background:var(--tap)}
+/* 让位：录入条吸顶的基准从 0 挪到焦点条下沿，页面顶部内边距多留一条条的高度。 */
+body.has-focus .capture-wrap{top:var(--focus-h)}
+body.has-focus .page-shell{padding-top:calc(var(--focus-h) + 10px)}
+/* 提示在窄屏也是贴顶的（v3.32），跟焦点条抢同一块 —— 有焦点时把提示挪到焦点条**下面**，
+   两行都看得见（实测：不挪的话 400px 宽下提示整条盖住焦点条）。
+   用 body 类提权重，压过 @media 里那条 #toast{top:…}（权重高，不靠书写顺序）。 */
+body.has-focus #toast{top:calc(var(--focus-h) + 10px)}
+/* 聚焦卡片：左侧一道**实色**细高亮。
+   做成**真元素**而不是 ::before —— ::before 既没有 getBoundingClientRect()、
+   也不能被 elementFromPoint 命中，"焦点看不看得见"就没有可测的接缝
+   （本卡的验收 9 要的正是这两样）。`.item` 本来就是 position:relative，
+   所以 absolute 一挂就出流、不参与 flex 布局（不会把标题挤歪）。
+   颜色用 --accent 实色，不写透明度、不靠 backdrop-filter。 */
+.item .focus-bar,
+.idea-card .focus-bar{
+  position:absolute;left:-8px;top:5px;bottom:5px;width:3px;border-radius:2px;
+  background:var(--accent);display:block
+}
+@media (hover:none){
+  /* 手机上卡片左右各让 18px（.zone 的内边距），细高亮贴 -8px 会紧贴屏边 —— 收进来一点。 */
+  .item .focus-bar,.idea-card .focus-bar{left:-4px}
+}
+
+/* ★ 3B 确认页（「改前 → 改后」）。它住在 .mask / .modal 里，所以**不需要**自己的底色 ——
+   `.mask .modal` 已经是实底 var(--bg)（见那条规则里的注释），浮层硬门槛天然满足。 */
+.cf-sub{margin:0 0 18px;color:var(--muted);font-size:13px;line-height:1.7;font-weight:600}
+.cf-sub b{color:var(--fg)}
+.cf-list{display:flex;flex-direction:column;gap:12px}
+.cf-row{border:1px solid var(--line);border-radius:16px;padding:12px 14px;background:var(--pill)}
+.cf-t{font-weight:800;font-size:14.5px;margin-bottom:8px;word-break:break-word}
+.cf-ch{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:13px;line-height:1.6}
+.cf-ch + .cf-ch{margin-top:4px}
+.cf-f{flex:0 0 auto;color:var(--faint);font-size:11px;font-weight:800;letter-spacing:.12em;
+  min-width:2.6em}
+.cf-from{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line2);
+  word-break:break-word}
+.cf-ar{flex:0 0 auto;color:var(--faint)}
+.cf-to{color:var(--fg);font-weight:800;word-break:break-word}
+/* 「改挂到…」单独用时的占位壳：撑出与编辑页同量级的高度，面板才有地方铺（见 aiOpenRemount）。 */
+.cf-holder{height:min(420px,58vh)}
+@media (max-width:560px){
+  .cf-holder{height:min(360px,52vh)}
+}
 
 /* ---------- 页脚（原站 .pdaim-footer） ----------
    ★ 0F.3：全文件**只有这一处**顶层定义（原先底部内边距还另有一条 .pdaim-footer 覆盖规则，
@@ -3550,6 +3626,16 @@ html.tree-full .merge-bar{z-index:85}
 <div class="sr-only" id="vlive" aria-live="polite"></div>
 <div class="glass" id="toast"></div>
 
+<!-- ★ 3B：焦点条（「正在改：XXX」）。用户原话："状态不可见，用户就会当成 bug 报"。
+     放在 DOM 最末（浮层一律贴最外层容器末尾）—— z-index 64 < .mask(90) < #toast(130)，
+     永远压不过弹层与提示。实底 var(--bg)、不靠 backdrop-filter：禁用 blur 的环境
+     （headless 截图 / DSH 预览 iframe / 软件渲染）里半透明底会整条透出下层文字。 -->
+<div class="focus-strip" id="focusStrip" hidden>
+  <span class="fs-dot" aria-hidden="true"></span>
+  <span class="fs-txt">正在改：<b id="focusTitle"></b></span>
+  <button type="button" class="fs-x" id="focusClear" aria-label="取消指向，下一句话重新挑一条">✕</button>
+</div>
+
 <script>
 /* =========================================================================
    鱼事 · 纯前端单文件
@@ -4780,7 +4866,9 @@ function seedHTML(it, info){
   const cls = 'item seed' + (it.done ? ' done' : '') + (sleeping ? ' sleep' : '')
     + (pri ? ' pri' + pri : '')
     + (it.id === justAdded.id && Date.now() - justAdded.t < 1200 ? ' just-added' : '')
-    + (it.id === aiSwapped.id && Date.now() - aiSwapped.t < 1600 ? ' ai-swapped' : '');
+    + (it.id === aiSwapped.id && Date.now() - aiSwapped.t < 1600 ? ' ai-swapped' : '')
+    /* ★ 3B：焦点落在想法上时卡片同样要有高亮（遥控器不只对着待办） */
+    + (aiIsFocused(it.id) ? ' ai-focus' : '');
   /* 时间轴：一条竖脊 + 每步一个点。第一步是"种子本身"（记进来的那天），
      后面的都是它长出来的。日期用 createdAt 兜底 —— 老数据没有 at 也不会露出空标签。 */
   const first = it.createdAt ? ymd(new Date(it.createdAt)) : '';
@@ -4826,6 +4914,7 @@ function seedHTML(it, info){
     ? `<div class="lead"><button type="button" class="pick${ideaUI.mergeSel.has(it.id) ? ' on' : ''}" data-act="pick" data-id="${esc(it.id)}" role="checkbox" aria-checked="${ideaUI.mergeSel.has(it.id) ? 'true' : 'false'}" title="选中以合并">✓</button></div>`
     : '';
   return `<div class="${cls}" data-id="${esc(it.id)}" data-fk="i:${esc(it.id)}" data-u="0">
+    ${aiFocusBarHTML(it.id)}
     ${lead}
     <div class="body">
       ${spine}
@@ -4866,7 +4955,10 @@ function itemHTML(it, kidsHTML, goalInfo, extraHTML, noDel){
   const cls = 'item' + (it.done ? ' done' : '') + (overdue ? ' overdue' : '') + (stale ? ' stale' : '')
     + (pri ? ' pri' + pri : '') + (goalInfo ? ' goal' : '')
     + (it.id === justAdded.id && Date.now() - justAdded.t < 1200 ? ' just-added' : '')
-    + (it.id === aiSwapped.id && Date.now() - aiSwapped.t < 1600 ? ' ai-swapped' : '');
+    + (it.id === aiSwapped.id && Date.now() - aiSwapped.t < 1600 ? ' ai-swapped' : '')
+    /* ★ 3B：焦点条指向的那一条，卡片左侧亮一道实色细高亮（真元素，CSS 见 .focus-bar）。
+       同一个 id 走 sessionStorage 的焦点，与顶部条同源 —— 两处不会各说各话。 */
+    + (aiIsFocused(it.id) ? ' ai-focus' : '');
   const lvl = urgencyLevel(it);
   /* ★ v3.36（用户："分区和时间轴页面里都有那个点…这些点也作为一个固定元素，
      让它们在视图切换时跟随那个文字，到自己对应的位置，不要直接消失和出现"）：
@@ -4874,6 +4966,7 @@ function itemHTML(it, kidsHTML, goalInfo, extraHTML, noDel){
      渲染出来的，同一颗点在两边都拿同一个键 → 切视图时它跟着自己那行文字搬过去，
      而不是"这边消失、那边出现"。 */
   return `<div class="${cls}" data-id="${esc(it.id)}" data-fk="i:${esc(it.id)}" data-u="${lvl}">
+    ${aiFocusBarHTML(it.id)}
     <div class="lead">
       <span class="udot u${lvl}" data-fk="u:${esc(it.id)}" title="紧急度：${URG_TXT[lvl]}"></span>
       <button class="tick" data-act="tick" title="完成">✓</button>
@@ -8513,7 +8606,10 @@ function aiExecOps(ops, opts){
   map.forEach(rec => {
     const f = {};
     Object.keys(rec.f).forEach(k => { f[k] = { had: rec.f[k].had, v: rec.f[k].v }; });
-    snapshot.push({ id: rec.it.id, fields: f, removed: rec.removed, index: rec.index });
+    /* ★ 3B：多带一个**原对象引用** —— `removed`（整条被删）的条目已经从 S.items 里
+       摘掉了，只留 id 是找不回来的，"撤销删除"会变成空操作。aiRestoreSnap 本来就用
+       rec.it，这里只是让快照也拿得到同一样东西。 */
+    snapshot.push({ id: rec.it.id, fields: f, removed: rec.removed, index: rec.index, obj: rec.it });
   });
   return { ok: true, changed: uniq, snapshot: snapshot };
 }
@@ -9185,6 +9281,246 @@ function renderEntryTags(){
   restoreStripScroll(document.getElementById('entryStrip'));
 }
 
+/* ==================== ★ 3B：把 3A 的内核接到界面上（让遥控器真的能用） ====================
+   3A 把「指向与执行内核」做完了（aiRouteIntent / 候选打分 / aiOpsPlan / aiOpsNeedConfirm /
+   aiSnapField / aiRestoreSnap），但它当时是一个**纯内核、没有任何入口调用它** ——
+   装了 5.8.0 的用户感受不到任何变化。这一块补四件事：
+
+     ① 接线：录入（回车 / 语音左滑）与语音右滑，都先问一句"这句是新建还是改已有"；
+     ② 焦点可见：卡片左侧一道**实色**细高亮 + 屏幕顶部一行「正在改：XXX」；
+     ③ 「改前 → 改后」确认页（破坏性 / 批量）—— 就住在现有的 #mask / .modal 里；
+     ④ 撤销（接 3A 的 aiRestoreSnap）与「改挂到…」出口。
+
+   四条本卡红线（改这块之前先读）：
+     ① **确认页出来之前一行数据都不许动** —— 由 aiOpsNeedConfirm + aiRunCommand 保证，
+        这里只负责"不抢在它前面落库"（真凶是 2B 的预落库，处理见 commitEntry 开头）；
+     ② **取消 = 数据逐字段零变化** —— 取消路径只调 closeModal()，一个字段都不碰；
+     ③ AI 消息一律走 aiSay() / aiFail()（toast 有"带按钮的提示不被顶掉"的保护，裸 toast 没有）；
+     ④ **更新路径不预落库** —— 与 2B 两段式上屏的冲突在 commitEntry 开头显式处理。
+
+   位置说明：这一块**不在** _3a-regress 切出来的那个 block3a 里（那段切到
+   `/* ---------- 设置页` 为止），所以不必受 3A 那几条源码级断言约束；但**仍然**不新增
+   notifyTimeOf / b.notifySchedule( 的调用点 —— 阶段1 有源码级断言钉"排期真相源只有一处"，
+   撤销要重排提醒时走的是转发口 notifyFire。 */
+
+/* ---------- 3B.1 焦点：一处读取，两处呈现 ---------- */
+/* 当前焦点那条。已超时 / 已删掉 / 已完成都算"没有焦点" —— 顶部条写着「正在改：XXX」
+   而那条已经勾掉了，读起来本身就是个 bug。 */
+function aiFocusItem(){
+  const id = (typeof aiFocusId === 'function') ? aiFocusId() : null;
+  const it = id ? it_byId(id) : null;
+  return (it && !it.done) ? it : null;
+}
+/* 渲染层（itemHTML / seedHTML）用的判断。**用 typeof 守一道** —— 0B/0E 的纯 Node 回归
+   把 renderZoneBody 整段切进隔离环境跑，那里没有 3A 内核；未声明的标识符只有放在
+   typeof 里才不抛（本项目既有的"转发口"写法，见 notifyFire）。 */
+function aiIsFocused(id){
+  if (!id || typeof aiFocusId !== 'function') return false;
+  const f = aiFocusId();
+  return !!f && f === id;
+}
+/* 卡片上那段高亮的 HTML（真元素，不是 ::before —— 理由见 CSS 里 .focus-bar 那段）。
+   itemHTML / seedHTML 共用这一处，两边的呈现不会各说各话。 */
+function aiFocusBarHTML(id){
+  return aiIsFocused(id) ? '<span class="focus-bar" aria-hidden="true"></span>' : '';
+}
+/* 顶部那条「正在改：XXX」。在 afterRender() 里每帧同步一次 —— 渲染出口只留一处，
+   换页 / 改数据 / 清焦点都会自动跟上，不需要散到各个调用点去自觉。 */
+function syncFocusStrip(){
+  const el = document.getElementById('focusStrip');
+  if (!el) return;
+  const it = aiFocusItem();
+  el.hidden = !it;
+  document.body.classList.toggle('has-focus', !!it);
+  if (!it) return;
+  const t = document.getElementById('focusTitle');
+  if (t) t.textContent = String(it.title || '').slice(0, 40);
+}
+document.getElementById('focusClear').addEventListener('click', () => {
+  if (typeof aiFocusClear === 'function') aiFocusClear();
+  refresh();
+});
+
+/* ---------- 3B.2 路由：这句话是"新建"还是"改已有" ---------- */
+/* commitEntry / voiceRight 共用的一道闸。三件事必须在这里收口：
+   ① 纯 Node 回归 / 外部脚本可能没有 3A 内核 → typeof 守卫；
+   ② 路由自己抛异常绝不能让用户那句话丢掉 → 一律回落 create（create 是既有行为）；
+   ③ noRoute / forceCreate 是给"还是新建一条"那条重试路用的。 */
+async function aiRouteForEntry(text, opts){
+  if (opts && (opts.noRoute || opts.forceCreate)) return 'create';
+  if (typeof aiRouteIntent !== 'function') return 'create';
+  try { return await aiRouteIntent(text); } catch (e){ return 'create'; }
+}
+
+/* ---------- 3B.3 撤销 + 成功提示上的按钮 ---------- */
+/* 3A 的 aiRestoreSnap 要一个 Map（逐字段 + 删掉的整条 + 原下标），而 aiExecOps 交出来的
+   快照是**纯数据**。这一层就是把纯数据还原成那个 Map。
+   ⚠️ 快照里必须留着**原对象引用**（aiExecOps 里那一行 `obj: rec.it`）：被删除的条目早已
+   从 S.items 里摘掉，只靠 id 是找不回来的 —— 少了它，"撤销删除"会是个空操作。 */
+function aiSnapMap(snapshot){
+  const map = new Map();
+  (Array.isArray(snapshot) ? snapshot : []).forEach(rec => {
+    if (!rec || !rec.id || !rec.obj) return;
+    const f = {};
+    Object.keys(rec.fields || {}).forEach(k => { f[k] = { had: rec.fields[k].had, v: rec.fields[k].v }; });
+    map.set(rec.id, { it: rec.obj, f: f, removed: !!rec.removed,
+      index: Number.isFinite(rec.index) ? rec.index : -1 });
+  });
+  return map;
+}
+/* 撤销。三件事缺一不可：
+   ① 逐字段还原（含"整条被删 → 插回原下标"）；
+   ② **重排提醒**：凡碰过 date / time / done 的都要走一次 notifyFire ——
+      syncNotify 自己判"该排还是该撤"，唯一真相源没有被复制；删掉又插回来的那条尤其
+      要补，否则它在排期表里已经被撤了，提醒就真没了；
+   ③ 焦点撤掉：数据已经回到操作前，条上还写着「正在改：XXX」就名不副实。 */
+function aiOpsUndo(snapshot){
+  const map = aiSnapMap(snapshot);
+  if (!map.size) return;
+  aiRestoreSnap(map);
+  map.forEach(rec => {
+    const it = it_byId(rec.it.id) || rec.it;
+    try { notifyFire(it); } catch (e){}
+  });
+  if (typeof aiFocusClear === 'function') aiFocusClear();
+  save();
+  refresh();
+  syncFocusStrip();
+  toast('已撤回', null, 2600);
+}
+/* 成功提示上挂哪些按钮。
+   「改挂到…」只在"这一句正好动了一条普通待办"时给 —— 批量动了好几条时不挂：
+   一次把好几条挂出去，撤销的语义立刻变得含糊（本项目在批量上栽过跟头）。 */
+function aiOpsActs(r){
+  const acts = [];
+  const changed = Array.isArray(r && r.changed) ? r.changed : [];
+  if (Array.isArray(r && r.snapshot) && r.snapshot.length){
+    acts.push({ label: '撤销', fn: () => aiOpsUndo(r.snapshot) });
+  }
+  if (changed.length === 1){
+    const it = it_byId(changed[0]);
+    if (it && !isSeed(it)) acts.push({ label: '改挂到…', fn: () => aiOpenRemount(it) });
+  }
+  return acts;
+}
+
+/* ---------- 3B.4 「改前 → 改后」确认页（住在现有的 #mask / .modal 里） ---------- */
+/* 只读渲染 3A 的 aiOpsPlan 产物：哪一条（标题）+ 哪个字段 → 改前 / 改后。
+   字段名在 3A 侧就已经人话化过（日期 / 钟点 / 标题 / 分区 / 挂在 / 完成 / 整条）。
+   取消的**三条路**（按钮 / Esc / 点遮罩）都由 openMask / closeModal 既有的那套接住，
+   它们一个字段都不碰 —— 红线 ② 就是这么成立的，不需要额外代码。 */
+function aiConfirmOps(r){
+  const rows = Array.isArray(r && r.plan) ? r.plan : [];
+  const n = rows.length;
+  const body = rows.map(row => `
+    <div class="cf-row">
+      <div class="cf-t">${esc(row.title || '（无标题）')}</div>
+      ${(row.changes || []).map(c => `
+        <div class="cf-ch">
+          <span class="cf-f">${esc(c.field)}</span>
+          <span class="cf-from">${esc(c.from)}</span>
+          <span class="cf-ar" aria-hidden="true">→</span>
+          <span class="cf-to">${esc(c.to)}</span>
+        </div>`).join('')}
+    </div>`).join('');
+  modal.innerHTML =
+    `<h3 id="modalTitle">改前 → 改后</h3>
+     <p class="cf-sub">这次会改 <b>${n}</b> 条${r.confirmWhy ? ' · ' + esc(r.confirmWhy) : ''}。
+       确认之前，一行数据都不会动。</p>
+     <div class="cf-list">${body}</div>
+     <div class="foot">
+       <button type="button" class="btn" id="cf_cancel">取消</button>
+       <div class="spacer"></div>
+       <button type="button" class="btn primary" id="cf_ok">确认执行</button>
+     </div>`;
+  openMask();
+  const ops = r.ops;
+  const no = document.getElementById('cf_cancel');
+  const ok = document.getElementById('cf_ok');
+  if (no) no.onclick = () => closeModal();
+  if (ok) ok.onclick = () => { closeModal(); aiOpsApply(ops); };
+}
+/* 执行 + 播报。确认页点了「确认执行」，或者 3A 判出"不需要确认"时直接走这里。 */
+function aiOpsApply(ops, execOpts){
+  const run = aiExecOps(ops, execOpts);
+  /* 立刻同步一次焦点条：aiExecOps 落库后调的是 refreshAfterChange（FLIP 快路径），
+     那 420ms 里顶部那行还是旧的 —— 遥控器的"我在改哪一条"不该滞后。 */
+  syncFocusStrip();
+  if (!run.ok){ aiFail('没改成，已经退回去了'); return run; }
+  const n = (run.changed || []).length;
+  if (!n){ aiSay('什么都没改'); return run; }
+  /* 带撤销的提示活 9 秒（比默认 5 秒长一点）：撤销是数据安全那一类，窗口要够。
+     toast 的"带按钮的提示不被顶掉"规则会保护它不被后台建议替换。 */
+  aiSay('已改 ' + n + ' 条', aiOpsActs(run), 9000);
+  return run;
+}
+
+/* ---------- 3B.5 「改挂到…」出口 ---------- */
+/* 照抄 aiSuggestApply 的三条纪律：防环（aiIsDescendant）、可撤销、折叠态还原。
+   选父那一层直接复用 0C 的 openParentPicker（"在弹层上盖一层不透明面板"那套）。
+   ⚠️ 独立使用（这里没有编辑器撑着）时 .modal 里是空的，而面板是 `inset:0` 的 absolute ——
+   父盒高度塌成 0 的话面板也看不见，所以先放一个占位壳把 .modal 撑起来。
+   面板收起（确定 / 移出到顶层 / 取消 / Esc）后这个壳就没用了 → 连同弹层一起关掉；
+   用 MutationObserver 盯住面板的移除，而不是在 onPick 里关 —— 取消那条路根本不走 onPick。 */
+function aiOpenRemount(it){
+  if (!it) return;
+  const cur = it.parent || null;
+  modal.innerHTML = '<h3 id="modalTitle">改挂到…</h3>'
+    + '<p class="cf-sub">把「' + esc(it.title || '') + '」挂到哪一条下面？</p>'
+    + '<div class="cf-holder" aria-hidden="true"></div>';
+  const mo = new MutationObserver(() => {
+    if (modal.querySelector('#pp_panel')) return;
+    mo.disconnect();
+    if (mask.classList.contains('on')) closeModal();
+  });
+  openParentPicker(it, false, () => cur, pid => {
+    if (pid === cur) return;
+    const old = it.parent || null;
+    const to = pid ? it_byId(pid) : null;
+    /* 折叠态记的是**新目标**的（与 aiSuggestApply 同一口径）：挂进去要看得见 → 先展开；
+       撤销时把"它本来是收起的"这件事还回去。记旧父的折叠态是错的 —— 那条我们没动过。 */
+    const wasCollapsed = pid ? collapsed.has(pid) : false;
+    it.parent = pid || null;
+    if (pid) collapsed.delete(pid);
+    save(); refresh();
+    toast(to ? ('已挂到「' + to.title + '」下面') : '已移到顶层', '撤销', () => {
+      it.parent = old;
+      if (pid){ if (wasCollapsed) collapsed.add(pid); else collapsed.delete(pid); }
+      save(); refresh();
+    });
+  });
+  mo.observe(modal, { childList: true });
+}
+
+/* ---------- 3B.6 入口接线：update 一律不预落库 ---------- */
+/* 走一次 update 全流程（aiRunCommand 内部已经分好了"该确认"和"直接执行"）。
+   返回内核结果，调用方据此决定要不要退回原路（voiceRight 用得上）。 */
+async function aiRunUpdateEntry(text, opts){
+  const o = opts || {};
+  let r = null;
+  try { r = await aiRunCommand(text, null); }
+  catch (e){ aiFail('AI 没接上，这条没改'); return null; }
+  if (!r || r.route !== 'update') return r;          // 判成新建：调用方照老路走
+  if (r.needConfirm){
+    /* 红线 ①：确认页出来之前一行数据都不动 —— aiRunCommand 已经把"不执行"保证好了，
+       这里只负责把计划**渲染出来**。不额外播报：确认页自己就是那条消息。 */
+    aiConfirmOps(r);
+    return r;
+  }
+  if (!r.ok){
+    /* 改不动（没候选 / 降级 / 关着）。**绝不能把用户那句话吞掉** —— 给一个一键出口，
+       点一下就走原来的新建路径（同一个输入框、同一条落库路径）。 */
+    const msg = aiOpsReply(r).msg;
+    const acts = o.retryCreate === false ? null
+      : [{ label: '记成新的一条', fn: () => commitEntry({ text: text, forceCreate: true }) }];
+    aiFail(msg, acts, 9000);
+    return r;
+  }
+  const n = (r.changed || []).length;
+  aiSay(n ? ('已改 ' + n + ' 条') : '什么都没改', aiOpsActs(r), 9000);
+  return r;
+}
+
 let rafRefresh = 0;
 function refresh(){
   if (rafRefresh) return;
@@ -9282,6 +9618,9 @@ function afterRender(){
      的时候。必须在最后——它读的是最终高度（见 _syncFit）。没有原生桥的环境下这个函数不存在，
      行为与改动前一致（滚动锁本来也只在 WebView 里生效）。 */
   if (window.__syncBarFit) window.__syncBarFit();
+  /* ★ 3B：焦点条的收尾也挂在这里 —— 它是"哪一条被指向"的呈现，跟着这一帧的 DOM 走。
+     纯 Node 回归会把 afterRender 单独切出去跑，那里没有 3B 这一块，所以守一道 typeof。 */
+  if (typeof syncFocusStrip === 'function') syncFocusStrip();
 }
 
 /* 布局切换过渡（分区 ⇄ 时间轴、统计的横条 ⇄ 方块 共用）。两种手法见 swapContent 内的说明：
@@ -9981,9 +10320,27 @@ document.addEventListener('wheel', e => {
    输入框在等待之前就清掉 —— 用户按回车是"我说完了"，不该盯着自己那句话等。 */
 async function commitEntry(opts){
   const el = document.getElementById('entry');
-  const v = el.value.trim();
+  /* ★ 3B：`opts.text` 是"还是新建一条"那条重试路把原话带回来的口子（用户那句话不能丢）。
+     不传就照旧读输入框。 */
+  const v = (opts && opts.text !== undefined ? String(opts.text) : el.value).trim();
   if (!v) return;
   el.value = '';
+  /* ★★★ 3B 最容易做错的一步：**更新路径不预落库**（红线 ④）。
+     它和 2B 的两段式上屏是**正面冲突**的 —— 两段式是"先把本地结果落一条上屏、AI 回来再替换"，
+     可如果这句最终判定是 **update**，那条先落的条目就是垃圾（还得删掉），用户还会看到
+     "冒出来又消失"。卡里定的正解就是下面这个顺序，别改成别的：
+       ① 先判路由（本地强 cue 命中时立刻判、不预落库；非强 cue 才出网，**出网期间也不预落库**）；
+       ② 判成 update → 一行都不落，直接走遥控器；
+       ③ 判成 create → 才进原来那段（含两段式），一个字都没改。
+     代价（故意的取舍）：update 路径的"即时上屏"比 create 差一点 —— 要等路由结果才说话。
+     改数据本来就该稳：先落一条再删掉，比多等半秒糟得多。 */
+  if (!(opts && opts.forceCreate)){
+    const route = await aiRouteForEntry(v, opts);
+    if (route === 'update'){
+      await aiRunUpdateEntry(v, opts);
+      return;
+    }
+  }
   /* ★ 2B 两段式上屏（用户 2026-10-08 定，选项 A：松手后用 AI 结果整套替换一次 + 停 0.5 秒）。
      松手先把**本地结果**顶上屏（零请求、几毫秒），AI 回来之后再用它的结果替换。
      语音录入的"慢"全部集中在"松手 → 卡片出现"这一段，而这一段根本不需要等网络。
@@ -10924,6 +11281,11 @@ function refreshAfterChange(dur){
   syncStripFades();
   syncTabDots();
   syncSegPills(false);
+  /* ★ 3B：这是**第三个**渲染出口（refresh / statGo / 这里）。它走的是 FLIP 快路径、
+     不经过 afterRender，所以焦点条必须在这里也同步一次 —— 否则"清单页改了一条"
+     之后顶部那行「正在改：XXX」还停在上一帧（0G 的空白事故就是漏了这个出口）。
+     用 typeof 守一道：纯 Node 回归会把这段切出去跑。 */
+  if (typeof syncFocusStrip === 'function') syncFocusStrip();
   /* 补位比常规切换快一点：它接在"被压掉"之后，太长会让"下面的顶上来"显得迟钝。 */
   flipPlay(before, dur || 420);
 }
@@ -13054,7 +13416,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.8.0';
+const APP_VERSION = '5.9.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
@@ -13492,6 +13854,17 @@ async function voiceRight(){
   if (text) voiceConsumed = text;
   cancelVoice();
   if (!text){ openEditNew(''); return; }
+  /* ★ 3B：右滑也先判"这句是新建还是改已有"。判成 update 时**不进编辑页** ——
+     编辑页是给"记一条新事"用的，把「删掉那条」填进去只会让用户看到一条莫名其妙的内容。
+     改不动时（没候选 / 降级）**退回原路**开编辑页，用户那句话一个字都不会丢；
+     这条路上不给「记成新的一条」按钮（编辑页本身就是那个出口，两个出口会打架）。 */
+  {
+    const route = await aiRouteForEntry(text, {});
+    if (route === 'update'){
+      const r = await aiRunUpdateEntry(text, { retryCreate: false });
+      if (r && (r.executed || r.needConfirm)) return;
+    }
+  }
   let plan;
   try {
     plan = await aiUnderstand(text);

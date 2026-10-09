@@ -114,6 +114,10 @@ const NAMES = [
   'aiOpsPlan', 'aiOpsNeedConfirm',
   'aiSnapField', 'aiRestoreSnap', 'aiApplyZone', 'aiExecOps',
   'aiOpsFail', 'aiRunCommand', 'aiOpsReply', 'aiCommand',
+  /* ================= 3B 遥控器的呈现与接线 ================= */
+  'aiFocusItem', 'aiIsFocused', 'aiFocusBarHTML', 'syncFocusStrip', 'aiRouteForEntry',
+  'aiSnapMap', 'aiOpsUndo', 'aiOpsActs', 'aiConfirmOps', 'aiOpsApply', 'aiOpenRemount',
+  'aiRunUpdateEntry',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }
