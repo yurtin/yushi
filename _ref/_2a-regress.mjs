@@ -302,12 +302,15 @@ console.log('\n[2b] 本地路径的落库保真（路径 / 循环 / 目标 / 早
 await (async () => {
   const CASES = [
     /* 早中晚：阶段1 的本地规则，必须走本地（零请求）且落库后长出 3 条子任务。
-       注意 addItem 只 return 父条目，子任务是 splice 进 S.items 的 —— 所以条数看 S.items。 */
+       注意 addItem 只 return 父条目，子任务是 splice 进 S.items 的 —— 所以条数看 S.items。
+       ★ 5A 更新：标题从「提醒我 吃药」变成「吃药」—— 指令壳剥离上线了
+       （用户 2026-10-09 明确要求："提醒我"是说话方式，不该留在标题里）。
+       这一条盯的是**保真**（dayParts / 子任务结构），标题期望跟着改，结构与条数不变。 */
     ['提醒我早中晚吃药', 4, () => [
       S.items[0].title, S.items[0].time, S.items.length,
       S.items.slice(1).map(k => k.time),
       S.items.slice(1).every(k => k.parent === S.items[0].id && k.date === null)
-    ], ['提醒我 吃药', null, 4, ['08:00', '12:00', '19:00'], true]],
+    ], ['吃药', null, 4, ['08:00', '12:00', '19:00'], true]],
     /* 父级路径：本卡之前这里会丢父级（本地条目被 aiPlanPreset 重写） */
     ['论文> 查文献 921', 2, made => {
       const parent = S.items.filter(x => x.title === '论文')[0];

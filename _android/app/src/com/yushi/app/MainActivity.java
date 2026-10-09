@@ -84,8 +84,23 @@ public class MainActivity extends Activity {
      *  为什么不直接改上面那条：Android 8.0+ 渠道的 importance 创建之后就**不能改**了，
      *  要让通知带声音、震动、抬头显示，只能新建一个 id（这正好也是任务卡验收 6 要的形式）。 */
     private static final String N_CH_ALARM = "yushi_alarm_ch";
+    /** ★ 5A 默认提醒渠道：**不再抢系统闹钟铃声**，用系统默认通知音 + 震动。
+     *  这样"静音只弹横幅 / 震动弹横幅+震动 / 响铃弹横幅+铃声"三条**由系统按情景模式自己决定**，
+     *  页面侧一个判断都不用写（用户 2026-10-09 定的口径）。
+     *  渠道的 sound / importance 建后不可改 → 只能换新 id（4C 已经踩过一次）。 */
+    private static final String N_CH_REMIND = "yushi_remind_v2";
+    /** ★ 5A：要不要走"锁屏全屏响铃（闹钟档）"。**默认关** —— 用户原话："如果我没让开闹钟的话，
+     *  那就不要闹钟，直接像正常微信来信息一样弹窗提示就可以了"。
+     *  为什么存在原生侧而不是页面侧：到点弹通知的是 {@link NotifyReceiver}，
+     *  那一刻页面可能根本没起来（与硬约定 8 同一个理由）。 */
+    private static final String N_ALARM_FULL = "alarmFull";
     /** 到点那一刻由 AlarmManager 派发的自定义 action（组件是显式的，action 只是给日志看）。 */
     static final String ACTION_FIRE = "com.yushi.app.NOTIFY_FIRE";
+    /** ★ 5A：通知上那两枚动作 —— 「知道了」（撤通知，不停响就不管）与「稍后 5 分钟」。 */
+    static final String ACTION_STOP = "com.yushi.app.NOTIFY_STOP";
+    static final String ACTION_SNOOZE = "com.yushi.app.NOTIFY_SNOOZE";
+    /** ★ 5A：稍后提醒的间隔。用户没指定，沿用 4C 的自定值 5 分钟。 */
+    static final long SNOOZE_MS = 5 * 60 * 1000L;
 
     private WebView web;
     /** 语音桥实例（持有它以便 onRequestPermissionsResult 里继续开始识别）。 */
@@ -728,6 +743,15 @@ public class MainActivity extends Activity {
         } catch (Throwable t) { return false; }
     }
 
+    /** ★ 5A：锁屏全屏响铃（闹钟档）开着吗。**默认关** —— 拿不到全屏权限的手机上
+     *  这套也弹不出来，硬挂着只会把横幅一起吞掉（用户实测：响了但既没界面也没横幅）。 */
+    static boolean alarmFullOn(android.content.Context ctx){
+        try {
+            return ctx.getSharedPreferences(N_PREF, android.content.Context.MODE_PRIVATE)
+                    .getBoolean(N_ALARM_FULL, false);
+        } catch (Throwable t) { return false; }
+    }
+
     /** 系统闹钟铃声。**不需要任何新权限**，也绝不往仓库里塞音频文件（红线 6）。
      *  极少数 ROM 连默认闹钟铃声都没有 → 退回默认通知音 → 再没有就返回 null（还有震动兜底）。 */
     static android.net.Uri alarmSoundUri(){
@@ -809,32 +833,51 @@ public class MainActivity extends Activity {
 
     /** 到点弹通知。渠道必须显式建一个（8.0+ 不建就被静默丢弃）。
      *
-     *  <p>★ 4C 真闹钟档 2：走**新的高优先级渠道** N_CH_ALARM（系统闹钟铃声 + 震动）——
-     *  即使全屏权限拿不到，它本身也已经是一条很"闹钟"的 heads-up 通知。
-     *  能拿到全屏权限就再挂一个全屏响铃界面（{@link AlarmActivity}）。 */
+     *  <p>★ 5A（用户 2026-10-09 实测后重定）：
+     *  <ul>
+     *    <li><b>默认走 N_CH_REMIND</b>：系统默认通知音 + 震动，**不指定 setSound** ——
+     *        于是静音只弹横幅、震动弹横幅+震动、响铃弹横幅+铃声，全由系统情景模式决定。</li>
+     *    <li><b>不再默认挂全屏 Intent</b>：亮屏在用手机时系统不会拉起全屏页，
+     *        而挂着它反而可能把横幅一起吞掉（用户实测："响了，但既没界面也没横幅"）。</li>
+     *    <li>只有设置页那个「锁屏全屏响铃」开关（{@link #alarmFullOn}，默认关）打开时，
+     *        才换回 N_CH_ALARM + 全屏 Intent，并且仍要求系统真的给了全屏权限。</li>
+     *    <li>通知上加两枚动作：「知道了」/「稍后 5 分钟」—— 不用再翻通知栏找入口。</li>
+     *  </ul> */
     static void showNotif(android.content.Context ctx, String id, String title, long ts){
         try {
             android.app.NotificationManager nm = (android.app.NotificationManager)
                     ctx.getSystemService(android.content.Context.NOTIFICATION_SERVICE);
             if (nm == null) return;
+            boolean alarmMode = alarmFullOn(ctx);
             if (Build.VERSION.SDK_INT >= 26){
-                /* 旧渠道保留、内容不动 —— 老版本排出去的闹钟可能还挂在它上面。 */
-                android.app.NotificationChannel ch0 = new android.app.NotificationChannel(
-                        N_CH, "提醒", android.app.NotificationManager.IMPORTANCE_HIGH);
-                ch0.setDescription("到点的待办提醒");
-                nm.createNotificationChannel(ch0);
-                /* 闹钟档渠道：importance 创建后不可改 → 必须换新 id。 */
+                /* ★ 5A 默认渠道：**不调 setSound** → 用用户当前的默认通知音（跟着情景模式走）。 */
                 android.app.NotificationChannel ch = new android.app.NotificationChannel(
-                        N_CH_ALARM, "到点闹钟", android.app.NotificationManager.IMPORTANCE_HIGH);
-                ch.setDescription("到点的待办提醒：响铃 + 震动");
+                        N_CH_REMIND, "到点提醒", android.app.NotificationManager.IMPORTANCE_HIGH);
+                ch.setDescription("到点的待办提醒：横幅 + 声音（跟随手机的静音 / 震动 / 响铃）");
                 ch.enableVibration(true);
-                ch.setVibrationPattern(new long[]{ 0, 600, 300, 600, 300 });
-                android.net.Uri snd = alarmSoundUri();
-                if (snd != null) ch.setSound(snd, alarmAudioAttributes());
+                ch.setVibrationPattern(new long[]{ 0, 300, 150, 300 });
+                ch.setShowBadge(true);
                 nm.createNotificationChannel(ch);
+                /* 闹钟档渠道（4C 建的那条：系统闹钟铃声 + 长震动）：只在开关打开时用。
+                   渠道 sound / importance 建后不可改 → 每次到点重复 createNotificationChannel
+                   传同样的值不会重置用户改过的设置，是幂等的。 */
+                android.app.NotificationChannel cha = new android.app.NotificationChannel(
+                        N_CH_ALARM, "到点闹钟", android.app.NotificationManager.IMPORTANCE_HIGH);
+                cha.setDescription("到点的待办提醒：响铃 + 震动（只在你打开「锁屏全屏响铃」时使用）");
+                cha.enableVibration(true);
+                cha.setVibrationPattern(new long[]{ 0, 600, 300, 600, 300 });
+                android.net.Uri snd = alarmSoundUri();
+                if (snd != null) cha.setSound(snd, alarmAudioAttributes());
+                nm.createNotificationChannel(cha);
+                /* 老渠道（N_CH）从 5A 起没有任何通知走它了 —— 删掉，免得系统设置里
+                   多出一条"提醒"渠道让人以为它在用（用户排查横幅时会被它带偏）。 */
+                try { nm.deleteNotificationChannel(N_CH); } catch (Throwable t) { }
             }
+            String chId = alarmMode ? N_CH_ALARM : N_CH_REMIND;
             /* 点通知 → 回到 MainActivity，并带上条目 id（页面据此滚到那一条）。
-               SINGLE_TOP：App 已经在跑时走 onNewIntent 而不是再起一个。 */
+               SINGLE_TOP：App 已经在跑时走 onNewIntent 而不是再起一个。
+               ★ 5A：这一条**不变** —— 用户 2026-10-09 选的是"还是打开清单并滚到那一条"，
+               「快捷关闹钟」由下面那枚动作按钮解决。 */
             android.content.Intent open = new android.content.Intent(ctx, MainActivity.class);
             open.setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK
                     | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -844,13 +887,14 @@ public class MainActivity extends Activity {
                     android.app.PendingIntent.FLAG_UPDATE_CURRENT
                             | android.app.PendingIntent.FLAG_IMMUTABLE);
             android.app.Notification.Builder b = (Build.VERSION.SDK_INT >= 26)
-                    ? new android.app.Notification.Builder(ctx, N_CH_ALARM)
+                    ? new android.app.Notification.Builder(ctx, chId)
                     : new android.app.Notification.Builder(ctx);
             b.setSmallIcon(android.R.drawable.ic_popup_reminder)
              .setContentTitle(title == null || title.isEmpty() ? "鱼事提醒" : title)
              .setContentText(notifyBody(ts))
              .setAutoCancel(true)
-             .setCategory(android.app.Notification.CATEGORY_ALARM)
+             .setCategory(alarmMode ? android.app.Notification.CATEGORY_ALARM
+                                    : android.app.Notification.CATEGORY_REMINDER)
              .setContentIntent(pi);
             if (Build.VERSION.SDK_INT < 26){
                 /* 8.0 以下没有渠道，声音 / 震动 / 优先级得直接写在通知上。 */
@@ -859,14 +903,34 @@ public class MainActivity extends Activity {
                 if (snd != null) b.setSound(snd);
                 b.setVibrate(new long[]{ 0, 600, 300, 600, 300 });
             }
-            /* ★ 第二段：全屏响铃。能拿到就全屏；拿不到就只是一条高优先级通知 —— **照样响**。 */
-            if (fullScreenAllowed(ctx)){
+            /* ★ 5A：两枚动作 —— 「知道了」撤掉这条通知（排期表在到点时已经删过了，不用再动数据）；
+               「稍后 5 分钟」重排一次。都用广播（getBroadcast），在 NotifyReceiver 里收口。 */
+            try {
+                b.addAction(android.R.drawable.ic_menu_close_clear_cancel, "知道了",
+                        actionPi(ctx, ACTION_STOP, id, title, nReq(id) ^ 0x1111));
+                b.addAction(android.R.drawable.ic_popup_sync, "稍后 5 分钟",
+                        actionPi(ctx, ACTION_SNOOZE, id, title, nReq(id) ^ 0x2222));
+            } catch (Throwable t) { }
+            /* ★ 5A：全屏响铃**只在开关打开 + 系统真给了权限**时才挂。 */
+            if (alarmMode && fullScreenAllowed(ctx)){
                 try {
                     b.setFullScreenIntent(alarmFullScreenIntent(ctx, id, title, ts), true);
                 } catch (Throwable t) { }
             }
             nm.notify(nReq(id), b.build());
         } catch (Throwable t) { }
+    }
+
+    /** ★ 5A：通知动作按钮用的广播 PendingIntent（知道了 / 稍后）。 */
+    private static android.app.PendingIntent actionPi(android.content.Context ctx,
+            String action, String id, String title, int req){
+        android.content.Intent i = new android.content.Intent(ctx, NotifyReceiver.class);
+        i.setAction(action);
+        i.putExtra("id", id);
+        i.putExtra("title", title == null ? "" : title);
+        return android.app.PendingIntent.getBroadcast(ctx, req, i,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                        | android.app.PendingIntent.FLAG_IMMUTABLE);
     }
 
     /** 全屏响铃那一下用的 PendingIntent（起 {@link AlarmActivity}，会一直响到用户按按钮）。 */
@@ -1313,8 +1377,7 @@ public class MainActivity extends Activity {
             return fullScreenAllowed(MainActivity.this) ? "granted" : "denied";
         }
 
-        /** 跳系统的「精确闹钟」开关页。
-         *  用**字符串常量**而不是 Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM ——
+        /** 跳系统的「精确闹钟」开关页。         *  用**字符串常量**而不是 Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM ——
          *  与 POST_NOTIFICATIONS / 照片选择器同一条理由：新常量在旧工具链里可能不存在。
          *  少数 ROM 没有这一页 → 退回「本应用详情」，别让按钮点了没反应。 */
         @android.webkit.JavascriptInterface
@@ -1330,6 +1393,42 @@ public class MainActivity extends Activity {
                         return;
                     } catch (Throwable t) { }
                 }
+                openNotifySettings();
+            });
+        }
+
+        /* ---- ★ 5A：锁屏全屏响铃（闹钟档）的开关 + 全屏权限入口 ----
+           到点弹通知的是 NotifyReceiver，那一刻页面可能根本没起来 —— 所以这个开关
+           存在**原生侧**（SharedPreferences，与排期表同一份），页面每次渲染只问一次状态。 */
+
+        /** "1" = 开着 / "0" = 关着（默认）。 */
+        @android.webkit.JavascriptInterface
+        public String getAlarmFull() {
+            return alarmFullOn(MainActivity.this) ? "1" : "0";
+        }
+
+        @android.webkit.JavascriptInterface
+        public void setAlarmFull(String v) {
+            try {
+                MainActivity.this.getSharedPreferences(N_PREF, android.content.Context.MODE_PRIVATE)
+                        .edit().putBoolean(N_ALARM_FULL, "1".equals(String.valueOf(v))).apply();
+            } catch (Throwable t) { }
+        }
+
+        /** 跳系统的「全屏通知」开关页（Android 14+ 才有这一页；旧版本没有 → 退回应用详情）。
+         *  用**字符串常量**而不是 Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT ——
+         *  与 POST_NOTIFICATIONS / 精确闹钟 / 照片选择器同一条理由：新常量在旧工具链里可能不存在。 */
+        @android.webkit.JavascriptInterface
+        public void openFullScreenSettings() {
+            runOnUiThread(() -> {
+                try {
+                    android.content.Intent i = new android.content.Intent(
+                            "android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT",
+                            android.net.Uri.fromParts("package", getPackageName(), null));
+                    i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                    return;
+                } catch (Throwable t) { }
                 openNotifySettings();
             });
         }
@@ -1550,6 +1649,19 @@ public class MainActivity extends Activity {
                 String id = it.getStringExtra("id");
                 if (id == null || id.length() == 0) return;
                 String title = it.getStringExtra("title");
+                /* ★ 5A：通知上那两枚动作（知道了 / 稍后 5 分钟）。
+                   「知道了」= 撤掉通知就完了 —— 排期表在到点那一下已经删过，数据一个字不动；
+                   「稍后 5 分钟」= 重排一次（notifyPut 会写表 + armAlarm）。 */
+                if (ACTION_STOP.equals(a) || ACTION_SNOOZE.equals(a)) {
+                    try {
+                        android.app.NotificationManager nm = (android.app.NotificationManager)
+                                ctx.getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+                        if (nm != null) nm.cancel(nReq(id));
+                    } catch (Throwable t) { }
+                    if (ACTION_SNOOZE.equals(a)) notifyPut(ctx, id, title,
+                            System.currentTimeMillis() + SNOOZE_MS);
+                    return;
+                }
                 /* 正文写的是**当初排的那个时刻**（set() 是非精确闹钟，实际响的时刻可能晚几分钟）。
                    老 PendingIntent / 手工构造的 intent 没带 ts 时回落到"现在"。 */
                 long ts = it.getLongExtra("ts", System.currentTimeMillis());
@@ -1641,6 +1753,18 @@ public class MainActivity extends Activity {
             slp.topMargin = pad / 3;
             box.addView(sub, slp);
 
+            /* ★ 5A：上滑取消的提示（用户原话："我一上滑就能取消"）。 */
+            android.widget.TextView hint = new android.widget.TextView(this);
+            hint.setText("上滑取消");
+            hint.setTextSize(12);
+            hint.setGravity(android.view.Gravity.CENTER);
+            hint.setTextColor(0xFF8A93A0);
+            android.widget.LinearLayout.LayoutParams hlp = new android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            hlp.topMargin = pad / 2;
+            box.addView(hint, hlp);
+
             android.widget.Button ok = new android.widget.Button(this);
             ok.setText("知道了");
             ok.setOnClickListener(v -> stopAndFinish());
@@ -1720,6 +1844,31 @@ public class MainActivity extends Activity {
         @Override
         public void onBackPressed(){
             stopAndFinish();
+        }
+
+        /* ★ 5A：上滑取消。走 dispatchTouchEvent 而不是给根布局挂 OnTouchListener ——
+           按钮是子 View，会先把它自己那一块的触摸吃掉；分发给子 View **之前**过一遍，
+           滑到哪一块上都能取消。阈值 120dp（比 seed 卡片那套 44px 大得多：
+           这是一屏大页面上的整手滑动，不是列表里的方向手势）。 */
+        private float swDownY = -1f;
+
+        @Override
+        public boolean dispatchTouchEvent(android.view.MotionEvent e){
+            try {
+                if (e != null){
+                    int act = e.getActionMasked();
+                    if (act == android.view.MotionEvent.ACTION_DOWN){
+                        swDownY = e.getY();
+                    } else if (act == android.view.MotionEvent.ACTION_UP
+                            || act == android.view.MotionEvent.ACTION_CANCEL){
+                        float dy = e.getY() - swDownY;
+                        float th = 120 * getResources().getDisplayMetrics().density;
+                        if (swDownY >= 0 && dy < -th){ swDownY = -1f; stopAndFinish(); return true; }
+                        swDownY = -1f;
+                    }
+                }
+            } catch (Throwable t) { }
+            return super.dispatchTouchEvent(e);
         }
     }
 }

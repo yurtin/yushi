@@ -134,6 +134,8 @@ const NAMES = [
   /* 钟点那两处（tpat / teParseTime）不是新函数；这里收的是确认页新加的三个。
      icItems 是 let，不进清单（清单只数 function 声明）。 */
   'icRowBits', 'icApplyEdit', 'imageConfirmEdit',
+  /* ================= 5A 到点提醒的呈现 + 钟点/指令壳 ================= */
+  'stripShell', 'notifyAlarmFull', 'setNotifyAlarmFull',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }

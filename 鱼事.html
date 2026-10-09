@@ -3806,6 +3806,47 @@ function cnNum(s){
   return null;
 }
 
+/* ★ 5A 指令壳剥离（用户原话："像『帮我设置一个什么的待办』这一段，是自然语言说话的
+   一个特征，不能直接就弄上去吧？"）。
+   实测输入：`帮我设置一个今天晚上11:05看书的待办` → 时间剥掉后标题还剩
+   `帮我设置一个 看书的待办`，这条规则把它收成 `看书`。
+   三条纪律：
+     ① **白名单固定说法**，不做语义猜测：`帮我/给我/请/…` 必须**紧跟一个创建类动词**
+        （设置/记/加/新建/安排…）才算壳 —— 所以 `帮我妈买药`、`设置打印机`、
+        `安排会议` 这种本身就是内容的标题**一个字都不动**（那是真待办，不是说话方式）。
+     ② 「的待办 / 的提醒」这类后置壳**只在前面确实剥掉过壳时才剥** ——
+        否则 `给妈妈的提醒` 会被误伤成 `给妈妈`。
+     ③ 任何一步剥完为空、或剥完只剩一两个字而原句很长 → **整条退回原样**。
+   ⚠️ 原文一个字都没丢：`raw` 仍是用户说的那一整句，编辑弹层的「原文」栏看得到。 */
+const SHELL_LEAD = /^(?:帮我|给我|替我|帮忙|请|麻烦|我想|我要)\s*(?:设置|设|记一下|记|记录|添加|加|新建|创建|建|安排|定|留|做)\s*(?:一下|一?[个条])?\s*/;
+const SHELL_CALL = /^(?:提醒我|提醒一下|叫我|记得)\s*/;
+const SHELL_TAIL = /的(?:待办|提醒|事项|事情)$/;
+function stripShell(t){
+  let s = String(t == null ? '' : t).trim();
+  if (!s) return s;
+  const raw = s;
+  let lead = 0;
+  /* 前端壳最多剥两层（`帮我设置一条` + `提醒我`），每层都必须真剥掉东西才算数 */
+  for (let i = 0; i < 2; i++){
+    const m = s.match(SHELL_LEAD) || s.match(SHELL_CALL);
+    if (!m || !m[0].trim()) break;
+    const nx = s.slice(m[0].length).trim();
+    if (!nx) break;                       // 剥完啥都不剩 → 这一段不是壳，留着
+    s = nx; lead++;
+  }
+  if (lead){
+    /* 只有**真剥掉过壳**时才收拾头尾的标点 —— 否则 `太棒了！` 这种标题会被顺手改掉
+       （0C 有一条断言专门盯着句中的 `！` 不许动）。 */
+    s = s.replace(/^[\-—·、,，。;；:：\s]+/, '').replace(/[。，,.!！~～、\s]+$/, '');
+    const t2 = s.replace(SHELL_TAIL, '').trim();
+    if (t2.length >= 1) s = t2;
+  }
+  s = s.trim();
+  if (!s || s === raw) return raw;
+  if (s.length < 2 && raw.length >= 4) return raw;   // 剥得太狠 → 多半剥错了
+  return s;
+}
+
 /* 早 / 中 / 晚 三个分段的钟点表。数值是用户 2026-10-08 拍定的默认值。 */
 const DAYPART_TIMES = ['08:00', '12:00', '19:00'];
 /* ★ 阶段1 · 决策 3「早中晚用本地规则，不走 AI」：
@@ -4064,9 +4105,15 @@ function parseSmart(input){
        · 裸「晚」+「一点」= 稍后（"晚一点再说"），不是 13:00；
        · 后面紧跟「儿/水/点」的（"一点儿""三点水旁""一点点"）也不是钟点；
        · 小时/分钟转不出数字（cnNum 返回 null）→ 跳过，交给别的分支。
-     阿拉伯数字那条路**一个字符都没动**：tm 的取法从 match 换成 exec 循环，
-     但阿拉伯匹配第一发就命中并直接收下，行为逐字符不变。 */
-  const tpat = /(凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|晚(?!一点))?\s*(\d{1,2}|[一二两三四五六七八九十]{1,3})\s*[点时](半|\d{1,2}\s*分|[一二两三四五六七八九十]{1,3}\s*分?)?\s*(之?[前后])?/;
+     阿拉伯数字原有的写法（`下午3点` / `9点半` / `下午5点` / `3点30分`）行为逐字符不变；
+     tm 的取法从 match 换成 exec 循环，阿拉伯匹配第一发就命中并直接收下。
+     ★ 5A 补两处（用户实测的真机输入「帮我设置一个今天晚上11:05看书的待办」）：
+       · 分隔符加冒号（`11:05` / `11：05`）—— 以前只有 teParseTime 认，录入这条路不认；
+       · 不带「分」的阿拉伯分钟必须是**两位**（`11点05` 的 `05`）—— 以前只认 `11点05分`，
+         于是 `11点05` 被吃成 11 点、`05` 掉进标题（用户看到的就是只剩一个 `05`）。
+       两条窄闸：冒号后面没分钟不认（`3:1` 这种比例写法不能被吃掉）；
+       匹配完紧跟数字的不认（`11点5` 这种半截宁可整句不认，也不留碎片）。 */
+  const tpat = /(凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|晚(?!一点))?\s*(\d{1,2}|[一二两三四五六七八九十]{1,3})\s*[点时:：](半|\d{1,2}\s*分|[一二两三四五六七八九十]{1,3}\s*分?|\d{2})?\s*(之?[前后])?/;
   let tm = null;
   {
     const tRe = new RegExp(tpat.source, 'g');
@@ -4084,6 +4131,11 @@ function parseSmart(input){
       const mraw = m[3] || '';
       if (mraw && mraw !== '半'
         && cnNum(String(mraw).replace(/\s*分\s*$/, '').replace(/\s+/g, '')) == null) continue;
+      /* ★ 5A：冒号后面必须真带分钟 —— 否则 `3:1` / `16:9` 会被当成 3:00 / 16:00 吃掉 */
+      if (!mraw && /[:：]/.test(m[0])) continue;
+      /* ★ 5A：紧跟着数字说明分钟只吃了一半（`11点5` / `11点123`）——
+         宁可这一句不认（标题原样留着），也不要把碎片留在标题里 */
+      if (/\d/.test(text.charAt(m.index + m[0].length))) continue;
       tm = m; break;
     }
   }
@@ -4166,7 +4218,11 @@ function parseSmart(input){
   // 行尾数字（从长到短试）—— 即使已有日期也剥掉，免得留在标题里
   {
     const nm = text.match(/(\d{1,2}\.\d{1,2}|\d+)\s*$/);
-    if (nm){
+    /* ★ 5A：紧跟在冒号后面的数字不是日期 —— `3:1` / `16:9` 这类比例（或没认出来的时刻）
+       被当成"行尾 1 号 / 9 月"，会把 `:1` / `:9` 从标题里吃掉（实测 `16:9 视频` →
+       标题 `16` + 日期 9月1日；`3:1` → 标题 `3` + 1月1日。这是 5A 读码时发现的**既有**缺陷，
+       与冒号写法的钟点是同一类误伤，一起堵掉）。 */
+    if (nm && !/[:：]$/.test(text.slice(0, nm.index))){
       const run = nm[1], cands = [];
       if (run.includes('.')) cands.push(run);
       else for (let len = Math.min(4, run.length); len >= 1; len--) cands.push(run.slice(run.length - len));
@@ -4265,7 +4321,8 @@ function parseSmart(input){
      同一行不可能既命中「每3天」又命中「每周三」。 */
   if (repeatKind && !repeat) repeat = 1;
 
-  const cleaned = text.replace(/^[\-—·、,，。;；:：\s]+/, '').replace(/[\-—·、,，。;；:：\s]+$/, '').trim();
+  const cleaned0 = text.replace(/^[\-—·、,，。;；:：\s]+/, '').replace(/[\-—·、,，。;；:：\s]+$/, '').trim();
+  const cleaned = stripShell(cleaned0);
   const fallback = String(input || '').trim();
   const tags = forced.length ? forced.slice(0, TAG_PER_ITEM) : guessTags((cleaned || fallback) + ' ' + fallback);
   // 循环任务没写日期时归短期 —— 它总是「近期要做」的
@@ -4810,6 +4867,19 @@ function notifyFullScreen(){
   catch (_){ return 'denied'; }
 }
 
+/* ★ 5A：锁屏全屏响铃（闹钟档）开关。**状态存在原生侧** —— 到点弹通知的是 NotifyReceiver，
+   那一刻页面可能根本没起来（与硬约定 8 同一个理由）。页面只负责"问状态 / 写开关"。 */
+function notifyAlarmFull(){
+  const b = notifyBridge();
+  if (!b || typeof b.getAlarmFull !== 'function') return false;
+  try { return String(b.getAlarmFull() || '') === '1'; } catch (_){ return false; }
+}
+function setNotifyAlarmFull(on){
+  const b = notifyBridge();
+  if (!b || typeof b.setAlarmFull !== 'function') return false;
+  try { b.setAlarmFull(on ? '1' : '0'); return true; } catch (_){ return false; }
+}
+
 /* 那一行的显隐与文案。只在"有桥 + 提醒总开关开着"时才出现 —— 关着的时候
    说"提醒可能不准"没有意义，反而多一行噪音。
    ★ unknown 与 denied 走同一档（探测不出来就按"可能不精确"说，宁可保守）。 */
@@ -4825,12 +4895,23 @@ function refreshNotifyExact(){
       if (txt) txt.textContent = '提醒可能会晚几分钟：系统没给精确闹钟权限';
     }
   }
+  /* ★ 5A：全屏响铃那一行整体只在有桥时露（网页版 / 老壳没有这两个方法）。
+     开关状态从原生读；「系统没给全屏权限」这句只在**开关真打开**时才说 ——
+     关着的时候默认路径根本不碰全屏 Intent，提示它只会让人以为哪里坏了。 */
+  const b = notifyBridge();
+  const hasAlarmFull = !!(b && typeof b.getAlarmFull === 'function');
+  const row = document.getElementById('alarmFullRow');
+  const sw = document.getElementById('alarmFullSw');
+  const af = hasAlarmFull && notifyAlarmFull();
+  if (row) row.hidden = !hasAlarmFull;
+  if (sw) sw.setAttribute('aria-checked', af ? 'true' : 'false');
   if (full){
-    /* 全屏拿不到不影响"响不响"，只影响"怎么响" —— 所以只说明，不给按钮
-       （这条权限在 Android 14 上按应用类别给，用户改不动）。 */
-    const bad = on && notifyFullScreen() !== 'granted';
+    const bad = on && af && notifyFullScreen() !== 'granted';
     full.hidden = !bad;
-    if (bad) full.textContent = '锁屏上不会全屏弹，改成横幅 + 响铃提醒';
+    if (bad){
+      const txt = document.getElementById('notifyFullTxt');
+      if (txt) txt.textContent = '锁屏上不会全屏弹，改成横幅 + 响铃提醒';
+    }
   }
 }
 
@@ -9204,7 +9285,29 @@ function renderSettings(){
             <span class="notify-exact" id="notifyExact" hidden>
               <span id="notifyExactTxt">提醒可能会晚几分钟：系统没给精确闹钟权限</span>
               <button type="button" class="pill" data-act="exactopen">去开启</button></span>
-            <span class="notify-exact" id="notifyFull" hidden></span>
+          </div>
+        </div>
+        <!-- ★ 5A：锁屏全屏响铃（闹钟档）。**默认关** —— 用户 2026-10-09 定："如果我没让开闹钟的话，
+             那就不要闹钟，直接像正常微信来信息一样弹窗提示就可以了"。
+             关着：到点只发一条高优先级通知，声音/震动跟随手机静音·震动·响铃（横幅一定弹）；
+             开着：才挂全屏 Intent（还要求系统真给了「全屏通知」权限），只在锁屏/息屏时出响铃页。
+             开关状态存在**原生侧** —— 到点弹通知的是 NotifyReceiver，那一刻页面可能没起来。
+             这一行整体只在"有桥"时才露（网页版 / 老壳没有这两个方法）。 -->
+        <div class="set-row" id="alarmFullRow" hidden>
+          <div class="set-txt">
+            <b>锁屏时全屏响铃</b>
+            <span>打开后：到点那一刻如果手机是锁屏或息屏的，直接弹出响铃页（上滑取消，或按按钮）。
+              亮屏正在用手机时系统只给横幅 —— 这是 Android 的规定，绕不开。
+              关着（默认）：只发一条通知，声音和震动跟随手机的静音 / 震动 / 响铃模式。</span>
+          </div>
+          <div class="notify-side">
+            <button class="switch" data-set="alarmfull" role="switch" aria-label="锁屏时全屏响铃"
+                    aria-checked="false" id="alarmFullSw"></button>
+            <!-- 全屏权限只有"开关真打开 + 系统没给"时才提示，并能一键去开启。
+                 条件显示由 refreshNotifyExact() 收口（同「未授权」那条路）。 -->
+            <span class="notify-exact" id="notifyFull" hidden>
+              <span id="notifyFullTxt">锁屏上不会全屏弹，改成横幅 + 响铃提醒</span>
+              <button type="button" class="pill" data-act="fullopen">去开启</button></span>
           </div>
         </div>
         <!-- v3.18：原来的「系统语音（可能联网）」开关已删除 —— 语音改成**内置本地模型**
@@ -11340,6 +11443,17 @@ view.addEventListener('click', e => {
       else if (S.notify) toast(n ? ('已打开提醒 · 排了 ' + n + ' 条') : '已打开提醒 · 现在还没有写了日期的条目');
       else toast('已关闭提醒，排出去的都取消了');
     }
+    /* ★ 5A：锁屏全屏响铃（闹钟档）。只改"到点怎么响"，不动任何排期 ——
+       所以这里**不叫** notifyReconcile（排期真相源仍然只有 syncNotify 那一处）。
+       开关写进原生侧（到点弹通知的是 NotifyReceiver，那时页面可能没起来）。 */
+    else if (el.dataset.set === 'alarmfull'){
+      const nx = !notifyAlarmFull();
+      if (setNotifyAlarmFull(nx)){
+        el.setAttribute('aria-checked', nx ? 'true' : 'false');
+        refreshNotifyExact();
+        toast(nx ? '开着：锁屏时会弹出响铃页' : '关着：只发一条通知，声音跟随手机的静音 / 震动 / 响铃');
+      } else toast('这个壳没有通知桥');
+    }
     /* v3.4 系统语音（备用路线）：只在设备端离线不可用时才会真的被走到。 */
     else if (el.dataset.set === 'voiceSystem'){
       S.voiceSystem = !S.voiceSystem; save();
@@ -11638,6 +11752,15 @@ view.addEventListener('click', e => {
     if (b && typeof b.openExactSettings === 'function'){
       try { b.openExactSettings(); } catch (_){}
     } else toast('这个壳没有精确闹钟设置入口');
+    return;
+  }
+  /* ★ 5A：系统的「全屏通知」开关页（Android 14+ 才有这一页）。只在
+     「锁屏全屏响铃」开着、系统又没给权限时才露这个按钮 —— 关着时那条路不碰全屏 Intent。 */
+  if (act === 'fullopen'){
+    const b = notifyBridge();
+    if (b && typeof b.openFullScreenSettings === 'function'){
+      try { b.openFullScreenSettings(); } catch (_){}
+    } else toast('这个壳没有全屏通知设置入口');
     return;
   }
   if (act === 'sparkok'){ const inp = document.getElementById('sp_in'); if (inp && it && seedAddSpark(it, inp.value)) refresh(); return; }
@@ -14155,7 +14278,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.13.0';
+const APP_VERSION = '5.14.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：

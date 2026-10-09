@@ -98,7 +98,9 @@ t('晚上九点五十一 看书 → time', (p => p.time)(parseSmart('晚上九�
 tOk('晚上九点五十一 看书 → 标题不含「九点五十一」',
   !/九点五十一/.test((p => p.title)(parseSmart('晚上九点五十一 看书'))),
   JSON.stringify((p => p.title)(parseSmart('晚上九点五十一 看书'))));
-t('用户原话（带指令壳）→ time', (p => [p.time, p.title])(parseSmart('晚上 九点五十一 提醒我去看看书')), ['21:51', '提醒我去看看书']);
+/* ★ 5A 更新：指令壳剥离上线后，同一句的标题变成「去看看书」（`提醒我` 是说话方式）。
+   time 不变，所以只改标题这一半的期望。 */
+t('用户原话（带指令壳）→ time', (p => [p.time, p.title])(parseSmart('晚上 九点五十一 提醒我去看看书')), ['21:51', '去看看书']);
 t('下午三点 → 15:00', (p => p.time)(parseSmart('下午三点')), '15:00');
 t('上午十点 → 10:00', (p => p.time)(parseSmart('上午十点')), '10:00');
 t('十一点半 → 11:30', (p => p.time)(parseSmart('十一点半')), '11:30');
@@ -133,7 +135,7 @@ console.log('\n[3] 阿拉伯数字那条逐字符不变（验收 5；期望值�
 t('下午3点 → 15:00', (p => p.time)(parseSmart('下午3点')), '15:00');
 t('3点 → 15:00（裸 1~6 点算下午，老规则没动）', (p => p.time)(parseSmart('3点')), '15:00');
 t('9点半 → 09:30', (p => p.time)(parseSmart('9点半')), '09:30');
-t('9:30 → null（parseSmart 本来就不认冒号写法）', (p => p.time)(parseSmart('9:30')), null);
+t('9:30 → 09:30（★ 5A 新增：冒号写法录入这条路也认了；4D 时是 null）', (p => p.time)(parseSmart('9:30')), '09:30');
 t('下午5点 交表 → 17:00 + 标题「交表」', (p => [p.time, p.title])(parseSmart('下午5点 交表')), ['17:00', '交表']);
 t('九一三 做作业 仍是日期、不是钟点', (p => [p.date, p.time, p.title])(parseSmart('九一三 做作业')),
   ['2026-09-13', null, '做作业']);
@@ -315,7 +317,7 @@ console.log('\n[8] 源码级不变量 + tpat 改前/改后原文（验收要求�
   console.log('      【tpat 改前】' + BEFORE_TPAT);
   console.log('      【tpat 改后】' + tpatLine);
   tOk('tpat 已收汉字数字（小时与分钟两处）',
-    tpatLine.includes('[一二两三四五六七八九十]{1,3}') && tpatLine.includes('[点时]'));
+    tpatLine.includes('[一二两三四五六七八九十]{1,3}') && /\[点时:：\]/.test(tpatLine));
   tOk('tpat 里「晚」带了「一点」的负向断言（裸晚 + 一点 = 稍后）', tpatLine.includes('晚(?!一点)'));
   const iTpat = htmlNC.indexOf('const tpat =');
   const iRe = htmlNC.indexOf("const tRe = new RegExp(tpat.source, 'g');");

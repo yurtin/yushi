@@ -104,14 +104,16 @@ const NO_COMMENT_MANIFEST = stripXmlComments(manifest);
 console.log('[1] 页面侧：精确状态不影响"排不排"（红线 4 —— 拿不到也必须响）');
 
 const els = {};
-['notifyPerm', 'notifyExact', 'notifyFull', 'notifyExactTxt'].forEach(id => {
+/* ★ 5A 追加 notifyFullTxt：全屏那句文案搬进了 <span id="notifyFullTxt">，
+   而且只在「锁屏全屏响铃」开关打开时才说（关着时默认路径根本不碰全屏 Intent）。 */
+['notifyPerm', 'notifyExact', 'notifyFull', 'notifyExactTxt', 'notifyFullTxt'].forEach(id => {
   els[id] = { id, hidden: true, textContent: '', firstChild: null };
 });
 const fakeDoc = { getElementById: id => els[id] || null };
 
 const PAGE_FNS = ['pad2', 'ymd', 'dateFrom', 'notifyTimeOf', 'notifyTargets',
   'notifyBridge', 'notifyPerm', 'notifyExact', 'notifyFullScreen',
-  'refreshNotifyPerm', 'refreshNotifyExact', 'syncNotify'];
+  'notifyAlarmFull', 'refreshNotifyPerm', 'refreshNotifyExact', 'syncNotify'];
 const PAGE_SRC = PAGE_FNS.map(n => extractFn(html, n)).join('\n\n');
 
 function makeEnv(opts){
@@ -123,12 +125,15 @@ function makeEnv(opts){
     notifyPermState(){ return o.perm === undefined ? 'granted' : o.perm; },
     notifyExactState(){ return o.exact === undefined ? 'denied' : o.exact; },
     notifyFullScreenState(){ return o.full === undefined ? 'denied' : o.full; },
+    /* ★ 5A：锁屏全屏响铃开关（默认关 —— 关着时全屏提示行不出现）。 */
+    getAlarmFull(){ return o.alarm === undefined ? '0' : o.alarm; },
+    setAlarmFull(v){ o.alarm = String(v); },
     openNotifySettings(){ calls.notifyOpen++; },
     openExactSettings(){ calls.exactOpen++; }
   };
   const factory = new Function('window', 'document', 'S', PAGE_SRC + `
     ; return { notifyTimeOf, notifyTargets, notifyBridge, notifyPerm, notifyExact,
-               notifyFullScreen, refreshNotifyPerm, refreshNotifyExact, syncNotify };`);
+               notifyFullScreen, notifyAlarmFull, refreshNotifyPerm, refreshNotifyExact, syncNotify };`);
   const S = { notify: o.notify === undefined ? true : o.notify, items: [] };
   const win = o.noBridge ? {} : { YuShiNative: bridge };
   return { env: factory(win, fakeDoc, S), S: S, calls: calls };
@@ -195,17 +200,25 @@ tOk('三态都带着标题（通知文案来自这条的真实标题）',
   t('granted → 精确那行隐藏', els.notifyExact.hidden, true);
   t('granted → 全屏那行隐藏', els.notifyFull.hidden, true);
 
-  const d = makeEnv({ exact: 'denied', full: 'denied' });
+  const d = makeEnv({ exact: 'denied', full: 'denied', alarm: '1' });
   d.env.refreshNotifyExact();
   t('denied → 精确那行露出', els.notifyExact.hidden, false);
   tOk('denied → 文案说人话（中文，讲"会晚几分钟"）',
       els.notifyExactTxt.textContent.includes('晚几分钟') && els.notifyExactTxt.textContent.includes('精确闹钟'),
       els.notifyExactTxt.textContent);
   tOk('denied → 不把英文状态词糊到用户脸上',
-      !/granted|denied|unknown/.test(els.notifyExactTxt.textContent + els.notifyFull.textContent));
-  tOk('全屏拿不到 → 说明"改成横幅 + 响铃"（不是"不提醒"）',
-      els.notifyFull.textContent.includes('横幅') && els.notifyFull.textContent.includes('响铃'),
-      els.notifyFull.textContent);
+      !/granted|denied|unknown/.test(els.notifyExactTxt.textContent + els.notifyFullTxt.textContent));
+  /* ★ 5A：全屏提示要"开关真打开 + 系统没给"两个条件同时成立才说 ——
+     关着的时候默认路径根本不挂全屏 Intent，说了只会让人以为哪里坏了。 */
+  tOk('开关打开 + 全屏拿不到 → 说明"改成横幅 + 响铃"（不是"不提醒"）',
+      els.notifyFull.hidden === false
+      && els.notifyFullTxt.textContent.includes('横幅') && els.notifyFullTxt.textContent.includes('响铃'),
+      JSON.stringify({ hidden: els.notifyFull.hidden, txt: els.notifyFullTxt.textContent }));
+  {
+    const off2 = makeEnv({ exact: 'granted', full: 'denied', alarm: '0' });
+    off2.env.refreshNotifyExact();
+    t('全屏拿不到但开关关着 → 这一行不出现（默认路径不碰全屏）', els.notifyFull.hidden, true);
+  }
 
   const off = makeEnv({ notify: false, exact: 'denied', full: 'denied' });
   off.env.refreshNotifyExact();
@@ -271,9 +284,11 @@ tOk('armAlarm 里"提前 return"只有三条合法理由（没通知权限 / 时
 
 tOk('三层降级每一层都排：showNotif 里 nm.notify( 恰好 1 处（不分支丢通知）',
   count(notifFn, 'nm.notify(') === 1);
+/* ★ 5A：全屏那一档现在还要经过「锁屏全屏响铃」开关（默认关）——
+   与 fullScreenAllowed 是**且**的关系，仍然是"再挂一个 Intent"，不替换通知本身。 */
 tOk('全屏那一档只是"再挂一个 Intent"，不替换通知本身',
-  /if \(fullScreenAllowed\(ctx\)\)\{[\s\S]*?setFullScreenIntent\(/.test(notifFn)
-  && !/if \(fullScreenAllowed\(ctx\)\)\{[\s\S]*?return;/.test(notifFn));
+  /if \(alarmMode && fullScreenAllowed\(ctx\)\)\{[\s\S]*?setFullScreenIntent\(/.test(notifFn)
+  && !/if \(alarmMode && fullScreenAllowed\(ctx\)\)\{[\s\S]*?return;/.test(notifFn));
 tOk('全屏 Intent 指向响铃页 AlarmActivity', /new android\.content\.Intent\(ctx, AlarmActivity\.class\)/.test(java));
 tOk('全新渠道 N_CH_ALARM 是 IMPORTANCE_HIGH（渠道 importance 建后不可改，故换 id）',
   /new android\.app\.NotificationChannel\(\s*N_CH_ALARM,\s*"[^"]*",\s*android\.app\.NotificationManager\.IMPORTANCE_HIGH\)/.test(java));
@@ -322,9 +337,14 @@ tOk('通知点击仍走既有的 notifyId → 页面 jumpToTask（没有被绕�
 tOk('verify_apk.py 的 EXPECT_PERMS 已同步两条新权限',
   verify.includes("'android.permission.SCHEDULE_EXACT_ALARM'")
   && verify.includes("'android.permission.USE_FULL_SCREEN_INTENT'"));
-tOk('版本号只动了第二位（5.12.0 / 5120000）',
-  /android:versionCode="5120000"/.test(NO_COMMENT_MANIFEST)
-  && /android:versionName="5\.12\.0"/.test(NO_COMMENT_MANIFEST));
+/* ★ 5A：这条原来钉死 5.12.0/5120000，每发一版就假红。改成**按公式自洽**：
+   versionCode 必须等于 MAJOR*1000000 + MINOR*10000 + PATCH*100（版本口径的机械校验）。 */
+const verName = (NO_COMMENT_MANIFEST.match(/android:versionName="([\d.]+)"/) || [])[1] || '';
+const verCode = (NO_COMMENT_MANIFEST.match(/android:versionCode="(\d+)"/) || [])[1] || '';
+const verWant = (() => { const p = verName.split('.').map(Number);
+  return p.length === 3 ? String(p[0] * 1000000 + p[1] * 10000 + p[2] * 100) : ''; })();
+tOk('版本号自洽（versionCode = MAJOR*1e6 + MINOR*1e4 + PATCH*1e2）',
+  verName !== '' && verCode === verWant, verName + ' / ' + verCode + '（应为 ' + verWant + '）');
 tOk('新加的函数名都还在（避免"读着对、跑起来没有"）',
   /function notifyExact\(/.test(html) && /function notifyFullScreen\(/.test(html)
   && /function refreshNotifyExact\(/.test(html));
