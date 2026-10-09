@@ -112,7 +112,7 @@ check('有可启动 Activity',
       'launchable-activity: name=\'%s.MainActivity\'' % PKG_EXPECT in badging, '')
 check('自适应图标', 'mipmap-anydpi-v26/ic_launcher.xml' in badging, '')
 
-# ---- 2. 权限：RECORD_AUDIO + VIBRATE（+ 联网版才有 INTERNET）----
+# ---- 2. 权限：RECORD_AUDIO + VIBRATE + 提醒两条 + 4C 闹钟档两条（+ 联网版才有 INTERNET）----
 # v2.3 为支持长按圆钮的设备端离线语音识别，有意加这两条权限。
 # 「纯本地、零联网」是纯净版的命根子：语音走 on-device 离线识别，模型在手机本地，
 # 绝不经过任何服务器 —— 所以纯净版里 INTERNET 一个字都不能有。
@@ -131,10 +131,16 @@ say('  原始权限列表: ' + (', '.join(perm_names) if perm_names else '（空
 EXPECT_PERMS = {'android.permission.RECORD_AUDIO', 'android.permission.VIBRATE',
                 # ★ 阶段1 提醒：到点弹通知 + 重启后重排。
                 # 两条都是普通权限；POST_NOTIFICATIONS 在 Android 13+ 还要运行时申请
-                # （用户可拒，拒绝只是不弹通知，App 不崩）。仍然**没有** SCHEDULE_EXACT_ALARM
-                # ——「不做真闹钟档」是这一版的红线。
+                # （用户可拒，拒绝只是不弹通知，App 不崩）。
                 'android.permission.POST_NOTIFICATIONS',
-                'android.permission.RECEIVE_BOOT_COMPLETED'}
+                'android.permission.RECEIVE_BOOT_COMPLETED',
+                # ★ 4C 真闹钟档 2：精确排期 + 全屏响铃（阶段1 那条「不做真闹钟档」的红线本版解除）。
+                # 两条都**不是**普通运行时权限，也都不保证拿到：
+                #   SCHEDULE_EXACT_ALARM 在 Android 13+ 新装默认不授予（探测 + 跳设置，拿不到退非精确）；
+                #   USE_FULL_SCREEN_INTENT 在 Android 14+ 只自动给通话/闹钟类应用（拿不到退 heads-up）。
+                # 三层降级里每一层都必须照样响 —— 见 MainActivity.armAlarm / showNotif。
+                'android.permission.SCHEDULE_EXACT_ALARM',
+                'android.permission.USE_FULL_SCREEN_INTENT'}
 if AI_PKG:
     EXPECT_PERMS = EXPECT_PERMS | {'android.permission.INTERNET'}
 got = set(perm_names)

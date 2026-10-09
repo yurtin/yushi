@@ -393,10 +393,16 @@ console.log('\n[9] 零权限红线：manifest 权限集合不变、没有 CAMERA
 {
   const mf = fs.readFileSync(MANIFEST, 'utf8');
   const perms = [...mf.matchAll(/<uses-permission\s+android:name="([^"]+)"/g)].map(m => m[1]).sort();
-  t('权限恰好这 4 条（一个都没加）', perms, [
+  /* ★ 4C 口径变更（2026-10-09）：4C 卡有意加了两条权限（精确排期 + 全屏响铃），
+     这两条**不是** 4B 引的，也不违反 4B 的红线（4B 的红线是"取图零权限"：
+     不加 CAMERA、不加存储权限 —— 下面两条照样钉着）。
+     原断言写死"恰好 4 条"，到 4C 必然打红 → **改断言不改代码**。 */
+  t('权限恰好这 6 条（4B 自己一条没加，后两条是 4C 的闹钟档）', perms, [
     'android.permission.POST_NOTIFICATIONS',
     'android.permission.RECEIVE_BOOT_COMPLETED',
     'android.permission.RECORD_AUDIO',
+    'android.permission.SCHEDULE_EXACT_ALARM',
+    'android.permission.USE_FULL_SCREEN_INTENT',
     'android.permission.VIBRATE'
   ]);
   tOk('没有声明 CAMERA', !/android\.permission\.CAMERA/.test(mf));

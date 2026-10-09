@@ -1939,6 +1939,13 @@ body[data-help="off"] .set-row .set-txt > span:not([data-keephelp]){
   color:var(--muted);white-space:nowrap}
 .notify-perm[hidden]{display:none}
 .notify-perm .pill{padding:3px 10px;font-size:12px}
+/* ★ 4C 真闹钟档 2：精确排期状态那一行。与上面「未授权」同一副形状（同一个 `.notify-side`
+   竖列里再添一行），文案说人话、带不带「去开启」由 refreshNotifyExact() 收口。
+   ⚠️ 同一条老坑：`.notify-exact{display:flex}` 会盖掉浏览器默认的 [hidden]{display:none}。 */
+.notify-exact{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  color:var(--muted);text-align:right;justify-content:flex-end;max-width:240px;line-height:1.35}
+.notify-exact[hidden]{display:none}
+.notify-exact .pill{padding:3px 10px;font-size:12px;flex:0 0 auto}
 
 /* 时间轴：条数 / 逾期这类事实数字单独一行常显，和上面那段可关掉的说明文案分开。
    放在列表正上方 —— 它说的是这份列表的事，本来就该挨着列表。
@@ -4734,6 +4741,54 @@ function refreshNotifyPerm(){
   const box = document.getElementById('notifyPerm');
   if (!box) return;
   box.hidden = !(notifyBridge() && S.notify && notifyPerm() === 'denied');
+}
+
+/* ---------------- ★ 4C 真闹钟档 2：精确排期 / 全屏响铃的状态 ----------------
+   ⚠️ 页面**不据此决定排不排** —— 排期永远是 syncNotify 那一处（硬约定 7），
+   "有精确权限就用 setExact*、没有就用 set()" 这个分叉在原生侧（armAlarm）里。
+   这里只做一件事：把状态写给用户看，并给一个「去开启」的跳转入口。
+   unknown 与 denied 同档处理（探测不出来时按"可能不精确"说，宁可保守）。 */
+
+/* 'granted' | 'denied' | 'unknown'（没有桥 / 老壳没有这个方法时取 'unknown'）。 */
+function notifyExact(){
+  const b = notifyBridge();
+  if (!b || typeof b.notifyExactState !== 'function') return 'unknown';
+  try {
+    const s = String(b.notifyExactState() || '');
+    return (s === 'granted' || s === 'denied') ? s : 'unknown';
+  } catch (_){ return 'unknown'; }
+}
+
+/* 'granted' | 'denied' —— 全屏响铃（Android 14 起只自动给通话/闹钟类应用）。 */
+function notifyFullScreen(){
+  const b = notifyBridge();
+  if (!b || typeof b.notifyFullScreenState !== 'function') return 'unknown';
+  try { return String(b.notifyFullScreenState() || '') === 'granted' ? 'granted' : 'denied'; }
+  catch (_){ return 'denied'; }
+}
+
+/* 那一行的显隐与文案。只在"有桥 + 提醒总开关开着"时才出现 —— 关着的时候
+   说"提醒可能不准"没有意义，反而多一行噪音。
+   ★ unknown 与 denied 走同一档（探测不出来就按"可能不精确"说，宁可保守）。 */
+function refreshNotifyExact(){
+  const box = document.getElementById('notifyExact');
+  const full = document.getElementById('notifyFull');
+  const on = !!(notifyBridge() && S.notify);
+  if (box){
+    const bad = on && notifyExact() !== 'granted';
+    box.hidden = !bad;
+    if (bad){
+      const txt = document.getElementById('notifyExactTxt');
+      if (txt) txt.textContent = '提醒可能会晚几分钟：系统没给精确闹钟权限';
+    }
+  }
+  if (full){
+    /* 全屏拿不到不影响"响不响"，只影响"怎么响" —— 所以只说明，不给按钮
+       （这条权限在 Android 14 上按应用类别给，用户改不动）。 */
+    const bad = on && notifyFullScreen() !== 'granted';
+    full.hidden = !bad;
+    if (bad) full.textContent = '锁屏上不会全屏弹，改成横幅 + 响铃提醒';
+  }
 }
 
 /* ★ 约定 7 里那个"唯一入口"。
@@ -9089,14 +9144,21 @@ function renderSettings(){
           <div class="set-txt">
             <b>提醒</b>
             <span>写了日期或钟点的条目，到点弹一条系统通知；点通知会打开鱼事并滚到那一条。
-              只写日期、没写钟点的，默认当天早上 9 点提醒。关掉就一条通知都不发，
-              已经排出去的提醒也会一起取消。</span>
+              只写日期、没写钟点的，默认当天早上 9 点提醒。系统允许时精确到分钟；
+              系统没给「精确闹钟」权限时会晚几分钟 —— 下面会说明，也能一键去开启。
+              关掉就一条通知都不发，已经排出去的提醒也会一起取消。</span>
           </div>
           <div class="notify-side">
             <button class="switch" data-set="notify" role="switch" aria-label="提醒"
                     aria-checked="${S.notify ? 'true' : 'false'}"></button>
             <span class="notify-perm" id="notifyPerm" hidden>未授权
               <button type="button" class="pill" data-act="notifyopen">去设置</button></span>
+            <!-- ★ 4C 真闹钟档 2：精确排期的状态说明 + 「去开启」。
+                 条件显示，渲染完由 refreshNotifyExact() 收口（同「未授权」那条路）。 -->
+            <span class="notify-exact" id="notifyExact" hidden>
+              <span id="notifyExactTxt">提醒可能会晚几分钟：系统没给精确闹钟权限</span>
+              <button type="button" class="pill" data-act="exactopen">去开启</button></span>
+            <span class="notify-exact" id="notifyFull" hidden></span>
           </div>
         </div>
         <!-- v3.18：原来的「系统语音（可能联网）」开关已删除 —— 语音改成**内置本地模型**
@@ -9294,8 +9356,10 @@ function renderSettings(){
     </div>`;
   setFoldInit();
   /* ★ 阶段1 提醒：模板里那行「未授权 + 去设置」一律先渲染成 hidden，
-     真正的显隐由这里按桥的权限状态收口（三个条件：有桥、总开关开着、用户明确拒过）。 */
+     真正的显隐由这里按桥的权限状态收口（三个条件：有桥、总开关开着、用户明确拒过）。
+     ★ 4C：精确排期 / 全屏响铃那两行同理，一处收口。 */
   refreshNotifyPerm();
+  refreshNotifyExact();
 }
 
 /* ★ v5.0：设置页的折叠 —— 在上面那份 markup 渲染完之后**原地加工**，不改各栏自己的写法。
@@ -11160,6 +11224,7 @@ view.addEventListener('click', e => {
       S.notify = !S.notify; save();
       el.setAttribute('aria-checked', S.notify ? 'true' : 'false');
       refreshNotifyPerm();
+      refreshNotifyExact();
       const n = notifyReconcile();
       if (!notifyBridge()) toast('这个壳没有通知桥：网页版 / iPhone 上不弹系统通知');
       else if (S.notify) toast(n ? ('已打开提醒 · 排了 ' + n + ' 条') : '已打开提醒 · 现在还没有写了日期的条目');
@@ -11454,6 +11519,15 @@ view.addEventListener('click', e => {
     if (b && typeof b.openNotifySettings === 'function'){
       try { b.openNotifySettings(); } catch (_){}
     } else toast('这个壳没有通知设置入口');
+    return;
+  }
+  /* ★ 4C：精确闹钟在系统设置里的开关页。页面侧只负责转发 ——
+     "拿不拿得到、要不要用精确"仍然全在原生侧（与「未授权 + 去设置」同一条约定）。 */
+  if (act === 'exactopen'){
+    const b = notifyBridge();
+    if (b && typeof b.openExactSettings === 'function'){
+      try { b.openExactSettings(); } catch (_){}
+    } else toast('这个壳没有精确闹钟设置入口');
     return;
   }
   if (act === 'sparkok'){ const inp = document.getElementById('sp_in'); if (inp && it && seedAddSpark(it, inp.value)) refresh(); return; }
@@ -13957,7 +14031,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.11.1';
+const APP_VERSION = '5.12.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
@@ -14688,6 +14762,13 @@ window.addEventListener('yushi:notify', e => {
   if (d.type === 'perm'){
     if (S.view === 'settings') refresh();
     else refreshNotifyPerm();
+    return;
+  }
+  /* ★ 4C：用户去系统设置里开了精确闹钟、切回来时原生派发这一条 ——
+     正在设置页就整页重画，否则只更新那一行（不做后台打扰）。 */
+  if (d.type === 'exact'){
+    if (S.view === 'settings') refresh();
+    else refreshNotifyExact();
   }
 });
 

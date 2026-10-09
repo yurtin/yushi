@@ -80,6 +80,10 @@ public class MainActivity extends Activity {
     private static final String N_ASKED = "asked";
     /** 通知渠道 id。Android 8.0+ 不建渠道的通知会被**静默丢掉**。 */
     private static final String N_CH = "yushi_notify_ch";
+    /** ★ 4C 闹钟档：到点响铃用的**高优先级 + 铃声 + 震动**渠道。
+     *  为什么不直接改上面那条：Android 8.0+ 渠道的 importance 创建之后就**不能改**了，
+     *  要让通知带声音、震动、抬头显示，只能新建一个 id（这正好也是任务卡验收 6 要的形式）。 */
+    private static final String N_CH_ALARM = "yushi_alarm_ch";
     /** 到点那一刻由 AlarmManager 派发的自定义 action（组件是显式的，action 只是给日志看）。 */
     static final String ACTION_FIRE = "com.yushi.app.NOTIFY_FIRE";
 
@@ -90,6 +94,9 @@ public class MainActivity extends Activity {
      *  App 冷启动时 onCreate 早就跑完了，那时 evaluateJavascript 打在空页面上会丢掉 ——
      *  所以先存下来，等 onPageFinished（或那道延时兜底）再发。 */
     private String pendingNotify = null;
+    /** ★ 4C：上一次看到的"精确排期能不能用"。用户从系统设置页回来时拿它比对 ——
+     *  状态一变（拿到或丢了权限）就按原生排期表重排一遍，不必等下一次页面操作。 */
+    private boolean lastExactOk = true;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -214,6 +221,29 @@ public class MainActivity extends Activity {
         super.onNewIntent(it);
         setIntent(it);
         deliverNotify(it);
+    }
+
+    /**
+     * ★ 4C：用户去系统设置里开了「精确闹钟」再切回来 —— 这一刻要把已有的排期**补排**成精确的。
+     *
+     * <p>为什么是 onResume：跳系统设置走 startActivity，回来只经过 onResume（不会重建 Activity）。
+     * 同一条路也照顾"权限被撤销"：那种情况下系统会取消掉已排的精确闹钟，这里重排一遍、
+     * 退化成非精确，提醒照样会响（红线 4）。
+     *
+     * <p>只在状态**真的变了**时才重排，避免每次切前后台都白写一遍排期表。
+     * 状态也顺手回给页面（设置页那行说明据此当场刷新，不用重进设置）。
+     */
+    @Override
+    protected void onResume() {
+        super.onResume();
+        try {
+            boolean now = exactAllowed(this);
+            if (now != lastExactOk) {
+                lastExactOk = now;
+                rearmAll(this);
+                emitNotifyExact(now ? "granted" : "denied");
+            }
+        } catch (Throwable t) { }
     }
 
     @Override
@@ -668,10 +698,60 @@ public class MainActivity extends Activity {
                         | android.app.PendingIntent.FLAG_IMMUTABLE);
     }
 
-    /** 真正排一个闹钟。★ 只用 set()，**绝不**用 setExact* ——
-     *  任务卡红线 2：不申请 SCHEDULE_EXACT_ALARM、不做真闹钟档。
-     *  set() 允许系统在低电 / 空闲时把它推迟几分钟，这正是"提醒"该有的量级；
-     *  换来的代价是可能晚到一会儿，但不必向用户要那个吓人的精确闹钟权限。 */
+    /* ---- ★ 4C 真闹钟档 2：两条"能不能用"的探测 ----
+       都带 Build.VERSION 守卫 + try/catch。新 API 在旧系统上裸调会抛 NoSuchMethodError
+       （本项目已经为这个坑付过一次学费），所以这里一条都不许裸调。 */
+
+    /** 精确排期能不能用。
+     *  Android 12(API 31) 起 SCHEDULE_EXACT_ALARM 是"特殊权限"，13(API 33) 起**新装应用默认不授予**。
+     *  拿不到就退回非精确的 set() —— 红线 4：绝不能变成"不排"。 */
+    static boolean exactAllowed(android.content.Context ctx){
+        try {
+            if (Build.VERSION.SDK_INT < 31) return true;   // 更早的系统根本不需要这条权限
+            android.app.AlarmManager am = (android.app.AlarmManager)
+                    ctx.getSystemService(android.content.Context.ALARM_SERVICE);
+            if (am == null) return false;
+            return am.canScheduleExactAlarms();
+        } catch (Throwable t) { return false; }
+    }
+
+    /** 全屏响铃能不能用。
+     *  Android 14(API 34) 起 USE_FULL_SCREEN_INTENT 只自动授予"通话 / 闹钟"类应用 ——
+     *  我们这个待办 App 大概率**拿不到**；拿不到就是一条高优先级 heads-up 通知（照样响）。 */
+    static boolean fullScreenAllowed(android.content.Context ctx){
+        try {
+            if (Build.VERSION.SDK_INT < 34) return true;   // 34 之前默认授予
+            android.app.NotificationManager nm = (android.app.NotificationManager)
+                    ctx.getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+            if (nm == null) return false;
+            return nm.canUseFullScreenIntent();
+        } catch (Throwable t) { return false; }
+    }
+
+    /** 系统闹钟铃声。**不需要任何新权限**，也绝不往仓库里塞音频文件（红线 6）。
+     *  极少数 ROM 连默认闹钟铃声都没有 → 退回默认通知音 → 再没有就返回 null（还有震动兜底）。 */
+    static android.net.Uri alarmSoundUri(){
+        try {
+            android.net.Uri u = android.media.RingtoneManager.getDefaultUri(
+                    android.media.RingtoneManager.TYPE_ALARM);
+            if (u == null) u = android.media.RingtoneManager.getDefaultUri(
+                    android.media.RingtoneManager.TYPE_NOTIFICATION);
+            return u;
+        } catch (Throwable t) { return null; }
+    }
+
+    /** 铃声走"闹钟"这条音频流 —— 否则会被当成通知音、音量跟着通知走，闹钟感全无。 */
+    static android.media.AudioAttributes alarmAudioAttributes(){
+        return new android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+    }
+
+    /** 真正排一个闹钟。★ 4C 起**分叉**：
+     *   有精确权限 → setExactAndAllowWhileIdle（到点就响，真闹钟）
+     *   没有       → **保持原来的 set()**（系统可以推迟几分钟，但一定会排出去）
+     *  红线 4：无论哪一档都必须排出去 —— "因为没权限所以不提醒了"是明令禁止的。 */
     static void armAlarm(android.content.Context ctx, String id, String title, long ts){
         try {
             if (!notifyAllowed(ctx)) return;              // 没权限就先只留在排期表里（授权后统一重排）
@@ -679,7 +759,16 @@ public class MainActivity extends Activity {
             android.app.AlarmManager am = (android.app.AlarmManager)
                     ctx.getSystemService(android.content.Context.ALARM_SERVICE);
             if (am == null) return;
-            am.set(android.app.AlarmManager.RTC_WAKEUP, ts, fireIntent(ctx, id, title, ts));
+            android.app.PendingIntent pi = fireIntent(ctx, id, title, ts);
+            if (exactAllowed(ctx)){
+                try {
+                    am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, ts, pi);
+                    return;
+                } catch (Throwable t) {
+                    /* 探测通过之后权限又被撤销 / 厂商 ROM 拦截 → 往下退回非精确，**仍然排** */
+                }
+            }
+            am.set(android.app.AlarmManager.RTC_WAKEUP, ts, pi);
         } catch (Throwable t) { }
     }
 
@@ -718,16 +807,30 @@ public class MainActivity extends Activity {
         return n;
     }
 
-    /** 到点弹通知。渠道必须显式建一个（8.0+ 不建就被静默丢弃）。 */
+    /** 到点弹通知。渠道必须显式建一个（8.0+ 不建就被静默丢弃）。
+     *
+     *  <p>★ 4C 真闹钟档 2：走**新的高优先级渠道** N_CH_ALARM（系统闹钟铃声 + 震动）——
+     *  即使全屏权限拿不到，它本身也已经是一条很"闹钟"的 heads-up 通知。
+     *  能拿到全屏权限就再挂一个全屏响铃界面（{@link AlarmActivity}）。 */
     static void showNotif(android.content.Context ctx, String id, String title, long ts){
         try {
             android.app.NotificationManager nm = (android.app.NotificationManager)
                     ctx.getSystemService(android.content.Context.NOTIFICATION_SERVICE);
             if (nm == null) return;
             if (Build.VERSION.SDK_INT >= 26){
-                android.app.NotificationChannel ch = new android.app.NotificationChannel(
+                /* 旧渠道保留、内容不动 —— 老版本排出去的闹钟可能还挂在它上面。 */
+                android.app.NotificationChannel ch0 = new android.app.NotificationChannel(
                         N_CH, "提醒", android.app.NotificationManager.IMPORTANCE_HIGH);
-                ch.setDescription("到点的待办提醒");
+                ch0.setDescription("到点的待办提醒");
+                nm.createNotificationChannel(ch0);
+                /* 闹钟档渠道：importance 创建后不可改 → 必须换新 id。 */
+                android.app.NotificationChannel ch = new android.app.NotificationChannel(
+                        N_CH_ALARM, "到点闹钟", android.app.NotificationManager.IMPORTANCE_HIGH);
+                ch.setDescription("到点的待办提醒：响铃 + 震动");
+                ch.enableVibration(true);
+                ch.setVibrationPattern(new long[]{ 0, 600, 300, 600, 300 });
+                android.net.Uri snd = alarmSoundUri();
+                if (snd != null) ch.setSound(snd, alarmAudioAttributes());
                 nm.createNotificationChannel(ch);
             }
             /* 点通知 → 回到 MainActivity，并带上条目 id（页面据此滚到那一条）。
@@ -741,15 +844,43 @@ public class MainActivity extends Activity {
                     android.app.PendingIntent.FLAG_UPDATE_CURRENT
                             | android.app.PendingIntent.FLAG_IMMUTABLE);
             android.app.Notification.Builder b = (Build.VERSION.SDK_INT >= 26)
-                    ? new android.app.Notification.Builder(ctx, N_CH)
+                    ? new android.app.Notification.Builder(ctx, N_CH_ALARM)
                     : new android.app.Notification.Builder(ctx);
             b.setSmallIcon(android.R.drawable.ic_popup_reminder)
              .setContentTitle(title == null || title.isEmpty() ? "鱼事提醒" : title)
              .setContentText(notifyBody(ts))
              .setAutoCancel(true)
+             .setCategory(android.app.Notification.CATEGORY_ALARM)
              .setContentIntent(pi);
+            if (Build.VERSION.SDK_INT < 26){
+                /* 8.0 以下没有渠道，声音 / 震动 / 优先级得直接写在通知上。 */
+                b.setPriority(android.app.Notification.PRIORITY_MAX);
+                android.net.Uri snd = alarmSoundUri();
+                if (snd != null) b.setSound(snd);
+                b.setVibrate(new long[]{ 0, 600, 300, 600, 300 });
+            }
+            /* ★ 第二段：全屏响铃。能拿到就全屏；拿不到就只是一条高优先级通知 —— **照样响**。 */
+            if (fullScreenAllowed(ctx)){
+                try {
+                    b.setFullScreenIntent(alarmFullScreenIntent(ctx, id, title, ts), true);
+                } catch (Throwable t) { }
+            }
             nm.notify(nReq(id), b.build());
         } catch (Throwable t) { }
+    }
+
+    /** 全屏响铃那一下用的 PendingIntent（起 {@link AlarmActivity}，会一直响到用户按按钮）。 */
+    private static android.app.PendingIntent alarmFullScreenIntent(android.content.Context ctx,
+            String id, String title, long ts){
+        android.content.Intent i = new android.content.Intent(ctx, AlarmActivity.class);
+        i.setAction(ACTION_FIRE);
+        i.putExtra("id", id);
+        i.putExtra("title", title == null ? "" : title);
+        i.putExtra("ts", ts);
+        i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+        return android.app.PendingIntent.getActivity(ctx, nReq(id), i,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                        | android.app.PendingIntent.FLAG_IMMUTABLE);
     }
 
     /* ------------------------------------------------------------------ */
@@ -993,6 +1124,15 @@ public class MainActivity extends Activity {
         if (web != null) web.post(() -> web.evaluateJavascript(js, null));
     }
 
+    /** ★ 4C：精确闹钟权限变了 → 页面。detail: {type:'exact', state}。
+     *  用户在系统设置里开了精确闹钟、切回来时，设置页那句说明当场从"可能会晚几分钟"
+     *  变成"已精确"，不用重进设置页。 */
+    void emitNotifyExact(String state){
+        final String js = "window.dispatchEvent(new CustomEvent('yushi:notify',{detail:{type:'exact',state:"
+                + jsStr(state) + "}}));";
+        if (web != null) web.post(() -> web.evaluateJavascript(js, null));
+    }
+
     /** 给 JS 字符串加引号并转义，避免在 text 里出现引号 / 换行时把 CustomEvent 的 detail 弄断。 */
     private static String jsStr(String v) {
         StringBuilder sb = new StringBuilder("\"");
@@ -1144,6 +1284,53 @@ public class MainActivity extends Activity {
                         startActivity(i2);
                     } catch (Throwable t2) { }
                 }
+            });
+        }
+
+        /* ---- ★ 4C 真闹钟档 2：精确排期的状态与申请入口 ----
+           形状照抄 notifyPermState / openNotifySettings（同一个约定：页面只问状态、只求跳转，
+           判断与排期仍然全在页面侧的 syncNotify 那一处）。 */
+
+        /** "granted" / "denied" / "unknown"。
+         *  Android 12 以下用不着这条权限 → granted；
+         *  12+ 探测 canScheduleExactAlarms()：拿得到 granted、拿不到 denied；
+         *  连 AlarmManager 都取不到（异常）→ unknown（页面按 denied 处理，一样会排，只是不精确）。 */
+        @android.webkit.JavascriptInterface
+        public String notifyExactState() {
+            try {
+                if (Build.VERSION.SDK_INT < 31) return "granted";
+                android.app.AlarmManager am = (android.app.AlarmManager)
+                        getSystemService(android.content.Context.ALARM_SERVICE);
+                if (am == null) return "unknown";
+                return am.canScheduleExactAlarms() ? "granted" : "denied";
+            } catch (Throwable t) { return "unknown"; }
+        }
+
+        /** 全屏响铃的状态（只用来在设置页写一句人话，没有"去开启"按钮 —— 这条权限
+         *  在 Android 14 上是按应用类别自动给的，用户改不动）。 */
+        @android.webkit.JavascriptInterface
+        public String notifyFullScreenState() {
+            return fullScreenAllowed(MainActivity.this) ? "granted" : "denied";
+        }
+
+        /** 跳系统的「精确闹钟」开关页。
+         *  用**字符串常量**而不是 Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM ——
+         *  与 POST_NOTIFICATIONS / 照片选择器同一条理由：新常量在旧工具链里可能不存在。
+         *  少数 ROM 没有这一页 → 退回「本应用详情」，别让按钮点了没反应。 */
+        @android.webkit.JavascriptInterface
+        public void openExactSettings() {
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= 31){
+                    try {
+                        android.content.Intent i = new android.content.Intent(
+                                "android.settings.REQUEST_SCHEDULE_EXACT_ALARM",
+                                android.net.Uri.fromParts("package", getPackageName(), null));
+                        i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(i);
+                        return;
+                    } catch (Throwable t) { }
+                }
+                openNotifySettings();
             });
         }
 
@@ -1373,6 +1560,166 @@ public class MainActivity extends Activity {
                    它就会一直留在表里。弹完即删最干净。 */
                 notifyDrop(ctx, id);
             } catch (Throwable t) { }
+        }
+    }
+
+    /* ================================================================== */
+    /*  ★ 4C 全屏响铃界面（拿到 USE_FULL_SCREEN_INTENT 时才会出现）        */
+    /* ================================================================== */
+
+    /**
+     * 一条极简的响铃页：标题 + 「知道了」/「稍后提醒」。
+     *
+     * <p>★ 为什么是 MainActivity 的**静态嵌套类**：本轮写入范围只授权 MainActivity.java
+     * 一个 Java 文件（与 {@link NotifyReceiver} 同一个理由），manifest 里声明成
+     * {@code com.yushi.app.MainActivity$AlarmActivity}。
+     *
+     * <p>界面全部用代码搭（不新增 res/layout）：写入范围里没有 res 目录。
+     *
+     * <p>响铃用 {@link android.media.MediaPlayer} 循环播**系统闹钟铃声** ——
+     * {@code Ringtone.setLooping} 要 API 28，MediaPlayer 从 API 24 起就能循环，
+     * 而且一条音频文件都不用往包里塞（红线 6）。铃声放不出来时震动还在，
+     * 绝不允许"什么都没发生"。
+     */
+    public static class AlarmActivity extends Activity {
+
+        private android.media.MediaPlayer mp;
+        private android.os.Vibrator vib;
+        private String nid = "";
+        private long nts = 0L;
+        private String ntitle = "";
+
+        @Override
+        protected void onCreate(Bundle st){
+            super.onCreate(st);
+            try {
+                nid = getIntent() == null ? "" : getIntent().getStringExtra("id");
+                ntitle = getIntent() == null ? "" : getIntent().getStringExtra("title");
+                nts = getIntent() == null ? 0L : getIntent().getLongExtra("ts", 0L);
+                if (nid == null) nid = "";
+                if (ntitle == null) ntitle = "";
+            } catch (Throwable t) { }
+
+            /* 锁屏上也要能弹出来。新方法（API 27+）放在守卫里；
+               低版本靠下面那三个（已废弃但仍然有效的）窗口标志。 */
+            try {
+                if (Build.VERSION.SDK_INT >= 27){
+                    setShowWhenLocked(true);
+                    setTurnScreenOn(true);
+                }
+            } catch (Throwable t) { }
+            try {
+                getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                        | android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                        | android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
+            } catch (Throwable t) { }
+
+            /* 极简界面：背景 + 标题 + 时刻 + 两枚按钮。用户的注意力只该在这两件事上。 */
+            float d = getResources().getDisplayMetrics().density;
+            int pad = (int)(28 * d);
+            android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+            box.setOrientation(android.widget.LinearLayout.VERTICAL);
+            box.setGravity(android.view.Gravity.CENTER);
+            box.setBackgroundColor(0xFF14161A);
+            box.setPadding(pad, pad, pad, pad);
+
+            android.widget.TextView tv = new android.widget.TextView(this);
+            tv.setText(ntitle.isEmpty() ? "鱼事提醒" : ntitle);
+            tv.setTextSize(26);
+            tv.setGravity(android.view.Gravity.CENTER);
+            tv.setTextColor(0xFFFFFFFF);
+            box.addView(tv);
+
+            android.widget.TextView sub = new android.widget.TextView(this);
+            sub.setText(notifyBody(nts));
+            sub.setTextSize(14);
+            sub.setGravity(android.view.Gravity.CENTER);
+            sub.setTextColor(0xFFB9C0CC);
+            android.widget.LinearLayout.LayoutParams slp = new android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            slp.topMargin = pad / 3;
+            box.addView(sub, slp);
+
+            android.widget.Button ok = new android.widget.Button(this);
+            ok.setText("知道了");
+            ok.setOnClickListener(v -> stopAndFinish());
+            android.widget.Button snz = new android.widget.Button(this);
+            snz.setText("稍后提醒");
+            snz.setOnClickListener(v -> { snooze(); stopAndFinish(); });
+            android.widget.LinearLayout.LayoutParams blp = new android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            blp.topMargin = pad;
+            box.addView(ok, blp);
+            box.addView(snz, new android.widget.LinearLayout.LayoutParams(blp));
+
+            setContentView(box);
+            startRing();
+        }
+
+        /** 开始响：铃声（循环）+ 震动（循环）。任一失败都不影响另一条，两条都失败才什么都不发生。 */
+        private void startRing(){
+            try {
+                android.net.Uri u = alarmSoundUri();
+                if (u != null){
+                    mp = new android.media.MediaPlayer();
+                    mp.setAudioAttributes(alarmAudioAttributes());
+                    mp.setDataSource(this, u);
+                    mp.setLooping(true);
+                    mp.prepare();
+                    mp.start();
+                }
+            } catch (Throwable t) { }
+            try {
+                vib = (android.os.Vibrator) getSystemService(android.content.Context.VIBRATOR_SERVICE);
+                if (vib != null && vib.hasVibrator()){
+                    long[] pat = new long[]{ 0, 600, 300, 600, 300 };
+                    if (Build.VERSION.SDK_INT >= 26){
+                        vib.vibrate(android.os.VibrationEffect.createWaveform(pat, 0));
+                    } else {
+                        vib.vibrate(pat, 0);
+                    }
+                }
+            } catch (Throwable t) { }
+        }
+
+        private void stopRing(){
+            try { if (mp != null) mp.stop(); } catch (Throwable t) { }
+            try { if (mp != null) mp.release(); } catch (Throwable t) { }
+            mp = null;
+            try { if (vib != null) vib.cancel(); } catch (Throwable t) { }
+            vib = null;
+        }
+
+        /** 两个按钮共用：停铃 + 撤掉那条通知 + 关掉这一页。 */
+        private void stopAndFinish(){
+            stopRing();
+            try {
+                android.app.NotificationManager nm = (android.app.NotificationManager)
+                        getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+                if (nm != null) nm.cancel(nReq(nid));
+            } catch (Throwable t) { }
+            finish();
+        }
+
+        /** 「稍后提醒」：5 分钟后再响一次。写回排期表 + 重排 —— 白名单之外的键一个不动。 */
+        private void snooze(){
+            try {
+                long next = System.currentTimeMillis() + 5 * 60 * 1000L;
+                if (nid.length() > 0) notifyPut(this, nid, ntitle, next);
+            } catch (Throwable t) { }
+        }
+
+        @Override
+        protected void onDestroy(){
+            stopRing();
+            super.onDestroy();
+        }
+
+        @Override
+        public void onBackPressed(){
+            stopAndFinish();
         }
     }
 }

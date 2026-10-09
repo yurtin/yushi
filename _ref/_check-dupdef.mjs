@@ -126,6 +126,10 @@ const NAMES = [
      （onImagePicked 是事件处理函数，照样按 function 声明数） */
   'aiImageUser', 'imgFitSide', 'imgCompress',
   'pickImage', 'onImagePicked', 'imageTodos', 'imageAsk', 'openImageConfirm', 'imageCommit',
+  /* ================= 4C 真闹钟档 2（精确排期 / 全屏响铃的页面侧） ================= */
+  /* 注意：只收页面侧新加的三个 —— 原生 Java 那批（exactAllowed / armAlarm / AlarmActivity…）
+     不在这个脚本的覆盖范围里（它读的是 鱼事.html）。 */
+  'notifyExact', 'notifyFullScreen', 'refreshNotifyExact',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }

@@ -8,8 +8,8 @@
      3.5.0 → 3050000（旧的 3.1–3.39 是 30100–33900，新方案稳压它们一头，升级不会倒挂）。 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.yushi.app"
-    android:versionCode="5110100"
-    android:versionName="5.11.1">
+    android:versionCode="5120000"
+    android:versionName="5.12.0">
 
     <!--
       零联网仍是底线，但本版破了"零权限"：为支持长按圆钮的设备端离线语音识别，加了两条权限。
@@ -49,9 +49,17 @@
          普通权限。没有它的话，设完提醒重启手机就全丢了（真机验收第 3 项抓的就是这个）——
          因为开机广播那一刻 WebView 还没跑、页面读不到 localStorage（见硬约定 8）。 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- ★ 阶段1 红线：**不**申请 SCHEDULE_EXACT_ALARM，也**不**做全屏响铃 / 锁屏唤醒。
-         排期一律用 AlarmManager.set()（非精确）——系统可以在低电/空闲时推迟几分钟，
-         这正是"提醒"该有的量级，不必向用户要那个吓人的精确闹钟权限。 -->
+    <!-- ★ 4C 真闹钟档 2：精确排期（让「9:00 提醒」真的 9:00）。
+         这条**不是**运行时权限，也不是"声明了就有"：Android 12(API 31) 起它是"特殊权限"，
+         Android 13(API 33) 起**新装应用默认不授予** —— 必须运行时用 canScheduleExactAlarms()
+         探测，拿不到就退回原来的 set()（非精确），并用系统设置页给用户一个开启入口。
+         ★ 红线：**绝不**为了让这条权限生效去降 targetSdkVersion（那是能力倒退）。 -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- ★ 4C：全屏响铃（锁屏上直接弹出响铃页）。
+         Android 14(API 34) 起这条只自动授予"通话 / 闹钟"类应用 —— 我们大概率拿不到，
+         所以**拿不到是预期结果**：那一档退化成高优先级 heads-up 通知（响铃 + 震动），
+         三层降级里任何一层都必须**照样响**（红线 4：绝不允许"因为没权限所以不提醒了"）。 -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- ★ v3.18：INTERNET **已删除** —— 语音改成内置 Vosk 本地模型（模型就在包里，纯离线识别），
          于是又回到"一条联网权限都不声明"的零联网底线。 -->
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
@@ -88,6 +96,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- ★ 4C 真闹钟档 2：全屏响铃页（只有拿到 USE_FULL_SCREEN_INTENT 时才会被拉起来）。
+             它同样是 MainActivity 的**静态嵌套类**（写入范围只授权 MainActivity.java），
+             所以名字里带 $。exported="false"：只有本应用通过 PendingIntent 显式拉起它。
+             showWhenLocked / turnScreenOn 让它在锁屏、熄屏时也能直接弹出来。 -->
+        <activity
+            android:name="com.yushi.app.MainActivity$AlarmActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode|density|fontScale" />
 
         <!-- ★ 阶段1 提醒：到点弹通知 + 开机重排，同一个 receiver 干两件事。
              它是 MainActivity 的**静态嵌套类**（本轮的写入范围只授权了 MainActivity.java

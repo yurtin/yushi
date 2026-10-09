@@ -285,12 +285,21 @@ console.log('\n[5] 排期唯一出口 + 六个"条目变了"的入口都接到�
   tOk('设置页「功能」卡里有提醒开关', /data-set="notify"/.test(html), '');
   tOk('未授权那一行有「去设置」入口（data-act="notifyopen"）',
       /data-act="notifyopen"/.test(html) && /openNotifySettings/.test(code), '');
-  /* 红线 2：不做真闹钟档 —— 去注释后的源码里不许出现 setExact*。 */
+  /* ★★ 4C 口径变更（2026-10-09）：阶段1 那条"不做真闹钟档 / 不申请 SCHEDULE_EXACT_ALARM"
+     的红线在 4C 卡里被**明确解除** —— 本卡要做的正是精确排期 + 全屏响铃。
+     红线换成三条更硬的（见 _4c-regress.mjs [4]）：① 精确只在探测通过时才用，拿不到必须
+     落回非精确 set()（绝不"没权限就不提醒"）；② 不申请 REQUEST_INSTALL_PACKAGES；
+     ③ 不降 targetSdkVersion。
+     原来的断言是"源码里不许出现 setExact*""manifest 里不许有 SCHEDULE_EXACT_ALARM"，
+     到 4C 必然打红 → **改断言不改代码**（与 0F 处理脚本漂移用同一条办法）。
+     注意仍然**去注释**再断言：Java / manifest 的注释里到处写着历史说明。 */
   const java = stripComments(fs.readFileSync(
     FILE.replace(/鱼事\.html$/, '_android/app/src/com/yushi/app/MainActivity.java'), 'utf8'));
-  tOk('MainActivity 里没有 setExact*（红线：不做真闹钟档）',
-      !/setExact/.test(java), (java.match(/setExact\w*/g) || []).join(',') || '无');
-  tOk('MainActivity 用的是非精确 set()', /am\.set\(/.test(java), '');
+  tOk('精确排期只在探测通过时才用 setExactAndAllowWhileIdle（4C 新口径）',
+      /if \(exactAllowed\(ctx\)\)\{[\s\S]{0,240}?setExactAndAllowWhileIdle/.test(java),
+      (java.match(/setExact\w*/g) || []).join(',') || '无');
+  tOk('拿不到精确权限仍会落回非精确 set()（红线 4：拿不到也必须响）',
+      /am\.set\(android\.app\.AlarmManager\.RTC_WAKEUP, ts, pi\)/.test(java), '');
   tOk('原生侧自己持久化了排期表（SharedPreferences，硬约定 8）',
       /N_PREF/.test(java) && /putLong\(nKeyAt\(id\), ts\)/.test(java), '');
   tOk('开机广播按排期表重排', /ACTION_BOOT_COMPLETED/.test(java) && /rearmAll\(ctx\)/.test(java), '');
@@ -298,8 +307,10 @@ console.log('\n[5] 排期唯一出口 + 六个"条目变了"的入口都接到�
     FILE.replace(/鱼事\.html$/, '_android/app/AndroidManifest.xml'), 'utf8'));
   tOk('manifest 声明了 POST_NOTIFICATIONS', /POST_NOTIFICATIONS/.test(mf), '');
   tOk('manifest 声明了 RECEIVE_BOOT_COMPLETED', /RECEIVE_BOOT_COMPLETED/.test(mf), '');
-  tOk('manifest 里**没有** SCHEDULE_EXACT_ALARM（红线 2）',
-      !/SCHEDULE_EXACT_ALARM/.test(mf), '');
+  tOk('manifest 声明了 SCHEDULE_EXACT_ALARM（4C：精确排期）',
+      /uses-permission[^>]*SCHEDULE_EXACT_ALARM/.test(mf), '');
+  tOk('manifest 声明了 USE_FULL_SCREEN_INTENT（4C：全屏响铃，拿不到就降级）',
+      /uses-permission[^>]*USE_FULL_SCREEN_INTENT/.test(mf), '');
   tOk('manifest 里**没有** REQUEST_INSTALL_PACKAGES（红线 1）',
       !/REQUEST_INSTALL_PACKAGES/.test(mf), '');
   tOk('源 manifest 里**没有** INTERNET（红线 3）', !/android\.permission\.INTERNET/.test(mf), '');
