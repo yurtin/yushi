@@ -358,6 +358,24 @@ html.gpu-render .capture{
 @media (hover:hover){
   .go-btn:hover{opacity:.86}
 }
+/* ★ 4B 图片入口：录入条左端那枚圆形图片键。
+   和 .go-btn 同径（32px）、同 `flex:0 0 auto`，左右各一枚圆键 + 中间输入框，视觉对称。
+   它是**次要动作**，所以不铺实底：透明底 + 一圈 --line2 描边 + currentColor 图标。
+   颜色全部来自 token（--fg / --line2），深浅两套主题各自成立，没有写死的颜色。 */
+.pic-btn{
+  appearance:none;-webkit-appearance:none;padding:0;cursor:pointer;flex:0 0 auto;
+  width:32px;height:32px;border-radius:50%;border:1px solid var(--line2);
+  display:flex;align-items:center;justify-content:center;
+  background:transparent;color:var(--fg);
+  transition:transform var(--mo-quick) ease,opacity var(--mo-quick) ease,border-color var(--mo-quick) ease;
+}
+.pic-btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
+.pic-btn:active{transform:scale(.9)}
+.pic-btn:disabled{opacity:.35;cursor:default}
+@media (hover:hover){
+  .pic-btn:hover{border-color:var(--fg);opacity:.9}
+}
 /* 录入条下方：标签框 + 提示框，各自独立、居中，不吸顶（随页面滚走） */
 .entry-extra{
   display:flex;flex-direction:column;align-items:center;gap:9px;
@@ -1563,6 +1581,10 @@ body.has-focus #toast{top:calc(var(--focus-h) + 10px)}
   word-break:break-word}
 .cf-ar{flex:0 0 auto;color:var(--faint)}
 .cf-to{color:var(--fg);font-weight:800;word-break:break-word}
+/* ★ 4B：图片确认页每个条目下面那行"日期 · 钟点 · 标签…"（只读，不是改前→改后）。
+   用 .cf-ch 同一套盒模型，所以视觉上与 3B 的确认页是同一族，不引入第二种长相。 */
+.cf-bits{color:var(--muted);font-size:12.5px;font-weight:600;word-break:break-word}
+.cf-row .cf-t:last-child{margin-bottom:0}
 /* 「改挂到…」单独用时的占位壳：撑出与编辑页同量级的高度，面板才有地方铺（见 aiOpenRemount）。 */
 .cf-holder{height:min(420px,58vh)}
 @media (max-width:560px){
@@ -3579,6 +3601,20 @@ html.tree-full .merge-bar{z-index:85}
   <div class="capture-wrap" id="captureWrap">
     <div class="inner">
       <div class="capture glass" id="captureBar">
+        <!-- ★ 4B 图片入口：一枚圆形图片键，和右侧对号同径同边距（视觉对称）。
+             它是**次要动作** —— 幽灵描边样式，实心的对号留给"存这条"。
+             点击只做一件事：打开下面那个隐藏的 <input type="file">。
+             为什么还要走 file input（而不是纯 native 桥）：系统选择器返回 Uri 后由 WebView
+             自己交给页面，零权限、跨壳通用。**webview 侧要能弹出来，靠 MainActivity 的
+             onShowFileChooser** —— 没补那一处的话，这个按钮点下去完全没反应。 -->
+        <button type="button" class="pic-btn" id="picBtn" title="拍/选一张图，识别成待办"
+                aria-label="识别图片里的待办">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <rect x="3" y="4.5" width="18" height="15" rx="3.2"/>
+            <circle cx="8.7" cy="9.6" r="1.5"/>
+            <path d="M4.4 17.2l4.5-4.2 3 2.8 3.5-3.7 4.2 4.7"/>
+          </svg>
+        </button>
         <input id="entry" autocomplete="off" spellcheck="false"
                aria-label="新增待办：写一行字，回车保存"
                placeholder="1016 交数学作业    /    新书?    /    #学习 复习">
@@ -3592,6 +3628,8 @@ html.tree-full .merge-bar{z-index:85}
           </svg>
         </button>
       </div>
+      <!-- ★ 4B：图片入口真正的载体。hidden 够用（全文件没有裸 input{display:...} 规则）。 -->
+      <input type="file" id="imgInput" accept="image/*" hidden>
     </div>
   </div>
 
@@ -9696,6 +9734,200 @@ async function aiRunUpdateEntry(text, opts){
   return r;
 }
 
+/* ==================================================================== */
+/*  ★ 4B 图片入口：拍/选一张图（便签、白板、截图、课程表）→ 待办条目        */
+/* ==================================================================== */
+/* 本卡红线（都有源码级或行为级断言钉着）：
+     · 出网只走 aiCall —— 全文件 fetch( 仍然只有那 1 处；
+     · 校验只走 2A 的 aiValidateItems，**不另写一套解析**；
+     · 失败绝不生成假数据（看不清就说看不清）；
+     · aiMode === 'off' 时零请求，并给一句人话；
+     · base64 不进 S、不进 snapshot()（图只在内存里活一次就扔）；
+     · 上传前必须压图（长边 ≤1600px、JPEG 0.8）；
+     · 一个权限都不加（原生侧走系统选择器 / SAF，两条路都不要权限）。 */
+const IMG_MAX_SIDE = 1600;                    // 长边上限
+const IMG_JPEG_Q = 0.8;                       // JPEG 质量
+const IMG_REJECT_BYTES = 8 * 1024 * 1024;     // 原图 > 8MB 直接拒（别硬传）
+/* 请求体的前缀：schema **就是 2A 那一条**（这样 aiValidateItems 能直接吃），
+   整段是常量、逐字符固定 —— 变量全在最后那条 user 消息里（缓存命中价 1/50）。 */
+const AI_IMAGE_SYS =
+  '你把一张照片（便签、白板、截图、课程表、手写清单）整理成待办条目。'
+  + '只输出 JSON，不要解释文字、不要 markdown 围栏。\n'
+  + '输出形状固定为：' + AI_UNDERSTAND_SCHEMA + '\n'
+  + '字段规则：\n'
+  + '· title 条目内容（中文，去掉时间词与语气词，不能为空）\n'
+  + '· date / endDate 只能是 YYYY-MM-DD（endDate 是区间的结束日，没有就写空串）\n'
+  + '· time 只能是 HH:MM 24 小时制（没有就写空串）\n'
+  + '· tags 字符串数组，每项只允许中文/字母/数字/下划线，最多 3 个\n'
+  + '· pri 0 普通 / 1 重要 / 2 紧急\n'
+  + '· parent 这一条要挂到**同一次回答里另一条**下面时，填那一条的 title；否则空串\n'
+  + '· note 补充说明，没有就空串\n'
+  + '· zone 只管**没写日期**的那一条：写 "idea" 表示它其实只是个念头（想做的事、还没定的打算），'
+  + '写 "long" 表示它是一件要认真做的长期事。写了日期的一律空串；拿不准也空串。\n'
+  + '· steps 子想法：**只有这件事明显能拆成两个及以上步骤时才给**，每项一句话、不超过 30 字；'
+  + '否则一律空数组。\n'
+  + '· corrected 把图里**明显的**错字按上下文改对之后的完整句子（没把握就照抄）\n'
+  + '· confidence 0~1，你对这次识别的把握\n'
+  + '铁律：只做**转录**。图上看不清、认不出的字一律不要猜；'
+  + '图里没有任何一件要办的事，就输出 {"items":[],"corrected":"","confidence":0}。'
+  + '不许新增图里没有的信息，不许替用户决定做不做。';
+/* user 消息里的变量部分（今天日期必须有，否则图里的"明天 / 下周三"会算错）。 */
+function aiImageUser(){
+  return '今天是：' + ymd(new Date()) + '\n把这张图里要办的事整理成待办条目。看不清的字不要猜。';
+}
+
+/* 等比缩到长边 ≤ max —— **纯函数**。真实渲染在 imgCompress 里，这一步单独抽出来
+   是为了能离线断言"1600 这个口径"（见 _4b-regress 第 7 条）。 */
+function imgFitSide(w, h, max){
+  const W = Math.max(1, Math.round(Number(w) || 1));
+  const H = Math.max(1, Math.round(Number(h) || 1));
+  const m = Math.max(W, H);
+  if (m <= max) return { w: W, h: H };
+  const k = max / m;
+  return { w: Math.max(1, Math.round(W * k)), h: Math.max(1, Math.round(H * k)) };
+}
+/* 压图：长边 ≤1600px、JPEG 质量 0.8 → dataURL。
+   为什么必须压：原图直接 base64 还要再膨胀 33%，一张 5MB 的图既慢又贵；
+   "单图 ≤32MiB / 请求体 ≤48MiB"是最后一道闸，不是第一道。
+   解不出来 / canvas 不给用一律抛异常 —— 调用方提示"读不出来"，**绝不上传原图**。 */
+function imgCompress(file){
+  return new Promise((resolve, reject) => {
+    let url = '';
+    try { url = URL.createObjectURL(file); } catch (e){ reject(e); return; }
+    const im = new Image();
+    const done = fn => { try { if (url) URL.revokeObjectURL(url); } catch (e){} fn(); };
+    im.onload = () => {
+      try {
+        const t = imgFitSide(im.naturalWidth, im.naturalHeight, IMG_MAX_SIDE);
+        const cv = document.createElement('canvas');
+        cv.width = t.w; cv.height = t.h;
+        const cx = cv.getContext('2d');
+        cx.drawImage(im, 0, 0, t.w, t.h);
+        const dataUrl = cv.toDataURL('image/jpeg', IMG_JPEG_Q);
+        done(() => resolve({ dataUrl: dataUrl, w: t.w, h: t.h,
+          srcW: im.naturalWidth, srcH: im.naturalHeight }));
+      } catch (e){ done(() => reject(e)); }
+    };
+    im.onerror = () => done(() => reject(new Error('decode')));
+    im.src = url;
+  });
+}
+
+/* 入口：点了图片键。先过"AI 能不能用"这道闸（红线 4：关着就零请求 + 一句人话），
+   再打开那个隐藏的 file input；真正干活在 onImagePicked → imageTodos。 */
+function pickImage(){
+  if (!aiOn()){
+    if (S.aiMode === 'off') aiFail('识图要联网，先开一下 AI');
+    else openAiNeedOn();              // 开着但没 key：给引导页（隐私开关必须他本人点）
+    return;
+  }
+  const inp = document.getElementById('imgInput');
+  if (!inp){ aiFail('这个环境挑不了图'); return; }
+  inp.click();
+}
+/* <input type=file> 的 change。**value 立刻清空** —— 不清的话同一张图连选两次不触发 change。 */
+function onImagePicked(e){
+  const f = e && e.target && e.target.files && e.target.files[0];
+  if (e && e.target){ try { e.target.value = ''; } catch (err){} }
+  if (f) imageTodos(f);
+}
+/* 图 → 条目：两道前置闸（太大 / AI 关着）→ 压图 → 出网 → 校验 → 确认页。 */
+async function imageTodos(file){
+  if (!file) return;
+  if (Number(file.size) > IMG_REJECT_BYTES){
+    aiFail('这张图太大了（' + Math.round(Number(file.size) / 1048576) + 'MB），先裁小一点再试');
+    return;
+  }
+  if (!aiOn()){
+    if (S.aiMode === 'off') aiFail('识图要联网，先开一下 AI');
+    else openAiNeedOn();
+    return;
+  }
+  toast('看图识别中…', null, 8000);
+  let shot = null;
+  try { shot = await imgCompress(file); }
+  catch (e){ aiFail('这张图读不出来，换一张试试'); return; }
+  await imageAsk(shot.dataUrl);
+}
+/* 出网 → 解析 → 校验 → 确认页。**那张图的 base64 只以参数形式活这一次**，
+   全程不落到 S / localStorage / snapshot() 里（几 MB 的字符串会把存档撑爆）。 */
+async function imageAsk(dataUrl){
+  let txt;
+  try {
+    txt = await aiCall([
+      { role: 'system', content: AI_IMAGE_SYS },
+      { role: 'user', content: [
+        { type: 'text', text: aiImageUser() },
+        { type: 'image_url', image_url: { url: String(dataUrl || '') } }
+      ] }
+    ], { json: true });
+  } catch (e){ aiFail('AI 没接上，这张图没看'); return; }
+  let data = null;
+  try { data = aiParseJSON(txt); } catch (e){ aiFail('AI 没接上，这张图没看'); return; }
+  /* 红线 2：**复用 2A 的校验器**，一个字都不许另写解析。
+     空标题、pri=9 这类脏条目在这里就被丢掉；一条都不剩 → 什么都不落。 */
+  const items = aiValidateItems(data && data.items);
+  if (!items.length){ aiFail('这张图我没看出待办 · 换一张清楚点的'); return; }
+  openImageConfirm(items);
+}
+/* 确认页：住在现有的 #mask / .modal 里，复用 3B 的 .cf-* 样式，**不新造浮层**。
+   取消 = 零落库：取消 / Esc / 点遮罩三条路都只走 closeModal，一个字段都不碰。 */
+function openImageConfirm(items){
+  /* 「看图识别中…」那条提示要在这里收掉：确认页一出来它就没意义了，
+     而且它会浮在弹层上方（#toast 的 z-index 比 .mask 还高）挡着标题。 */
+  hideToast();
+  const list = Array.isArray(items) ? items : [];
+  const body = list.map(x => {
+    const bits = [];
+    if (x.date) bits.push('日期 ' + x.date + (x.dateEnd ? '~' + x.dateEnd : ''));
+    if (x.time) bits.push('钟点 ' + x.time);
+    if (x.pri) bits.push(x.pri === 2 ? '紧急' : '重要');
+    if (x.tags && x.tags.length) bits.push(x.tags.join('/'));
+    if (x.parent) bits.push('挂在「' + x.parent + '」下');
+    return '<div class="cf-row"><div class="cf-t">' + esc(x.title) + '</div>'
+      + (bits.length ? '<div class="cf-ch"><span class="cf-bits">' + esc(bits.join(' · ')) + '</span></div>' : '')
+      + '</div>';
+  }).join('');
+  modal.innerHTML =
+    '<h3 id="modalTitle">图里认出了 ' + list.length + ' 条</h3>'
+    + '<p class="cf-sub">确认之前，一条都不会存。</p>'
+    + '<div class="cf-list">' + body + '</div>'
+    + '<div class="foot">'
+    +   '<button type="button" class="btn" id="ic_cancel">取消</button>'
+    +   '<div class="spacer"></div>'
+    +   '<button type="button" class="btn primary" id="ic_ok">确认添加</button>'
+    + '</div>';
+  openMask();
+  const no = document.getElementById('ic_cancel');
+  const ok = document.getElementById('ic_ok');
+  if (no) no.onclick = () => closeModal();
+  if (ok) ok.onclick = () => { closeModal(); imageCommit(items); };
+}
+/* 确认后落库。走 aiCommitPlan → addItem(text, preset) —— 落库的**唯一路径**
+   （通知排期 / 标签上限 / 父子挂靠 / 作业字段都在 addItem 里，一条都不用另写）。
+   raw 传 "图片" 两个字：它的唯一用途是给这条留一段可追溯的原文。 */
+function imageCommit(items){
+  const list = Array.isArray(items) ? items : [];
+  const made = aiCommitPlan({ items: list }, '图片');
+  if (!made.length){ aiFail('这张图我没看出待办 · 换一张清楚点的'); return; }
+  S.aiAnchor = String(made[0].title || '').slice(0, 60);
+  save();
+  refresh();
+  const ids = made.map(x => x.id);
+  toast('从图里加了 ' + made.length + ' 条', [{ label: '撤销', fn: () => {
+    const kill = new Set(ids);
+    S.items = S.items.filter(x => !kill.has(x.id));
+    save(); refresh();
+  } }], 9000);
+}
+/* 4B 的入口接线。与录入框的 Enter 同一个位置（script 在 body 末尾，元素已经在）。 */
+(function initImageEntry(){
+  const pb = document.getElementById('picBtn');
+  const ii = document.getElementById('imgInput');
+  if (pb) pb.addEventListener('click', pickImage);
+  if (ii) ii.addEventListener('change', onImagePicked);
+})();
+
 let rafRefresh = 0;
 function refresh(){
   if (rafRefresh) return;
@@ -13731,7 +13963,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.10.1';
+const APP_VERSION = '5.11.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：

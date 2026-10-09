@@ -121,6 +121,11 @@ const NAMES = [
   /* ================= 4A 重复模型升级（每 N 天 / 每周几 / 每月某日） ================= */
   'parseWeekRepeat', 'parseMonthRepeat', 'monthDayIn', 'nextWeekDayFrom', 'afterWeekDay',
   'nextMonthDayFrom', 'afterMonthDay', 'applyRepeatFields', 'repRuleText', 'teGapVal', 'teSyncRepUI',
+  /* ================= 4B 图片入口（拍/选一张图 → 待办） ================= */
+  /* 注意：imgCompress 也一起收 —— 它是 async 的 Promise 包装，同样只能有一处定义。
+     （onImagePicked 是事件处理函数，照样按 function 声明数） */
+  'aiImageUser', 'imgFitSide', 'imgCompress',
+  'pickImage', 'onImagePicked', 'imageTodos', 'imageAsk', 'openImageConfirm', 'imageCommit',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }

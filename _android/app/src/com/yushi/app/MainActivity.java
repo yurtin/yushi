@@ -66,6 +66,11 @@ public class MainActivity extends Activity {
     private static final int REQ_VOICE = 1;
     /** 运行时申请 POST_NOTIFICATIONS 的请求码（Android 13+ 才有这条权限）。 */
     private static final int REQ_NOTIFY = 2;
+    /** ★ 4B 图片入口：挑一张图（系统照片选择器 / SAF）的请求码。 */
+    private static final int REQ_PICK = 3;
+    /** ★ 4B：WebView 递过来的文件选择回调。**必须有始有终** —— 用户取消时也要回 null，
+     *  否则页面里那个 input 会一直等（点了再点没反应）。 */
+    private ValueCallback<Uri[]> filePickCb;
 
     /* ---- 阶段1 提醒：到点通知的关键常量 ---- */
     /** 排期表的 SharedPreferences 名。**这是原生侧自己那份持久化副本** ——
@@ -174,7 +179,10 @@ public class MainActivity extends Activity {
         web.setBackgroundColor(Color.TRANSPARENT);
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setWebViewClient(new AssetClient());
-        web.setWebChromeClient(new WebChromeClient());
+        /* ★ 4B 图片入口：原来这里是裸的 `new WebChromeClient()` —— 没有覆写
+           onShowFileChooser，于是页面里 <input type="file"> 点下去**完全没反应**
+           （不报错、不弹选择器）。这就是 WebView 的经典坑，见 PickClient 的说明。 */
+        web.setWebChromeClient(new PickClient());
 
         /* 暴露语音桥。名字定死 YuShiNative —— 页面侧照这个名字访问，换壳也不用改页面。
            即使设备不支持离线识别（API < 31），桥也照样存在，只是 isAvailable() 返回 "false"、
@@ -218,6 +226,28 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        /* ★ 4B 图片入口：挑图的结果。**取消也必须回调**（out 为 null）——
+           FileChooserParams 那个回调不结掉的话，页面里再点一次图片键就没反应了。 */
+        if (req == REQ_PICK){
+            ValueCallback<Uri[]> cb = filePickCb;
+            filePickCb = null;
+            if (cb == null) return;
+            Uri[] out = null;
+            try {
+                if (res == RESULT_OK && data != null){
+                    Uri one = data.getData();
+                    if (one != null){
+                        out = new Uri[]{ one };
+                    } else if (data.getClipData() != null){
+                        int n = data.getClipData().getItemCount();
+                        out = new Uri[n];
+                        for (int i = 0; i < n; i++) out[i] = data.getClipData().getItemAt(i).getUri();
+                    }
+                }
+            } catch (Throwable t) { out = null; }
+            try { cb.onReceiveValue(out); } catch (Throwable t) { }
+            return;
+        }
         if (req != 0x9A21) return;
         try {
             if (res == RESULT_OK && data != null) {
@@ -474,6 +504,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        /* ★ 4B：Activity 走了但挑图回调还挂着 → 用 null 结掉，别让 WebView 一直等。 */
+        try { if (filePickCb != null){ filePickCb.onReceiveValue(null); filePickCb = null; } } catch (Throwable t) { }
         /* SpeechRecognizer 必须在主线程 destroy，否则会泄漏麦克风 / 录音 session。
            这里 onDestroy 本身是主线程，直接调即可。 */
         if (bridge != null) bridge.destroy();
@@ -754,6 +786,75 @@ public class MainActivity extends Activity {
         public void onPageFinished(WebView view, String url) {
             flushNotify();
         }
+    }
+
+    /* ================================================================== */
+    /*  ★ 4B 图片入口：让页面里的 <input type="file"> 真的能弹出选择器      */
+    /* ================================================================== */
+
+    /**
+     * WebView 的文件选择客户端。
+     *
+     * <p><b>为什么必须自己写</b>：WebView 默认的 {@link WebChromeClient} 没有实现
+     * {@link WebChromeClient#onShowFileChooser}，它的默认实现直接返回 false ——
+     * 页面里 {@code <input type="file">} 点下去**不报错、不弹任何东西**，
+     * 看起来就像按钮坏了。这是 WebView 最经典的坑之一。
+     *
+     * <p><b>零权限</b>：挑图走系统选择器，两条路都不需要声明任何权限 ——
+     * <ul>
+     *   <li>Android 13 (API 33) 及以上：系统照片选择器（{@code ACTION_PICK_IMAGES}）；</li>
+     *   <li>更低版本（或 ROM 上没有照片选择器）：SAF 的 {@link Intent#ACTION_OPEN_DOCUMENT}。</li>
+     * </ul>
+     * 所以这里**绝不申请 CAMERA、也绝不申请任何存储权限** —— 一旦声明 CAMERA，
+     * 「用相机拍照」就会变成必须运行时申请，白白多一道系统框（本卡红线）。
+     * 少数 ROM 连照片选择器都没有 → resolveActivity 返回 null 时自动退回 SAF，不崩。
+     */
+    private class PickClient extends WebChromeClient {
+
+        @Override
+        public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> cb,
+                                         FileChooserParams params) {
+            /* 同时来两次请求时，先把上一次的回调用 null 结掉 —— 不结的话页面会一直等。 */
+            if (filePickCb != null){
+                try { filePickCb.onReceiveValue(null); } catch (Throwable t) { }
+                filePickCb = null;
+            }
+            filePickCb = cb;
+            Intent i = pickIntent();
+            if (i == null){
+                filePickCb = null;
+                try { cb.onReceiveValue(null); } catch (Throwable t) { }
+                return true;                       // 仍然"接住了"，只是没得选：页面拿到 null
+            }
+            try {
+                startActivityForResult(i, REQ_PICK);
+            } catch (Throwable t){
+                filePickCb = null;
+                try { cb.onReceiveValue(null); } catch (Throwable t2) { }
+                return true;                       // 没有能处理它的 Activity：别让页面永远等
+            }
+            return true;
+        }
+    }
+
+    /** 挑一张图要用的系统 Intent（零权限两条路）。都不可用就返回 null。 */
+    private Intent pickIntent(){
+        if (Build.VERSION.SDK_INT >= 33){
+            try {
+                /* 用**字符串常量**而不是 MediaStore.ACTION_PICK_IMAGES：
+                   后者在旧的 android.jar 里不存在，会让整个工程编不过
+                   （与 notifyAllowed 里 POST_NOTIFICATIONS 同一个理由）。 */
+                Intent p = new Intent("android.provider.action.PICK_IMAGES");
+                p.setType("image/*");
+                if (p.resolveActivity(getPackageManager()) != null) return p;
+            } catch (Throwable t) { }
+        }
+        try {
+            Intent s = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            s.addCategory(Intent.CATEGORY_OPENABLE);
+            s.setType("image/*");
+            return s;
+        } catch (Throwable t){ return null; }
     }
 
     /** true = 这次跳转由我们接管（已经开系统浏览器了），WebView 不要再加载。 */
