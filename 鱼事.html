@@ -1317,8 +1317,21 @@ html.soft-render .mask .modal{
 .te-rep{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
 .te-rep-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .te-rep-top .te-sw{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;cursor:pointer}
-.te-rep-top .te-gap{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted)}
-.te-rep.dis .te-gap,.te-rep.dis .te-mode{opacity:.45;pointer-events:none}
+/* ★ 4A：数字框那一行（原来它住在 .te-rep-top 里，现在换到方式行下面独占一行） */
+.te-gaprow{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted);margin-top:10px}
+.te-rep.dis .te-gaprow,.te-rep.dis .te-kindrow,.te-rep.dis .te-wk,.te-rep.dis .te-mode{opacity:.45;pointer-events:none}
+/* ★ 4A：循环的三种形态（每 N 天 / 每周几 / 每月某日）。与 .te-mode 同一套胶囊语言，
+   选中＝深色实底，颜色只用 --fg/--bg/--muted，深浅两套主题自动都对。 */
+.te-kindrow,.te-wk{display:flex;gap:6px;margin-top:10px}
+.te-kindrow button,.te-wk button{
+  flex:1;appearance:none;-webkit-appearance:none;border:0;background:transparent;color:var(--muted);
+  font:inherit;font-size:12.5px;font-weight:800;padding:8px 6px;border-radius:9999px;cursor:pointer;
+  transition:background 220ms ease,color 220ms ease;
+}
+@media (hover:hover){ .te-kindrow button:hover,.te-wk button:hover{color:var(--fg)} }
+.te-kindrow button.on,.te-wk button.on{background:var(--fg);color:var(--bg)}
+/* .hide 要自己写回 display:none —— 上面给了 display:flex，会盖掉浏览器默认的 [hidden]（本项目老坑） */
+.te-kindrow.hide,.te-wk.hide,.te-gaprow.hide{display:none !important}
 .te-num{
   width:64px;border:1px solid var(--line2);border-radius:14px;background:transparent;color:var(--fg);
   font:inherit;font-size:14px;font-weight:700;padding:11px 10px;outline:0;text-align:center;
@@ -3774,10 +3787,100 @@ function parseDayParts(text){
   return null;
 }
 
+/* ══════════ ★ 4A：重复规则从一种扩到三种 ══════════
+   数据形状（**老数据一个字节都不动** —— 本卡红线 1）：
+     · 每 N 天（老）  `repeat: 3`                    —— 仍是数字，语义与推进公式原样
+     · 每周几（新）    `repeat: 1` + `repeatKind:'week'`  + `repeatDays:[3]`  （0=周日）
+     · 每月某日（新）  `repeat: 1` + `repeatKind:'month'` + `repeatDay: 1`
+   新形态的 `repeat` 一律取 **1 当占位** —— 这样 `if (it.repeat)` 这类既有判定
+   （分区归属、区内排序、统计口径、通知排期、编辑弹层的开关）**一处都不用改**，
+   少一个漏改点就少一个"换设备后循环规则丢了"的机会。
+   下面几个都是纯函数（只吃字符串/Date），便于单测；且都定义在**解析层切片**里 ——
+   `_0a / _0b / _1 / _2a / _2b / _3a` 那几个回归脚本都是"切片 + 按名取函数"进隔离环境跑的，
+   定义在这儿它们天然都能看见，不必去改那些脚本。 */
+
+/* 「每周几」：只认「每[个]周」+ 一串单字星期（可连写，可用 、,，和及跟 分隔）。
+   认不出来返回 null —— 调用方退回原来的行为（当普通日期 / 普通标题），**不瞎猜**。 */
+function parseWeekRepeat(text){
+  const CN = { '一':1, '二':2, '三':3, '四':4, '五':5, '六':6, '日':0, '天':0 };
+  const s = String(text == null ? '' : text);
+  const m = s.match(/每\s*个?\s*周\s*([一二三四五六日天](?:\s*[、,，和及跟]?\s*[一二三四五六日天])*)/);
+  if (!m) return null;
+  /* 「每周一次」「每周两回」不是"星期几" —— 后面紧跟量词就整条放弃。
+     不挡的话那个「一」会被上面的单字表收走，变成"每周一"。 */
+  if (/^\s*[次遍回个趟]/.test(s.slice(m.index + m[0].length))) return null;
+  const days = [];
+  for (const ch of m[1]){
+    const d = CN[ch];
+    if (d !== undefined && days.indexOf(d) < 0) days.push(d);
+  }
+  if (!days.length) return null;
+  days.sort((a, b) => a - b);
+  return { days, raw: m[0], index: m.index };
+}
+/* 「每月某日」：只认「每[个]月」+ 数字（阿拉伯或汉字）+「号」/「日」。 */
+function parseMonthRepeat(text){
+  const s = String(text == null ? '' : text);
+  const m = s.match(/每\s*个?\s*月\s*(\d{1,2}|[一二三四五六七八九十]+)\s*[号日]/);
+  if (!m) return null;
+  const n = /^\d+$/.test(m[1]) ? +m[1] : cnNum(m[1]);
+  if (!(n >= 1 && n <= 31)) return null;
+  return { day: n, raw: m[0], index: m.index };
+}
+/* 某年某月的「第 day 天」；超出当月天数时**落在当月最后一天**。
+   ★ 4A 自定的口径（卡里没定，写进回报）：「每月31号」遇上只有 30 天的月份或二月，
+     落在那个月的最后一天，而不是跳过这个月 —— 「每月交房租」的预期是这个月还得交。 */
+function monthDayIn(y, m, day){
+  const last = new Date(y, m + 1, 0).getDate();
+  return new Date(y, m, Math.min(Math.max(1, day), last));
+}
+/* 从 base（某天 0 点）起，**当天或之后**最近的一个命中星期；列表里没有合法值则 null。 */
+function nextWeekDayFrom(base, days){
+  for (let i = 0; i <= 7; i++){
+    const t = new Date(base); t.setDate(t.getDate() + i);
+    if (days.indexOf(t.getDay()) >= 0) return t;
+  }
+  return null;
+}
+/* 推进用：**严格在 base 之后**的下一个命中星期（今天命中也要等 7 天，否则原地打转）。 */
+function afterWeekDay(base, days){
+  for (let i = 1; i <= 7; i++){
+    const t = new Date(base); t.setDate(t.getDate() + i);
+    if (days.indexOf(t.getDay()) >= 0) return t;
+  }
+  return null;
+}
+/* 当天或之后最近的「每月 day 号」；这个月已经过了就下个月。 */
+function nextMonthDayFrom(base, day){
+  const d = monthDayIn(base.getFullYear(), base.getMonth(), day);
+  return d.getTime() < base.getTime()
+    ? monthDayIn(base.getFullYear(), base.getMonth() + 1, day) : d;
+}
+/* 推进用：**下一个**月的 day 号（同样落在当月最后一天）。 */
+function afterMonthDay(base, day){
+  return monthDayIn(base.getFullYear(), base.getMonth() + 1, day);
+}
+/* ★ 4A：把 parseSmart 的循环字段落到条目上（addItem / openEditNew / importText 三条路共用）。
+   老形态（repeat 是数字、没有 kind）**一个字段都不多写** —— 三条路造出来的老条目
+   与改动前逐字段一致；新形态也只挂它自己那两个字段，不留半个形状。 */
+function applyRepeatFields(it, p){
+  if (!it || !p) return it;
+  if (p.repeat && p.repeatKind === 'week' && Array.isArray(p.repeatDays) && p.repeatDays.length){
+    it.repeatKind = 'week';
+    it.repeatDays = p.repeatDays.slice();
+  } else if (p.repeat && p.repeatKind === 'month' && Number.isInteger(p.repeatDay)){
+    it.repeatKind = 'month';
+    it.repeatDay = p.repeatDay;
+  }
+  return it;
+}
+
 /* ---------------- 核心：一行字 → {title,date,dateEnd,time,tags,zone,done} ---------------- */
 function parseSmart(input){
   let text = String(input || '').trim();
   let explicit = null, time = null, date = null, dateEnd = null, monthOnly = false;
+  /* ★ 4A：新循环形态的两个形状字段。在下面的日期剥离**之前**就要定下来（见那里的说明）。 */
+  let repeatKind = null, repeatDays = null, repeatDay = null;
 
   /* 已完成标记 / 行首装饰。刻意**不含 x / X**：
      下面 done 的判定用 [☑☒√✓]、导入的行首判定用 [☐☑☒□√✓✗×]，两处都不认 x —— 只有这里认过。
@@ -3875,6 +3978,26 @@ function parseSmart(input){
   /* ★ 0C（Bug 3）：`pathBlocked` 为真时（这一行含 `>` 却不是路径），**整段时间和日期剥离都跳过** ——
      "整句当标题、不给日期"。下面这一段故意不重新缩进，让 diff 只落在首尾两行上。 */
   if (!pathBlocked){
+  /* ★ 4A：新循环形态 —— 「每周三」「每周一三五」「每月1号」「每月一号」。
+     必须排在**日期剥离之前**：再往下的「星期」分支会把 `每周三` 吃成"最近的那个周三"、
+     「X 号」分支会把 `每月1号` 吃成"下个月的 1 号"，吃完就再也认不出这是循环了。
+     两条都只认明确写了「每」的形状，认不出来一律不动（退回原来的行为，不瞎猜）。
+     ① 日期锚点照样给（`每周三 跑步` 落在最近的周三）—— 与改动前一致，
+        也让"第一条从哪天算起"有答案；往后怎么推由 spawnNextCycle 按 repeatKind 分叉。
+     ② `repeat` 在这里先不赋值，交给下面"每 N 天"那段之后统一取占位 1。 */
+  if (!repeatKind){
+    const wk = parseWeekRepeat(text);
+    const mo = wk ? null : parseMonthRepeat(text);
+    if (wk){
+      const d0 = nextWeekDayFrom(today0(), wk.days);
+      if (d0){ date = ymd(d0); repeatKind = 'week'; repeatDays = wk.days; }
+      text = (text.slice(0, wk.index) + ' ' + text.slice(wk.index + wk.raw.length)).trim();
+    } else if (mo){
+      date = ymd(nextMonthDayFrom(today0(), mo.day));
+      repeatKind = 'month'; repeatDay = mo.day;
+      text = (text.slice(0, mo.index) + ' ' + text.slice(mo.index + mo.raw.length)).trim();
+    }
+  }
   // 时间点：下午5点 / 5点半 / 晚上
   const tpat = /(凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|晚)?\s*(\d{1,2})\s*[点时](半|\d{1,2}\s*分)?\s*(之?[前后])?/;
   const tm = text.match(tpat);
@@ -4049,6 +4172,10 @@ function parseSmart(input){
       text = text.replace(rm[0], '').trim();
     }
   }
+  /* ★ 4A：新形态的 `repeat` 取 1 当占位（理由见文件里 4A 那段总说明）。
+     放在这里而不是上面，是为了与"每 N 天"共用同一个变量 —— 两种形态天然互斥，
+     同一行不可能既命中「每3天」又命中「每周三」。 */
+  if (repeatKind && !repeat) repeat = 1;
 
   const cleaned = text.replace(/^[\-—·、,，。;；:：\s]+/, '').replace(/[\-—·、,，。;；:：\s]+$/, '').trim();
   const fallback = String(input || '').trim();
@@ -4060,6 +4187,8 @@ function parseSmart(input){
     title: (cleaned || fallback).replace(/\s{2,}/g, ' '),
     titleRaw: cleaned || fallback,
     date, dateEnd, monthOnly, time, tags, zone, repeat: repeat || null,
+    /* ★ 4A：新循环形态。老形态（每 N 天）这三个恒为 null，形状与改动前一致。 */
+    repeatKind, repeatDays, repeatDay,
     pri,           // 0 无 / 1 重要(!) / 2 紧急(!!)
     goal,          // 「目标」前缀：显式标记为目标卡（有子任务也会按目标渲染）
     dayParts,      // ★ 阶段1：「早中晚」这类分段的钟点数组，null = 不是这种条目（addItem 消费）
@@ -4108,6 +4237,27 @@ function dateLabel(it){
   if (it.time) s += ' ' + it.time;
   return s;
 }
+/* ★ 4A：循环规则的文案（**不含**区间后缀），三形态共用这一处 ——
+   repLabel（列表 chip）与 teRangeLabel（弹层折叠行）都走它，
+   免得出现"卡片写「每周三」、弹层写「每1天」"这种两处漂移。
+   老形态的输出与改动前**逐字符一致**（`每3天` / `每天`）。 */
+function repRuleText(it){
+  if (!it || !it.repeat) return '';
+  if (it.repeatKind === 'week'){
+    const ds = (Array.isArray(it.repeatDays) ? it.repeatDays : [])
+      .filter(d => Number.isInteger(d) && d >= 0 && d <= 6);
+    if (ds.length){
+      const uniq = [];
+      for (const d of ds) if (uniq.indexOf(d) < 0) uniq.push(d);
+      uniq.sort((a, b) => a - b);
+      return '每周' + uniq.map(d => '日一二三四五六'[d]).join('');
+    }
+  }
+  if (it.repeatKind === 'month' && Number.isInteger(it.repeatDay) && it.repeatDay >= 1 && it.repeatDay <= 31){
+    return '每月' + it.repeatDay + '号';
+  }
+  return '每' + (it.repeat === 1 ? '' : it.repeat) + '天';
+}
 /* 编辑弹层「时间」行的折叠态文案（需求 A1）：同月区间收紧成 `9月20–22日`。
    刻意**不复用** dateLabel()：列表 chip 的写法是回归红线（_parse-regress 断言
    `9月1日–9月15日`），不能为了弹层更好看去动它。 */
@@ -4121,7 +4271,7 @@ function teRangeLabel(it){
       ? '–' + e.getDate() + '日'
       : '–' + (e.getMonth() + 1) + '月' + e.getDate() + '日';
   }
-  if (it.repeat) s += ' 每' + it.repeat + '天';
+  if (it.repeat) s += ' ' + repRuleText(it);
   if (it.time) s += ' ' + it.time;
   return s;
 }
@@ -4658,6 +4808,8 @@ function addItem(text, preset){
     createdAt: Date.now(), hw: null, repeat: p.repeat || null,
     parent: null, goal: !!p.goal, pri: p.pri || 0, timeMode: 'once'
   };
+  /* ★ 4A：只有真的带新循环形态时才挂那两个字段（老条目逐字段与改动前一致） */
+  applyRepeatFields(it, p);
   /* ★ v5.0：行尾带 ? 的条目**直接是一条种子**。跟编辑器里「分区选想法」是同一条规则，
      所以字段形状必须跟 newSeed() 一致 —— 否则两条路造出来的种子迟早漂开
      （一条有时间轴、一条没有；一条有 suggest、一条 undefined）。 */
@@ -4675,6 +4827,9 @@ function addItem(text, preset){
       it.sparks = p.steps.slice(0, 6).map(x => ({ at: ymd(new Date()), text: String(x) }));
     }
     it.bornFrom = null; it.promoted = null; it.hw = null; it.repeat = null;
+    /* ★ 4A：想法不带循环 —— 新形态那两个字段也要一起清，否则一条想法还挂着
+       "每周三"的形状，日后再变回待办就会凭空带出一个循环。 */
+    delete it.repeatKind; delete it.repeatDays; delete it.repeatDay;
     it.suggest = []; it.reviewedAt = null; it.aiUse = null;
   }
   // 祖先链逐级挂靠：'写论文> 第一周> 查文献' → 论文 ← 第一周 ← 查文献
@@ -4769,10 +4924,12 @@ function chipDate(it){
      所以这个键只在两边都真的渲染出日期 chip 时才配得上 —— 配不上的自然不参与动画。 */
   return `<span class="${cls}" data-fk="d:${esc(it.id)}">${txt}</span>`;
 }
-/* 循环 chip 文案（需求 A7）：`每3天`，区间任务再补一句区间内语义 */
+/* 循环 chip 文案（需求 A7）：`每3天` / `每周一三五` / `每月1号`，区间任务再补一句区间内语义。
+   ★ 4A：规则文字挪进 repRuleText —— 与编辑弹层的折叠行共用同一处真相源。 */
 function repLabel(it){
-  if (!it.repeat) return '';
-  return '每' + (it.repeat === 1 ? '' : it.repeat) + '天' +
+  const core = repRuleText(it);
+  if (!core) return '';
+  return core +
     (it.dateEnd ? ' · ' + (it.timeMode === 'daily' ? '每天' : '做一次') : '');
 }
 /* 区内排序：重要度优先（紧急 > 重要 > 普通），再按日期先近后远，最后新加入的在前 */
@@ -7548,6 +7705,10 @@ function smartHintCount(text){
   if (/\d{1,2}\s*号/.test(s)) n++;                                       // X 号
   if (/(凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|晚)?\s*\d{1,2}\s*[点时]/.test(s)) n++;  // 钟点
   if (/每\s*隔?\s*(\d+|[一二两三四五六七八九十]+)\s*天|每天/.test(s)) n++;    // 循环
+  /* ★ 4A：新循环形态也是"用户主动写了语法"的证据。
+     「每周三」本来就被上面那条"星期"正则数到；漏的是「每月一号」这种汉字写法 ——
+     不补这一条，它会当成大白话白出一次网（多花钱、还可能被模型改写）。 */
+  if (/每\s*个?\s*月\s*(\d{1,2}|[一二三四五六七八九十]+)\s*[号日]/.test(s)) n++;  // 每月某日
   if (/[\d一二两三四五六七八九十]+\s*[~～\-—－–−〜∼]\s*[\d一二两三四五六七八九十]+/.test(s)) n++;  // 区间
   /* ★ 早中晚连写（`早中晚吃药`）也是**一条本地语法** —— 它是阶段1 的本地规则，
      会在 addItem 里长出 3 条带钟点的子任务。漏了这一条，它就会被当成大白话送去模型，
@@ -11556,7 +11717,22 @@ function toggleDone(it){
    返回值 = 这一轮**新建的全部 id**（第 0 项仍是新父条目），调用的撤销路径要用它整批撤回。 */
 function spawnNextCycle(it, start, end){
   const base = dateFrom(end);
-  base.setDate(base.getDate() + it.repeat + 1);
+  /* ★ 4A：按 kind 分叉。
+     `days` 分支**保持原公式**（+ it.repeat + 1）—— 老数据的推进结果逐字段不变，
+     这是本卡的红线 1；新形态的 repeat 只是占位 1，绝不能让它们走到这条公式上。
+     week/month 的日期数学在解析层（afterWeekDay / afterMonthDay），
+     那几个脚本都是"解析层切片 + 按名取函数"，所以这里调得到。 */
+  if (it.repeatKind === 'week'){
+    const ds = (Array.isArray(it.repeatDays) ? it.repeatDays : [])
+      .filter(d => Number.isInteger(d) && d >= 0 && d <= 6);
+    const hit = afterWeekDay(base, ds);
+    /* 形状坏了（一个合法星期都没有）就退成"7 天一次"，不要掉进 +repeat+1 那条老公式 */
+    if (hit) base.setTime(hit.getTime()); else base.setDate(base.getDate() + 7);
+  } else if (it.repeatKind === 'month' && Number.isInteger(it.repeatDay) && it.repeatDay >= 1 && it.repeatDay <= 31){
+    base.setTime(afterMonthDay(base, it.repeatDay).getTime());
+  } else {
+    base.setDate(base.getDate() + it.repeat + 1);
+  }
   const span = Math.max(0, Math.round((dateFrom(end) - dateFrom(start)) / 86400000));
   const nx = Object.assign({}, it, {
     id: uid(), done: false, doneAt: null, createdAt: Date.now(),
@@ -12339,6 +12515,36 @@ function teRenderCal(){
     teSyncUI();
   });
 }
+/* ★ 4A：#te_gap 这一个输入框按方式复用 —— 「每 N 天」走 1~365，「每月某日」走 1~31。
+   统一在这里夹一次，免得"显示"与"保存"两处各夹一遍、夹出两个不同的数。 */
+function teGapVal(){
+  const el = document.querySelector('#te_gap');
+  let n = parseInt(el && el.value, 10);
+  if (!Number.isFinite(n)) n = 1;
+  const hi = (TE && TE.kind === 'month') ? 31 : 365;
+  return Math.max(1, Math.min(hi, n));
+}
+/* ★ 4A：循环那一块的**显示态**（只读 TE、只改 class 与单位字）。
+   刻意不往输入框里写值 —— 用户正在敲字时被改写会很难用；
+   值的回填只发生在"切换方式"那一刻（见 openItemEditor 里的接线）。 */
+function teSyncRepUI(){
+  const kr = document.querySelector('#te_kindrow');
+  const wr = document.querySelector('#te_wkrow');
+  const gr = document.querySelector('#te_gaprow');
+  if (!kr || !wr || !gr) return;
+  const kind = (TE && TE.kind === 'week') ? 'week' : ((TE && TE.kind === 'month') ? 'month' : 'days');
+  kr.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === kind));
+  gr.classList.toggle('hide', kind === 'week');
+  wr.classList.toggle('hide', kind !== 'week');
+  const lead = document.querySelector('#te_gaplead');
+  const unit = document.querySelector('#te_gapunit');
+  if (lead) lead.textContent = kind === 'month' ? '每月' : '间隔';
+  if (unit) unit.textContent = kind === 'month' ? '号' : '天';
+  const gEl = document.querySelector('#te_gap');
+  if (gEl) gEl.max = kind === 'month' ? '31' : '365';
+  const days = (TE && Array.isArray(TE.days)) ? TE.days : [];
+  wr.querySelectorAll('button').forEach(b => b.classList.toggle('on', days.indexOf(+b.dataset.d) >= 0));
+}
 /* 把 TE 的当前值刷到界面上（折叠行文案 + 输入框 + 循环派生值 + 日历高亮） */
 function teSyncUI(){
   if (!TE) return;
@@ -12349,9 +12555,14 @@ function teSyncUI(){
   if (tEl && document.activeElement !== tEl) tEl.value = TE.time || '';
   const val = document.querySelector('#te_val');
   if (val){
-    const gapEl2 = document.querySelector('#te_gap');
-    const rn = TE.repeatOn ? Math.max(1, Math.min(365, parseInt(gapEl2 && gapEl2.value, 10) || 1)) : null;
-    const tmp = { date: TE.start, dateEnd: TE.picks === 2 ? TE.end : null, time: TE.time, repeat: rn };
+    /* ★ 4A：折叠行的文案也要认新形态 —— 走同一个 repRuleText（teRangeLabel 里调它）。
+       week 形态的 repeat 是占位 1，所以这里要按 kind 组装规则字段，不能只看数字框。 */
+    const kind = (TE && TE.kind === 'week') ? 'week' : ((TE && TE.kind === 'month') ? 'month' : 'days');
+    const rn = TE.repeatOn ? (kind === 'week' ? 1 : teGapVal()) : null;
+    const tmp = { date: TE.start, dateEnd: TE.picks === 2 ? TE.end : null, time: TE.time, repeat: rn,
+                  repeatKind: TE.repeatOn ? kind : null,
+                  repeatDays: TE.repeatOn ? TE.days : null,
+                  repeatDay: TE.repeatOn ? teGapVal() : null };
     const txt = (TE.start || TE.time) ? teRangeLabel(tmp) : '';
     val.textContent = txt || '未设置';
     val.classList.toggle('mute', !txt);
@@ -12389,6 +12600,7 @@ function teSyncUI(){
     /* 「周期结束于」= 本区间终点（用户确认理解一致的只读派生值） */
     de.textContent = (TE.repeatOn && TE.picks === 2 && TE.end) ? '周期结束于 ' + teDateLabelFromStr(TE.end) : '';
   }
+  teSyncRepUI();   // ★ 4A：三种循环方式的显隐与选中态
   teRenderCal();
 }
 /* 展开 / 收起「时间」行。
@@ -12505,7 +12717,16 @@ function teMount(it){
                  : new Date(t0.getFullYear(), t0.getMonth(), 1),
     picks: (it.date && it.dateEnd && it.dateEnd !== it.date) ? 2 : (it.date ? 1 : 0),
     /* 用户点击计数：从 0 开始，见 tePick 的说明① */
-    userClicks: 0
+    userClicks: 0,
+    /* ★ 4A：循环的形态也随之重建（否则上一次编辑的形状会串到下一条）。
+       老数据只有数字 repeat，且没有 repeatKind → 一律落到 'days'，
+       形状、语义、界面都跟改动前一样。 */
+    repeatOn: !!it.repeat,
+    kind: it.repeatKind === 'week' ? 'week' : (it.repeatKind === 'month' ? 'month' : 'days'),
+    days: Array.isArray(it.repeatDays)
+      ? it.repeatDays.filter(d => Number.isInteger(d) && d >= 0 && d <= 6) : [],
+    day: (Number.isInteger(it.repeatDay) && it.repeatDay >= 1 && it.repeatDay <= 31) ? it.repeatDay : 1,
+    gap: Math.max(1, Math.min(365, parseInt(it.repeat, 10) || 1))
   };
 }
 function teRead(){
@@ -12563,8 +12784,29 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
         <div class="te-rep" id="te_rep">
           <div class="te-rep-top">
             <label class="te-sw"><input type="checkbox" id="te_sw"> ⟳ 循环</label>
-            <span class="te-gap">间隔 <input type="number" class="te-num" id="te_gap" min="1" max="365" step="1" value="1"> 天</span>
             <span class="te-derive" id="te_derive"></span>
+          </div>
+          <!-- ★ 4A：循环的三种形态。最省的形态 —— 一排方式键 + 一个随方式变的数字位
+               （每周几用一排星期键，不用数字框）。数字位复用同一个 #te_gap：
+               「每 N 天」吃 1~365，「每月某日」吃 1~31，切方式时按各自区间回填。 -->
+          <div class="te-kindrow" id="te_kindrow" role="group" aria-label="循环方式">
+            <button type="button" data-k="days" class="on">每 N 天</button>
+            <button type="button" data-k="week">每周几</button>
+            <button type="button" data-k="month">每月某日</button>
+          </div>
+          <div class="te-gaprow hide" id="te_gaprow">
+            <span id="te_gaplead">间隔</span>
+            <input type="number" class="te-num" id="te_gap" min="1" max="365" step="1" value="1">
+            <span id="te_gapunit">天</span>
+          </div>
+          <div class="te-wk hide" id="te_wkrow" role="group" aria-label="星期几">
+            <button type="button" data-d="1">一</button>
+            <button type="button" data-d="2">二</button>
+            <button type="button" data-d="3">三</button>
+            <button type="button" data-d="4">四</button>
+            <button type="button" data-d="5">五</button>
+            <button type="button" data-d="6">六</button>
+            <button type="button" data-d="0">日</button>
           </div>
           <!-- ★ 0B.7：勾了作业时出现的一行灰字，说明循环为什么是灰的 -->
           <p class="te-hwnote hide" id="te_hwnote">这是作业 —— 作业不走循环（它有自己的提交状态，排下一轮会说不清这一轮算不算交）。</p>
@@ -12728,7 +12970,11 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
   document.getElementById('te_head').onclick = () => teToggle();
   const gapEl = document.getElementById('te_gap');
   const swEl = document.getElementById('te_sw');
-  if (gapEl) gapEl.value = String(it.repeat || 1);
+  /* ★ 4A：数字框按形态回填 —— 老数据（每 N 天）仍然显示 N，每月形态显示"几号"。 */
+  if (gapEl){
+    gapEl.value = String(TE.kind === 'month' ? TE.day : TE.gap);
+    gapEl.max = TE.kind === 'month' ? '31' : '365';
+  }
   if (swEl) swEl.checked = !!it.repeat;
   if (it.repeat) TE.repeatOn = true;
   /* 日期自由输入：输入即生效 */
@@ -12762,10 +13008,42 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
     teSyncUI();
   };
   if (gapEl) gapEl.oninput = () => {
-    const n = Math.max(1, Math.min(365, parseInt(gapEl.value, 10) || 1));
+    /* ★ 4A：上限按形态走 —— 「每 N 天」到 365，「每月某日」只到 31 */
+    const hi = TE.kind === 'month' ? 31 : 365;
+    const n = Math.max(1, Math.min(hi, parseInt(gapEl.value, 10) || 1));
     if (String(n) !== gapEl.value && gapEl.value !== '') gapEl.value = String(n);
     teSyncUI();
   };
+  /* ★ 4A：三种循环方式的切换。切到「每周几」就把数字框让给星期键；
+     days ↔ month 互换时先把当前那个数记进 TE、再把新形态的数填回输入框（来回切不丢）。 */
+  const krEl = document.getElementById('te_kindrow');
+  if (krEl) krEl.querySelectorAll('button').forEach(b => {
+    b.onclick = e => {
+      e.stopPropagation();
+      const raw = b.dataset.k;
+      const want = raw === 'week' ? 'week' : (raw === 'month' ? 'month' : 'days');
+      if (want === TE.kind) return;
+      if (TE.kind === 'days') TE.gap = teGapVal();
+      else if (TE.kind === 'month') TE.day = teGapVal();
+      TE.kind = want;
+      if (gapEl) gapEl.value = String(want === 'month' ? (TE.day || 1) : (TE.gap || 1));
+      teSyncUI();
+    };
+  });
+  /* 星期几：可多选，但**至少留一个** —— 最后一个被点掉时回填"今天"，
+     不给推进公式留一个空列表（空列表会掉进 spawnNextCycle 的兜底分支）。 */
+  const wkEl = document.getElementById('te_wkrow');
+  if (wkEl) wkEl.querySelectorAll('button').forEach(b => {
+    b.onclick = e => {
+      e.stopPropagation();
+      const d = +b.dataset.d;
+      const i = TE.days.indexOf(d);
+      if (i >= 0) TE.days.splice(i, 1); else TE.days.push(d);
+      if (!TE.days.length) TE.days = [new Date().getDay()];
+      TE.days.sort((x, y) => x - y);
+      teSyncUI();
+    };
+  });
   document.getElementById('te_mode').querySelectorAll('button').forEach(b => {
     b.onclick = e => {
       e.stopPropagation();
@@ -12795,8 +13073,29 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
     it.date = t.date; it.dateEnd = t.dateEnd; it.time = t.time;
     it.monthOnly = false;
     it.timeMode = t.mode;
-    const rep = (swEl && swEl.checked && t.date) ? Math.max(1, Math.min(365, parseInt(gapEl && gapEl.value, 10) || 1)) : null;
-    it.repeat = rep;
+    /* ★ 4A：循环按三形态写回存档。
+       · 没勾/没日期：repeat 与两个新字段**一起清掉**（不留半个形状 ——
+         否则"取消循环"之后它还会被当成每周循环）。
+       · 每 N 天：只写数字 repeat，形状与改动前完全一致（老数据这条路的回归红线）。
+       · 每周几 / 每月某日：repeat 写 1 当占位，再挂各自那两个字段。 */
+    const repOn = !!(swEl && swEl.checked && t.date);
+    if (!repOn){
+      it.repeat = null;
+      delete it.repeatKind; delete it.repeatDays; delete it.repeatDay;
+    } else if (TE.kind === 'week'){
+      it.repeat = 1;
+      it.repeatKind = 'week';
+      it.repeatDays = TE.days.length ? TE.days.slice().sort((a, b) => a - b) : [new Date().getDay()];
+      delete it.repeatDay;
+    } else if (TE.kind === 'month'){
+      it.repeat = 1;
+      it.repeatKind = 'month';
+      it.repeatDay = teGapVal();
+      delete it.repeatDays;
+    } else {
+      it.repeat = teGapVal();
+      delete it.repeatKind; delete it.repeatDays; delete it.repeatDay;
+    }
     it.pri = priVal;
     /* ★ v3.50：分区选「想法」＝把它变成种子，选别处＝变回待办。两个方向都要管 ——
        否则会出两种"看着不对"：待办改成想法后渲染不出时间轴（kind 还是 task），
@@ -12960,6 +13259,7 @@ function openEditNew(rawText, preset){
     createdAt: Date.now(), hw: null, repeat: p.repeat || null, pri: p.pri || 0, timeMode: 'once',
     parent: null, goal: !!p.goal, dayParts: p.dayParts || null,
     heard: p.heard || null };   // AI 纠错后的整句（调用方塞在 preset 上，见 voiceRight）
+  applyRepeatFields(it, p);      // ★ 4A：新循环形态（每 N 天的老形状一个字段都不多写）
   /* ★ 2B：AI 判定能拆 ≥2 步时，进编辑页也该看到那几条子想法 —— 用户可以逐条改/删。
      只在确实有 ≥2 步时才挂 sparks 字段；保存时分区分支会按需要保留或删掉它。 */
   if (p.steps && p.steps.length >= 2){
@@ -13014,6 +13314,7 @@ function importText(txt, base){
         createdAt: Date.now() + n, hw: null, repeat: p.repeat || null, pri: p.pri || 0,
         parent: null, goal: !!p.goal
       };
+      applyRepeatFields(it, p);   // ★ 4A：粘贴导入也认「每周三 / 每月1号」
       /* ★ 0A.4：粘贴导入**逐行**都要消费 `p.path` —— 以前这条路的父级前缀被整段吃掉，
          「论文> 查文献」导进来只是两条互不相干的扁平条目。 */
       hangPath(it, p, zone);
@@ -13396,7 +13697,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.9.0';
+const APP_VERSION = '5.10.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：

@@ -118,6 +118,9 @@ const NAMES = [
   'aiFocusItem', 'aiIsFocused', 'aiFocusBarHTML', 'syncFocusStrip', 'aiRouteForEntry',
   'aiSnapMap', 'aiOpsUndo', 'aiOpsActs', 'aiConfirmOps', 'aiOpsApply', 'aiOpenRemount',
   'aiRunUpdateEntry',
+  /* ================= 4A 重复模型升级（每 N 天 / 每周几 / 每月某日） ================= */
+  'parseWeekRepeat', 'parseMonthRepeat', 'monthDayIn', 'nextWeekDayFrom', 'afterWeekDay',
+  'nextMonthDayFrom', 'afterMonthDay', 'applyRepeatFields', 'repRuleText', 'teGapVal', 'teSyncRepUI',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }
