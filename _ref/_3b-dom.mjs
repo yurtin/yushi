@@ -126,6 +126,15 @@ const click = async (sel, wait) => {
   await sleep(wait === undefined ? 900 : wait);
   return r;
 };
+/* 可选：SHOT3B=1 时顺手把"焦点可见"和"确认页"两屏存成 PNG（人工看一眼，不进断言）。
+   目录 _ref/shots-3b/。 */
+const SHOT_DIR = path.join(ROOT, '_ref', 'shots-3b');
+const shot = async name => {
+  if (!process.env.SHOT3B) return;
+  fs.mkdirSync(SHOT_DIR, { recursive: true });
+  const r = await send('Page.captureScreenshot', { format: 'png' });
+  fs.writeFileSync(path.join(SHOT_DIR, name + '.png'), Buffer.from(r.result.data, 'base64'));
+};
 
 console.log('被测文件:', path.join(ROOT, '鱼事.html'), html.length, '字符');
 console.log('视口 400x888@3x · prefers-reduced-motion=no-preference（真机常态）\n');
@@ -181,6 +190,7 @@ console.log('[1] 焦点真的看得见（卡片高亮 + 顶部「正在改：XXX
     return out;`);
   const tmr = new Date(Date.now() + 86400000);
   const tmrStr = tmr.getFullYear() + '-' + String(tmr.getMonth() + 1).padStart(2, '0') + '-' + String(tmr.getDate()).padStart(2, '0');
+  await shot('1-focus');
   t('改期真的落到那一条上（不是新建一条）', [f.n, f.date, f.time], [3, tmrStr, '15:00']);
   tOk('卡片上有高亮条这个真元素', f.hasBar === true, '');
   tOk('★ 高亮条有实际高度（> 0）', f.barH > 0, 'h=' + f.barH + ' w=' + f.barW);
@@ -248,6 +258,7 @@ console.log('\n[2] 确认页：实底 / 命中仍在弹层内 / 字段名是人�
       from: (document.querySelector('.cf-from') || {}).textContent || '',
       to: (document.querySelector('.cf-to') || {}).textContent || '',
       sub: (document.querySelector('.cf-sub') || {}).textContent.replace(/\\s+/g, ' ').trim() };`);
+  await shot('2-confirm');
   t('确认页打开了（delete 是破坏性 → 必须确认）', c.on, true);
   tOk('★ 弹层是实底（alpha = 1，浮层硬门槛）', c.alpha === 1, c.bg);
   tOk('★ elementFromPoint 命中的仍在弹层内', c.inModal === true, String(c.hitWhat));
