@@ -3821,7 +3821,12 @@ function numToDate(tok){
 }
 
 const WEEK = { '一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'日':0,'天':0 };
-const REL  = { '今天':0,'今日':0,'明天':1,'明日':1,'后天':2,'大后天':3 };
+/* ★ 6A：补「昨天 / 昨天 / 前天 / 大前天」——以前只认今天→大后天那半边。
+   实测（_ref/_6a-probe.mjs）：`昨天 交作业` / `前天 交作业` 整句进标题、无日期 → 落「长期」
+   且不排提醒（AI 关着时的静默失效）。往前的相对词一样常用（记"昨天做的什么事"）。
+   取值就是天数偏移；下面的循环按**词长从长到短**匹配，所以 `大前天` 不会被 `前天` 抢走。 */
+const REL  = { '今天':0,'今日':0,'明天':1,'明日':1,'后天':2,'大后天':3,
+               '昨天':-1,'昨日':-1,'前天':-2,'大前天':-3 };
 
 /* 汉字数字 → 阿拉伯数字。只支持 1~99，待办里的循环周期够用了。
    `两` 收进来是因为「每两天」远比「每二天」常见。
@@ -3937,7 +3942,7 @@ function parseDayParts(text){
 function parseWeekRepeat(text){
   const CN = { '一':1, '二':2, '三':3, '四':4, '五':5, '六':6, '日':0, '天':0 };
   const s = String(text == null ? '' : text);
-  const m = s.match(/每\s*个?\s*周\s*([一二三四五六日天](?:\s*[、,，和及跟]?\s*[一二三四五六日天])*)/);
+  const m = s.match(/每\s*(?:逢|个)?\s*周\s*([一二三四五六日天](?:\s*[、,，和及跟]?\s*[一二三四五六日天])*)/);
   if (!m) return null;
   /* 「每周一次」「每周两回」不是"星期几" —— 后面紧跟量词就整条放弃。
      不挡的话那个「一」会被上面的单字表收走，变成"每周一"。 */
@@ -4147,6 +4152,31 @@ function parseSmart(input){
       text = (text.slice(0, mo.index) + ' ' + text.slice(mo.index + mo.raw.length)).trim();
     }
   }
+  /* ★ 6A：中文月日写法 —— `9月15号` / `9月15日` / `10月1日` / `2026年10月15日`。
+     以前一律不认（本地只认阿拉伯简写 915 与 `X号`），实测两处都坏：
+       · `9月15号 交报告` → X号 分支读成"本月15号"，`9月` 留在标题里（date 差一个月）；
+       · `10月1日 出行` / `9月15日 交材料` → 整句进标题、**没有任何日期**（静默落长期）。
+     只认**带「日」或「号」**的完整月日；只有月份的（`9月` / `2026年10月`）不认 ——
+     那是"某个月内"，锚点不唯一（进 _6a 的 ? 清单，等用户拍板）。
+     年份可省；省了就按 mkDate 的老规矩算（跨年阈值 180 天，与 915 那条同一套）。 */
+  if (!date){
+    const md = text.match(/(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*[日号](?:之前|以前|前)?/);
+    if (md){
+      let d = null;
+      if (md[1]){
+        d = new Date(+md[1], +md[2] - 1, +md[3]);
+        if (d.getFullYear() !== +md[1] || d.getMonth() !== +md[2] - 1 || d.getDate() !== +md[3]) d = null;
+      } else {
+        const r = mkDate(+md[2], +md[3], false);
+        d = r ? dateFrom(r.date) : null;
+      }
+      if (d){
+        date = ymd(d);
+        text = (text.slice(0, md.index) + ' ' + text.slice(md.index + md[0].length)).replace(/\s+/g, ' ').trim();
+      }
+    }
+  }
+
   /* ★ 5B：相对时间「N 分钟后 / N 小时后 / 半小时后」。
      用户实测（2026-10-09）：「帮我设置一个1分钟后看书的待办」→ 指令壳剥对了，
      但 `1分钟后` 没人认 → 既没日期也没钟点 → 落「长期」，而且**根本不会排提醒**
@@ -4175,6 +4205,47 @@ function parseSmart(input){
         time = pad2(t.getHours()) + ':' + pad2(t.getMinutes());
         text = (text.slice(0, rp.index) + ' ' + text.slice(rp.index + rp[0].length)).replace(/\s+/g, ' ').trim();
       }
+    }
+  }
+
+  /* ★ 6A：把相对时间的射程从"24 小时内"扩到**天 / 周 / 个月**（`三天后` / `两周后` /
+     `一个月后` / `半个月后`）。5B 当初刻意只收 24 小时内的（理由是"不猜"），
+     但卡面把 `三天后` 列进了"最常用表达"，而它落成普通 date 就够了 ——
+     排期只认 date/time，有 date 就排当天 09:00。
+     仍然**必须带「后 / 之后」**；上限 天≤30 / 周≤8 / 月≤12，超了照旧不认（宁可漏认）。
+     与上面那条分钟/小时的分工：那条连钟点一起给（`1分钟后` = 今天 HH:MM），
+     这条只给日期（`三天后` = 那天，钟点交给默认 09:00）。 */
+  if (!date && !time){
+    const rp2 = text.match(/(\d+|[一二两三四五六七八九十]+|半)\s*(?:个)?\s*(天|周|星期|月)\s*(?:之?后)/);
+    if (rp2){
+      const raw = rp2[1], unit = rp2[2];
+      const n = /^\d+$/.test(raw) ? +raw : (raw === '半' ? 0.5 : cnNum(raw));
+      const d = today0();
+      if (raw === '半' && unit === '月'){ d.setDate(d.getDate() + 15); date = ymd(d); }
+      else if (n >= 1 && unit === '天' && n <= 30){ d.setDate(d.getDate() + n); date = ymd(d); }
+      else if (n >= 1 && unit === '月' && n <= 12){ d.setMonth(d.getMonth() + n); date = ymd(d); }
+      else if (n >= 1 && n <= 8){ d.setDate(d.getDate() + n * 7); date = ymd(d); }
+      if (date) text = (text.slice(0, rp2.index) + ' ' + text.slice(rp2.index + rp2[0].length)).replace(/\s+/g, ' ').trim();
+    }
+  }
+
+  /* ★ 6A：「今早 / 今晚 / 明早 / 明晚 / 昨晚」—— 日期锚点 + 时段词的**连写缩写**。
+     以前完全不认：`今晚 开会` 整句进标题、无日期无钟点（落长期且不排提醒）；
+     `今晚八点 看电影` 更糟 —— 钟点认出来了，但 `今` 碎在标题里（title「今 看电影」）。
+     做法是**只把缩写还原成完整的时段词 + 定下日期**，钟点交给后面的 tpat / 单个时段词：
+       `今晚八点` → 还原成 `晚上 八点` → tpat 按"晚上"把 8 点加成 20:00（不是 08:00）；
+       `明早七点` → `早上 七点` → 07:00；`今晚 开会` → `晚上 开会` → 单个时段词给 19:00。
+     （第一版直接落 19:00/08:00 并删掉缩写，`今晚八点` 就丢了"晚上"这个上下文、
+      算成 08:00 —— 探针抓到的。）
+     窄闸：后面必须跟边界或数字/汉字数字/「点」—— 挡住 `今晚报`、`明白` 这类正常词。 */
+  if (!date && !time){
+    const ab = text.match(/(今|明|昨)\s*(早|晚)(?=\s|$|[、,，。;；:：!！?？]|\d|[一二两三四五六七八九十点])/);
+    if (ab){
+      const d = today0();
+      d.setDate(d.getDate() + ({ '今':0, '明':1, '昨':-1 }[ab[1]]));
+      date = ymd(d);
+      const seg = ab[2] === '早' ? '早上' : '晚上';
+      text = (text.slice(0, ab.index) + seg + text.slice(ab.index + ab[0].length)).replace(/\s+/g, ' ').trim();
     }
   }
 
@@ -4254,20 +4325,88 @@ function parseSmart(input){
     }
   }
   // 星期：周四 / 本周五 / 下周一（`每` 可省的写法也一起吃掉）
+  /* ★ 6A：星期区间「这周一到周五」「周一到周五」—— 以前只认到"周一"，
+     剩下 `到周五 值班` 留在标题里（实测 title「到周五 值班」）。
+     这里整段收成 date..dateEnd。前缀的周/星期/礼拜是**必需**的 ——
+     否则 `一到五` 这种正文也会被当成星期区间。 */
+  if (!date){
+    const wr = text.match(/(本周|这周|这个|下下|下?周|星期|礼拜)周?\s*([一二三四五六日天])\s*[到至]\s*(?:周|星期|礼拜)?\s*([一二三四五六日天])/);
+    if (wr){
+      const a = WEEK[wr[2]], b2 = WEEK[wr[3]], base = today0();
+      let diff = (a - base.getDay() + 7) % 7;
+      if (/^下下/.test(wr[1])) diff += 14;
+      else if (/下/.test(wr[1])) diff += 7;
+      const d1 = new Date(base); d1.setDate(d1.getDate() + diff);
+      const d2 = new Date(d1); d2.setDate(d2.getDate() + ((b2 - a + 7) % 7));
+      date = ymd(d1); dateEnd = ymd(d2);
+      text = (text.slice(0, wr.index) + ' ' + text.slice(wr.index + wr[0].length)).replace(/\s+/g, ' ').trim();
+    }
+  }
   if (!date){
     /* `(?:每)?` 是为了「每周三 开会」：星期分支只认「周三」，会把「每」剩在标题里，
        变成标题「每 开会」。这里顺手把前缀的「每」一起吃掉。
        （4A 起这里已经能产出 `repeatKind:'week'`，见解析层上方那段 —— 「每周三」现在
-       真的会变成按周的循环，不再是"最近的那个周三"。） */
-    const wm = text.match(/(?:每)?(本周|这周|这个|下?周|星期|礼拜)([一二三四五六日天])\s*(之前|以前|前)?/);
+       真的会变成按周的循环，不再是"最近的那个周三"。）
+       ★ 6A 两处窄修：
+         · `下下` 排在 `下?周` 前面 —— 以前 `下下周三` 被读成"下周三"（差一周），
+           剩下一个 `下` 碎在标题里；
+         · 星期字后面紧跟量词的**不认**（`每周一次` / `每周两回` / `每周三遍`）——
+           以前 `每周一次 汇报` 会命中「周一」，标题碎成「次 汇报」。
+           这条守卫与 parseWeekRepeat 里那条（4A 定的）是同一个判据，只是这里也要挡；
+           它不改变 parseSmart 对「每周一次」的**字段**产出（repeat 仍为 null，
+           _4a-regress 的两条断言原样成立），只是不再留标题碎片。 */
+    const wm = text.match(/(?:每)?(本周|这周|这个|下下|下?周|星期|礼拜)周?([一二三四五六日天])(?![次遍回个趟])\s*(之前|以前|前)?/);
     if (wm){
       const target = WEEK[wm[2]], base = today0();
       let diff = (target - base.getDay() + 7) % 7;
-      if (/下/.test(wm[1])) diff += 7;
+      if (/^下下/.test(wm[1])) diff += 14;
+      else if (/下/.test(wm[1])) diff += 7;
       const d = new Date(base); d.setDate(d.getDate() + diff);
       date = ymd(d);
       text = (text.slice(0, wm.index) + ' ' + text.slice(wm.index + wm[0].length)).trim();
       text = text.replace(/(之前|以前|前)\s*$/, '').trim();
+    }
+  }
+
+  /* ★ 6A：单个时段词（早上 / 上午 / 中午 / 下午 / 傍晚 / 晚上 / 凌晨 / 深夜 …）。
+     以前只在**行尾**被"裸时段词"那条剥掉；出现在中间时整句进标题 ——
+     实测 `早上 跑步` / `下午 开会` / `明天上午 交材料` / `后天早上 开会` 全是
+     "没时间 + 落长期 + 不排提醒"的静默失效（AI 关着时才露馅）。
+     这里落成默认钟点，口径与阶段1「早中晚」那套 08:00 / 12:00 / 19:00 对齐，
+     另给下午 14:00、傍晚 18:00、凌晨 05:00、深夜 23:00。
+     窄闸（宁可漏认，也不猜错）：**前后都必须是边界**（行首/空白/标点/行尾）——
+     `下午茶`、`早上好`、`晚上吃药` 这种时段词粘着正文的一律不动。
+     只在 `time` 还空着时才认：同一行里明确的钟点（`下午5点`）永远优先。 */
+  if (!time){
+    const SEGC = [['清晨','08:00'],['早上','08:00'],['早晨','08:00'],['上午','08:00'],
+                  ['中午','12:00'],['午间','12:00'],['正午','12:00'],['下午','14:00'],
+                  ['傍晚','18:00'],['晚上','19:00'],['夜里','19:00'],['夜间','19:00'],
+                  ['凌晨','05:00'],['深夜','23:00']];
+    for (const seg of SEGC){
+      const i = text.indexOf(seg[0]);
+      if (i < 0) continue;
+      const L = i > 0 ? text.charAt(i - 1) : '';
+      const R = i + seg[0].length < text.length ? text.charAt(i + seg[0].length) : '';
+      if (L && !/[\s、,，。;；:：!！?？]/.test(L)) continue;
+      if (R && !/[\s、,，。;；:：!！?？]/.test(R)) continue;
+      time = seg[1];
+      text = (text.slice(0, i) + ' ' + text.slice(i + seg[0].length)).replace(/\s+/g, ' ').trim();
+      break;
+    }
+  }
+
+  /* ★ 6A：`9/14~9/19` 这种**斜杠月日**区间。以前这条会掉进下面的通用数字区间：
+     它先在串里找到 `14~9`，把 `14` 读成 1月4日、`9` 读成 9月1日 —— 得到
+     date=2027-01-04 > dateEnd=2026-09-01 的反向区间（比"没认出来"更糟）。
+     只认"两边都写了月/日"的完整形状，认不出就不动（退给通用区间与漏认）。 */
+  if (!date){
+    const sr = text.match(/(\d{1,2})\s*\/\s*(\d{1,2})\s*[~～\-—－–−〜∼]\s*(\d{1,2})\s*\/\s*(\d{1,2})/);
+    if (sr){
+      const ra = mkDate(+sr[1], +sr[2], false), rb = mkDate(+sr[3], +sr[4], false);
+      if (ra && rb){
+        date = ra.date; dateEnd = rb.date;
+        text = (text.slice(0, sr.index) + ' ' + text.slice(sr.index + sr[0].length)).replace(/\s+/g, ' ').trim();
+      }
     }
   }
 
@@ -4370,6 +4509,26 @@ function parseSmart(input){
       const digits = cm[1].split('').map(ch => CN_NUM[ch]).join('');
       const r = numToDate(digits);
       if (r){ date = r.date; monthOnly = r.monthOnly; text = cm[2].trim(); }
+    }
+  }
+
+  /* ★ 6A：`14号到19号` / `17号到20号` —— 号式区间（卡面 F 维度点名的一条）。
+     以前 X号 分支只吃掉前一个号，剩下 `到19号 交材料` 留在标题里，而且没有 dateEnd。
+     月份口径与 X号 那条一致（本月该日；已过 15 天算下个月）；结束日小于起始日 → 顺延一个月。
+     窄闸：两端的「号」都必须在场 —— `14号到19` 不认（宁可漏认，也不猜错）。 */
+  if (!date){
+    const hr = text.match(/(\d{1,2})\s*号\s*[到至]\s*(\d{1,2})\s*号/);
+    if (hr && +hr[1] >= 1 && +hr[1] <= 31 && +hr[2] >= 1 && +hr[2] <= 31){
+      const now0 = today0();
+      const dayAt = d => {
+        let x = new Date(now0.getFullYear(), now0.getMonth(), d);
+        if (Math.round((now0 - x) / 86400000) > 15) x = new Date(now0.getFullYear(), now0.getMonth() + 1, d);
+        return x;
+      };
+      const a = dayAt(+hr[1]); let b2 = dayAt(+hr[2]);
+      if (b2 < a) b2 = new Date(b2.getFullYear(), b2.getMonth() + 1, b2.getDate());
+      date = ymd(a); dateEnd = ymd(b2);
+      text = (text.slice(0, hr.index) + ' ' + text.slice(hr.index + hr[0].length)).replace(/\s+/g, ' ').trim();
     }
   }
 
@@ -8104,6 +8263,11 @@ function smartAppendWord(text){
 /* ★ 5E：加任何本地口语规则时，必须问一句 —— 「**关掉 AI 它还能用吗**？」
    本地不认 → AI 关着时它会静默变成"没时间 + 落长期 + 不提醒"，不报错。
    `_ref/_5e-regress.mjs` 是这张压力测试表（探针 `_ref/_5e-probe.mjs` 扫出真相）。
+   ★ 6A：时间表达那一半已经升级成**全表扫描 + 常驻回归**：
+     · 语料表 `_ref/_6a-corpus.mjs`（正交维度枚举，200 条，按常用度 freq 排序）；
+     · 只读探针 `_ref/_6a-probe.mjs`（**不桩 fetch**：要的是"AI 关着"的 smartLocalPlan 那条路）；
+     · 常驻回归 `_ref/_6a-regress.mjs`（**断言数 == 语料表行数**，一行一条）。
+     以后要动时间解析：先 `node _ref/_6a-probe.mjs` 看真相，再在语料表里加一行 + 回归加一条断言。
    配套纪律：新规则若让 parseSmart 产出**非 title 字段**（date/time/repeat/tags/path/dayParts），
    必须在下面 smartHintCount 里补一条对应探测，否则 AI 开着时会白出一次网。
    ⚠️ 唯一的例外是**落点**（zone）：它不进 smartHintCount —— 路由判据是 2A 定的、不在本卡射程，
@@ -8120,14 +8284,27 @@ function smartHintCount(text){
   if (/[>＞]/.test(s)) n++;                                              // 父级路径
   if (/[?？]\s*$/.test(s)) n++;                                          // 行尾 ? → 想法
   if (/\d{1,2}\.\d{1,2}|\d{3,4}/.test(s)) n++;                           // 日期简写 921 / 9.21
-  if (/今天|今日|明天|明日|后天|大后天/.test(s)) n++;                      // 相对日期
-  if (/(本周|这周|这个|下?周|星期|礼拜)[一二三四五六日天]/.test(s)) n++;     // 星期
+  if (/今天|今日|明天|明日|后天|大后天|昨天|昨日|前天|大前天/.test(s)) n++;   // 相对日期（★ 6A 补往前那半边）
+  /* ★ 6A：星期字后面紧跟量词的不算 —— `每周一次` 不是「每周一」。
+     与 parseSmart 里那条守卫同一个判据：parseSmart 对它**不产出任何字段**，
+     hint 也不该数它，否则 AI 开着时它会被当成"本地已吃干净"而白漏给规则。 */
+  if (/(本周|这周|这个|下?周|星期|礼拜)[一二三四五六日天](?![次遍回个趟])/.test(s)) n++;     // 星期
   if (/\d{1,2}\s*号/.test(s)) n++;                                       // X 号
+  /* ★ 6A：中文月日（`9月15号` / `2026年10月15日`）与 `X号到Y号`、`9/14~9/19`
+     都是 parseSmart 会产出 date/dateEnd 的形状，必须各自有一条探测。 */
+  if (/\d{1,4}\s*年\s*\d{1,2}\s*月|\d{1,2}\s*月\s*\d{1,2}\s*[日号]/.test(s)) n++;   // 中文月日
+  if (/\d{1,2}\s*号\s*[到至]\s*\d{1,2}\s*号/.test(s)) n++;              // 号式区间
+  if (/\d{1,2}\s*\/\s*\d{1,2}\s*[~～\-—－–−〜∼]\s*\d{1,2}\s*\/\s*\d{1,2}/.test(s)) n++;  // 斜杠月日区间
   if (/(凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|晚)?\s*(\d{1,2}|[一二两三四五六七八九十]{1,3})\s*[点时:：]/.test(s)) n++;  // 钟点（★ 4D 起也认汉字数字，★ 5A 起认冒号）
+  /* ★ 6A：时段缩写（今早/今晚/明早/明晚/昨晚）与单个时段词，都是"用户主动写了时间"。 */
+  if (/(今|明|昨)\s*(早|晚)(?=\s|$|[、,，。;；:：!！?？]|\d|[一二两三四五六七八九十点])/.test(s)) n++;   // 今早/今晚/明早/明晚/昨晚
+  if (/(?:^|[\s、,，。;；:：!！?？])(?:清晨|早上|早晨|上午|中午|午间|正午|下午|傍晚|晚上|夜里|夜间|凌晨|深夜)(?:$|[\s、,，。;；:：!！?？])/.test(s)) n++;   // 单个时段词
   /* ★ 5B：相对时间也是"用户主动写了语法"的证据 —— 不补这条，`1分钟后 交表`
      会被当成大白话白出一次网（多花钱、还可能被模型改写）。 */
   if (/\d+\s*(?:个)?\s*(?:分钟|分|小时|钟头)\s*(?:之?后)/.test(s)
     || /[一二两三四五六七八九十半]+\s*(?:个)?\s*(?:分钟|小时|钟头)\s*(?:之?后)/.test(s)) n++;  // N 分钟后 / 半小时后
+  /* ★ 6A：`三天后` / `两周后` / `一个月后` 也是本地会产出 date 的形状。 */
+  if (/(\d+|[一二两三四五六七八九十]+|半)\s*(?:个)?\s*(?:天|周|星期|月)\s*(?:之?后)/.test(s)) n++;  // N 天后 / N 周后 / N 个月后
   if (/每\s*隔?\s*(\d+|[一二两三四五六七八九十]+)\s*天|每天/.test(s)) n++;    // 循环
   /* ★ 4A：新循环形态也是"用户主动写了语法"的证据。
      「每周三」本来就被上面那条"星期"正则数到；漏的是「每月一号」这种汉字写法 ——
@@ -14680,7 +14857,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.16.3';
+const APP_VERSION = '5.17.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
