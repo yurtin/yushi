@@ -143,6 +143,12 @@ const NAMES = [
      removeAskAndCommit 清单卡 ✕ 的统一入口。remove / syncNotifyMany 是被改动的既有函数
      （本清单里已有，不重复登记）。 */
   'allDescendants', 'askRemoveWithKids', 'removeAskAndCommit',
+  /* ================= 5F 还债（勾选撤销的延迟助手 + 编辑弹层删除接确认） ================= */
+  /* 只新增了一个全局函数声明：`later`（多按钮 toast 的延迟助手，模块级共用一份）。
+     各调用点里的 `defer` 是函数体内的局部 const，不进清单（清单只数 function 声明）。
+     被改动的既有函数（toast / hideToast / askTickWithKids / hotwordObserve / aiOpsActs /
+     commitEntry / openItemEditor）都已在上面登记过，不重复加。 */
+  'later',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }

@@ -8456,8 +8456,12 @@ function hotwordObserve(before, after, weight){
   if (S.hotwords.indexOf(d.to) >= 0) return d;
   if (S.hotwords.length >= HOTWORDS_MAX) return d;
   hideToast();
+  /* ★ 5F："加进常用词"点下去会同步 aiSay(...) 弹一条新提示 —— 不延后的话会被按钮处理器
+     随后的 hideToast() 收掉（与勾选确认条同一个坑，见 later 的定义）。
+     typeof 守卫 = 项目既有的转发口写法（本函数会被纯 Node 回归切进隔离环境跑）。 */
+  const defer = (typeof later === 'function') ? later : function(f){ return f; };
   toast('「' + d.to + '」是你的常用词吗？', [
-    { label: '加进常用词', fn: () => { hotwordAdd(d.to); aiSay('已收进常用词：' + d.to); } },
+    { label: '加进常用词', fn: defer(() => { hotwordAdd(d.to); aiSay('已收进常用词：' + d.to); }) },
     { label: '不用' }
   ], 8000);
   return d;
@@ -9953,7 +9957,11 @@ function aiOpsActs(r){
   const acts = [];
   const changed = Array.isArray(r && r.changed) ? r.changed : [];
   if (Array.isArray(r && r.snapshot) && r.snapshot.length){
-    acts.push({ label: '撤销', fn: () => aiOpsUndo(r.snapshot) });
+    /* ★ 5F：aiOpsUndo 是同步的、结尾还会弹一条「已撤回」—— 不延后会被按钮处理器的
+       hideToast() 收掉（同 later 的说明）。typeof 守卫 = 转发口（本函数会被 3A/3B/3C
+       那几个切片式回归放进隔离环境跑）。 */
+    const defer = (typeof later === 'function') ? later : function(f){ return f; };
+    acts.push({ label: '撤销', fn: defer(() => aiOpsUndo(r.snapshot)) });
   }
   if (changed.length === 1){
     const it = it_byId(changed[0]);
@@ -10107,8 +10115,18 @@ const AI_IMAGE_SYS =
   + '· pri 0 普通 / 1 重要 / 2 紧急\n'
   + '· parent 这一条要挂到**同一次回答里另一条**下面时，填那一条的 title；否则空串\n'
   + '· note 补充说明，没有就空串\n'
-  + '· zone 只管**没写日期**的那一条：写 "idea" 表示它其实只是个念头（想做的事、还没定的打算），'
-  + '写 "long" 表示它是一件要认真做的长期事。写了日期的一律空串；拿不准也空串。\n'
+  /* ★ 5F：这一行原来还是旧措辞「想做的事」（2C 只改了文字路径的 AI_UNDERSTAND_SYS，
+     把它留着当债务登记了三轮）——「想做的事」与「要做的事」在中文里近乎同义，
+     模型会把待办判成想法。现在与 AI_UNDERSTAND_SYS 的**排斥式定义**对齐（语义相同、
+     按"这条"而不是"这句话"改写；AI_UNDERSTAND_SYS 本身**一个字不动**，_2c-regress 逐字符钉着）。 */
+  + '· zone 只管**没写日期**的那一条，两个值**互不重叠**：'
+  + '写 "idea" = **现在还没法动手**的事，还在纠结"要不要做"、方向都没定的念头'
+  + '（该不该换工作、要不要学个乐器这类）；'
+  + '写 "long" = **已经确定要做、只是还没排日期**的事（开个会、交材料、给谁回个电话）。'
+  + '判据：这条里只要有一个**能直接去做的动作**（开会 / 买 / 写 / 交 / 打 / 发 / 约 / 找 / 问 / 准备 / 整理…），'
+  + '它就是待办，**不许**写 "idea"。'
+  + '写了日期的一律空串；拿不准**一律当待办**（写空串），别去猜"他是不是只是想想"。'
+  + '这两个词只能二选一，别自创。\n'
   + '· steps 子想法：**只有这件事明显能拆成两个及以上步骤时才给**，每项一句话、不超过 30 字；'
   + '否则一律空数组。\n'
   + '· corrected 把图里**明显的**错字按上下文改对之后的完整句子（没把握就照抄）\n'
@@ -10210,8 +10228,18 @@ async function imageAsk(dataUrl){
   let data = null;
   try { data = aiParseJSON(txt); } catch (e){ aiFail('AI 没接上，这张图没看'); return; }
   /* 红线 2：**复用 2A 的校验器**，一个字都不许另写解析。
-     空标题、pri=9 这类脏条目在这里就被丢掉；一条都不剩 → 什么都不落。 */
-  const items = aiValidateItems(data && data.items);
+     空标题、pri=9 这类脏条目在这里就被丢掉；一条都不剩 → 什么都不落。
+     ★ 5F：图片这条没有"**原话**"，但**图里识别出来的文字**是有的 —— 拿它当 fromText
+     喂给 2C 那条窄护栏（「什么时候 / 哪天 / 几点 / …」出现时不许写 idea）。
+     拼的是 corrected + 每条 title（都不进 S、不上屏，只是本函数里的一个局部串）。
+     口径与文字路径一致：护栏按"整段识别文本"判，而不是逐条各判一次。 */
+  const seenText = [];
+  if (data && typeof data.corrected === 'string') seenText.push(data.corrected);
+  ((data && data.items) || []).forEach(x => {
+    const t = x && x.title;
+    if (typeof t === 'string') seenText.push(t);
+  });
+  const items = aiValidateItems(data && data.items, seenText.join('\n'));
   if (!items.length){ aiFail('这张图我没看出待办 · 换一张清楚点的'); return; }
   openImageConfirm(items);
 }
@@ -10912,6 +10940,16 @@ function toast(msg, actionLabel, action, dur){
 /* 加空值保护：正常运行中 #toast 常驻，不会缺；但外部脚本/将来的重构若把它移走，
    那条已排队的 hideToast 定时器就会在这里抛 TypeError（本项目核验脚本踩过一次）。 */
 function hideToast(){ const t = document.getElementById('toast'); if (t) t.classList.remove('on'); }
+/* ★ 5F：多按钮 toast 的按钮处理器写的是 `a.fn(); hideToast();`。
+   如果 fn **同步**落库、并在里面紧接着弹一条新提示（「撤销」/「已撤回」这类），
+   那条新提示会被随后的 hideToast() 立刻收掉 —— 用户根本看不到撤销按钮。
+   5D 给 askRemoveWithKids 就地包了一层延迟执行，5F 把它提到模块级、各处共用一份。
+
+   ⚠️ 为什么 toast() 里那条"带按钮的提示不被顶掉"的保护规则救不了它（最容易再踩的坑）：
+   那条规则只拦**新的 toast() 顶替旧的**（`undoLive && !acts.length` 时直接 return），
+   而这里收掉撤销的是按钮处理器**显式调用**的 hideToast()，根本不经过 toast()。
+   凡是"按钮点下去会同步弹新提示"的地方，都要用 later() 包一层。 */
+function later(fn){ return function(){ setTimeout(fn, 0); }; }
 
 /* 备份提醒：数据只在 localStorage 里，超 7 天没备份（或从未备份）就提醒一次，
    并提供「复制备份到剪贴板」——不用导出文件也能快速留底 */
@@ -11253,7 +11291,11 @@ async function commitEntry(opts){
           sec0.scrollIntoView({ behavior:'smooth', block:'start' });
         return;
       }
-      tActs.unshift({ label: '存入想法', fn: () => taskToSeed(it) });
+      /* ★ 5F：taskToSeed 是同步的、会弹「已存成想法 —— 在底栏左端那颗灯泡里」——
+         不延后会被按钮处理器的 hideToast() 收掉（同 later 的说明）。
+         typeof 守卫 = 转发口（本函数会被 2B/3B 那几个切片式回归放进隔离环境跑）。 */
+      const defer = (typeof later === 'function') ? later : function(f){ return f; };
+      tActs.unshift({ label: '存入想法', fn: defer(() => taskToSeed(it)) });
     }
     /* 提示语分档见 aiEntryReply（纯函数、可单测）：AI 听懂 → aiSay；
        本地语法 / AI 关着 → 静默 toast；降级 → aiFail 且**必须说清"用的是本地识别"**。 */
@@ -12039,9 +12081,15 @@ function parentAutoDone(it){
    触发弹层的滚动锁与焦点陷阱（那套是给"要填东西"的弹层用的）。 */
 function askTickWithKids(it, kids, el){
   const n = kids.length;
+  /* ★ 5F：两个选项都**延后一拍**执行 —— 与 askRemoveWithKids 同因同解（见 later 的定义）：
+     tickWithSubtree / tickParentOnly 是**同步**落库的，并且紧接着会弹一条带「撤销」的提示，
+     不延后的话它会被 toast 按钮处理器随后的 hideToast() 立刻收掉，撤销按钮用户根本看不到。
+     `typeof` 守卫是项目既有的"转发口"写法：本函数会被纯 Node 回归整段切进隔离环境跑，
+     那里没有 later 这个全局 —— 守卫让它退化成直接调用（页面里恒为真）。 */
+  const defer = (typeof later === 'function') ? later : function(f){ return f; };
   toast('「' + it.title + '」下面还有 ' + n + ' 项没做，一起勾掉吗？', [
-    { label: '一起勾', fn: () => tickWithSubtree(el, it) },
-    { label: '只勾父任务', fn: () => tickParentOnly(el, it) }
+    { label: '一起勾', fn: defer(() => tickWithSubtree(el, it)) },
+    { label: '只勾父任务', fn: defer(() => tickParentOnly(el, it)) }
   ], 8000);
 }
 /* ★ 0B.1（决策 1 的原话）：选「只勾父任务」→ 子任务**跟着父一起收进已完成区**，
@@ -12531,11 +12579,14 @@ function askRemoveWithKids(it, kids, el){
   /* ⚠️ 两个选项都**延后一拍**执行：toast 的按钮处理器写的是 `a.fn(); hideToast();` ——
      同步跑 fn 的话，remove() 在 reduceMotion / 拿不到行时是**同步落库**的，
      它紧接着弹的那条「撤销」会被随后的 hideToast() 立刻收掉（撤销按钮用户根本看不到）。
-     延后一拍让 hideToast 先跑完，撤销提示才留得住；删除本来就有 420ms 退场，多一帧无感。 */
-  const later = fn => () => setTimeout(fn, 0);
+     延后一拍让 hideToast 先跑完，撤销提示才留得住；删除本来就有 420ms 退场，多一帧无感。
+     ★ 5F：这个延迟助手已提到模块级（later），与 askTickWithKids 共用同一份。
+     typeof 守卫同 askTickWithKids：本函数被 _5d-regress 整段切进隔离环境跑，
+     那里没有 later —— 退化成直接调用即可（那些断言不验延迟这一层）。 */
+  const defer = (typeof later === 'function') ? later : function(f){ return f; };
   toast('「' + it.title + '」下面还有 ' + n + ' 项，一起删掉吗？', [
-    { label: '一起删掉', fn: later(() => remove(it, el, kids)) },
-    { label: '只删这条', fn: later(() => remove(it, el)) }
+    { label: '一起删掉', fn: defer(() => remove(it, el, kids)) },
+    { label: '只删这条', fn: defer(() => remove(it, el)) }
   ], 8000);
 }
 /* ★ 5D 删除的统一入口：有子才问，没子直接走老路（多一次点击是倒退，验收 4 钉住）。
@@ -13849,7 +13900,15 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
   teSyncUI();
 
   document.getElementById('m_cancel').onclick = closeModal;
-  document.getElementById('m_del').onclick = () => { closeModal(); if (!isNew) remove(it); };
+  /* ★ 5F：编辑弹层的「删除」以前直接 `remove(it)` —— 删一条**有子任务**的父条目时，
+     子任务会悄悄升格成顶层、闹钟也照样留着，用户没被问过，行为与清单卡 ✕ 不一致。
+     现在接上统一入口 removeAskAndCommit（有子才问，无子照旧直接删）。
+     顺序（自己判断，理由写在回报里）：**先 closeModal() 再问** ——
+     确认条与弹层抢同一块地方，弹层还开着时它会被弹层/遮罩压住看不见；
+     先关（退场 170ms，与确认条的 8s 相比无感）再弹，确认条才真的看得见、点得着。
+     el 传 null：这里唯一的作用是给退场动画找行，弹层关掉后那一行本来就被挡住了，
+     remove() 拿不到行时走同步落库分支，行为与"清单卡 ✕ 在流畅模式下"完全一致。 */
+  document.getElementById('m_del').onclick = () => { closeModal(); if (!isNew) removeAskAndCommit(it, null); };
   document.getElementById('m_save').onclick = () => {
     const titleVal = document.getElementById('m_title').value.trim();
     const priVal = +selValue('m_pri') || 0;
@@ -14498,7 +14557,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.16.0';
+const APP_VERSION = '5.16.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：

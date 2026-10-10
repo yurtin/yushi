@@ -314,8 +314,13 @@ console.log('\n[3] 0B.1  勾父任务：子任务不升格为根条目（跟着�
   tOk('根判定里加了 inKids 兜底（画在父卡里的子任务不再当根画一遍）',
     /if \(inKids\.has\(i\.id\)\) return false;/.test(html));
   tOk('源码里根判定不再有 `|| p.done`', !/\|\| p\.done;\s*\/\/ 根/.test(html));
+  /* ★ 5F 改断言（脚本漂移）：这条原来钉死了按钮 fn 的**逐字符写法**
+     `fn: () => tickParentOnly(el, it)`。5F 把两个按钮都包进了**共用**的延迟助手
+     （模块级 later；不延迟的话，确认条点下去同步落库+同步弹的「撤销」会被
+     按钮处理器随后的 hideToast() 立刻收掉，用户根本看不到撤销）。
+     现在只钉"这个按钮确实路由到 tickParentOnly"这一层意图，不再钉包装写法。 */
   tOk('「只勾父任务」走的是 tickParentOnly（不是直接把父勾上了事）',
-    /label: '只勾父任务', fn: \(\) => tickParentOnly\(el, it\)/.test(html));
+    /['"]只勾父任务['"][\s\S]{0,60}tickParentOnly\(el, it\)/.test(html));
   tOk('foldedByParent 这个新字段在改分区时被清（两条路都清）',
     (extractFn(html, 'taskToSeed').includes('delete it.foldedByParent')) &&
     (html.match(/delete it\.foldedByParent;/g) || []).length >= 2,
