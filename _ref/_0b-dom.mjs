@@ -164,14 +164,21 @@ console.log('\n[2] 0B.1  「只勾父任务」→ 没做完的子任务跟着父
     window.__samp = setInterval(function(){ window.__samples.push([Date.now() % 100000, p.done]); }, 100);
     return 1;`);
   await sleep(420);
-  const spent = await ev(`window.__toastLog = [];
+  /* ★ 5F：确认条的按钮 fn 从 5F 起**延后一拍**执行（不延后的话，它同步落库+同步弹的
+     「撤销」会被 toast 按钮处理器随后的 hideToast() 立刻收掉，用户根本看不到撤销）。
+     "点下去那一刻"的断言因此要等一拍再采样 —— 拆成"派发点击"和"读状态"两步。
+     （产品行为不变：下一段 1200ms 后的最终断言仍是父+两条子任务全部完成。） */
+  await ev(`window.__toastLog = [];
     var _toast = toast;
     toast = function(m, l, f){ window.__toastLog.push({ msg: String(m), labels: Array.isArray(l) ? l.map(function(a){ return a.label; }) : String(l || '') }); return _toast(m, l, f); };
     var b = document.querySelectorAll('#toast button')[1];
-    var before = S.items.find(function(x){ return x.id === 'p'; }).done;
-    var dispatched = b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-    var p = S.items.find(function(x){ return x.id === 'p'; });
-    return { dispatched: dispatched, before: before, pDoneSync: p.done, pending: exitPending.has('p'),
+    window.__preSpent = { before: S.items.find(function(x){ return x.id === 'p'; }).done,
+      dispatched: b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window })) };
+    return 1;`);
+  await sleep(120);
+  const spent = await ev(`var p = S.items.find(function(x){ return x.id === 'p'; });
+    return { dispatched: window.__preSpent.dispatched, before: window.__preSpent.before,
+      pDoneSync: p.done, pending: exitPending.has('p'),
       rowCls: (function(){ var el = document.querySelector('#view .item[data-id="p"]'); return el ? el.className : 'NO_ROW'; })(),
       toastLog: window.__toastLog,
       toastOn: document.getElementById('toast').classList.contains('on') };`);
