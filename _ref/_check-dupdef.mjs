@@ -138,6 +138,11 @@ const NAMES = [
   'stripShell', 'notifyAlarmFull', 'setNotifyAlarmFull',
   /* ================= 5C 提醒对账 + 电池放行入口 ================= */
   'notifyLastFire', 'notifyLastLabel',
+  /* ================= 5D 删除的级联与撤销还原 ================= */
+  /* 新增三个：allDescendants 收全部后代（含已完成）、askRemoveWithKids 那句确认、
+     removeAskAndCommit 清单卡 ✕ 的统一入口。remove / syncNotifyMany 是被改动的既有函数
+     （本清单里已有，不重复登记）。 */
+  'allDescendants', 'askRemoveWithKids', 'removeAskAndCommit',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }

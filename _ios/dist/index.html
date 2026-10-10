@@ -5028,11 +5028,17 @@ function syncNotify(it){
 }
 
 /* 一次处理一批 id（循环任务打勾时会一次生成一整轮子任务）。
-   它**不算时间** —— 逐个转手给 syncNotify，仍然只有那一个真相源。 */
+   它**不算时间** —— 逐个转手给 syncNotify，仍然只有那一个真相源。
+   ★ 5D：id 已经不在库里的那一档要**撤**。syncNotify 的"不在库里 → 只撤不排"
+   需要一个条目对象才走得到，而删除的级联是"对象已经从 S.items 摘掉、只剩 id"——
+   原先这里的 `if (x)` 会把它们整批跳过，于是被一起删掉的子任务闹钟原封不动（用户实测：删了还响）。
+   新增的这一档与 syncNotify 是同一条语义（不在库里 → 撤掉），撤销回插后 x 又能找到 → 照常排回来。 */
 function syncNotifyMany(ids){
   (ids || []).forEach(id => {
     const x = S.items.find(i => i.id === id);
-    if (x) syncNotify(x);
+    if (x){ syncNotify(x); return; }
+    const b = notifyBridge();
+    if (b){ try { b.notifyCancel(id); } catch (_){} }
   });
 }
 
@@ -11913,7 +11919,8 @@ view.addEventListener('click', e => {
     return;
   }
   if (act === 'tick' && it){ tickAskAndCommit(el, it); return; }
-  if (act === 'del' && it){ remove(it, el); return; }
+  /* ★ 5D：清单卡的 ✕ 走统一入口 —— 有子任务先问一句（一起删 / 只删这条），没子直接删。 */
+  if (act === 'del' && it){ removeAskAndCommit(it, el); return; }
   if (act === 'edit' && it){ openEdit(it); return; }
   if (act === 'st' && it && it.hw){
     const s = el.dataset.s;
@@ -12472,9 +12479,51 @@ function spawnDailyKids(it, start, end){
   }
   return ids;
 }
+/* ★ 5D：这条条目在 S.items 里的**全部**后代（含已完成、含更深层），深度优先、父在前。
+   与 incompleteDescendants 只差一个「done」过滤：删除要连已完成的子任务一起收，
+   否则删完父、那些已完成的子任务会被 sanitizeParents() 升格成顶层条目留在清单里。
+   guard 上限与文件其它几处一致（防脏数据成环时转不出来）。 */
+function allDescendants(root){
+  const out = [];
+  const walk = (id, depth) => {
+    if (depth > PARENT_GUARD) return;
+    for (const x of S.items){
+      if (x.parent !== id) continue;
+      out.push(x);
+      walk(x.id, depth + 1);
+    }
+  };
+  walk(root.id, 0);
+  return out;
+}
+/* 「这条下面还有 N 项，一起删掉吗？」—— 与打勾那条（askTickWithKids）同一个形态：
+   toast 多按钮，不挡屏、不触发弹层的滚动锁与焦点陷阱。删除是破坏性动作，
+   所以只给两个选项（一起删 / 只删这条），不另设"取消" —— 不选就等于没删。 */
+function askRemoveWithKids(it, kids, el){
+  const n = kids.length;
+  /* ⚠️ 两个选项都**延后一拍**执行：toast 的按钮处理器写的是 `a.fn(); hideToast();` ——
+     同步跑 fn 的话，remove() 在 reduceMotion / 拿不到行时是**同步落库**的，
+     它紧接着弹的那条「撤销」会被随后的 hideToast() 立刻收掉（撤销按钮用户根本看不到）。
+     延后一拍让 hideToast 先跑完，撤销提示才留得住；删除本来就有 420ms 退场，多一帧无感。 */
+  const later = fn => () => setTimeout(fn, 0);
+  toast('「' + it.title + '」下面还有 ' + n + ' 项，一起删掉吗？', [
+    { label: '一起删掉', fn: later(() => remove(it, el, kids)) },
+    { label: '只删这条', fn: later(() => remove(it, el)) }
+  ], 8000);
+}
+/* ★ 5D 删除的统一入口：有子才问，没子直接走老路（多一次点击是倒退，验收 4 钉住）。
+   闸门放在这里而不是 remove() 里面，与 tickAskAndCommit 同一条理由：
+   提示必须**早于**退场动画 —— 先播动画再问，用户看到的是一条已经消失的行配一个问号。 */
+function removeAskAndCommit(it, el){
+  const kids = allDescendants(it);
+  if (!kids.length){ remove(it, el); return; }
+  askRemoveWithKids(it, kids, el);
+}
 /* 删除（3.5.2 按用户重新定义）：先把"标题与 ✕ 变红 → 整条像纸一样被压掉"演完，再动数据，
-   紧接着下面的条目 FLIP 补位。el 是那颗 ✕（从点击处传进来），用来找它所在的那一行。 */
-function remove(it, el){
+   紧接着下面的条目 FLIP 补位。el 是那颗 ✕（从点击处传进来），用来找它所在的那一行。
+   ★ 5D：第三个参数 kids = 「一起删掉」传进来的整棵子树（allDescendants 的结果）；
+   不传 = 只删这一条（老行为）。 */
+function remove(it, el, kids){
   const idx = S.items.indexOf(it);
   /* 不在库里就当没点过。少了这句守卫，splice(-1, 1) 会**删掉最后一条**（删错对象），
      撤销时又把 it 插到倒数第二位。当前调用点的 it 都取自 S.items.find 所以走不到，
@@ -12488,8 +12537,22 @@ function remove(it, el){
      于是在想法页点删除，塞进去的是一屏清单内容，而 S.view 仍是 'idea'、
      aria-current / body[data-view] 也还是想法 → 页面变成清单、底栏停在想法。
      删除不该换页：refresh() 按 S.view 分派渲染，删完停在原来的页。 */
+  /* ★ 5D：删除的快照。两条路都要 ——
+       「一起删掉」要把整棵子树收走、撤销时整棵还原；
+       「只删这条」不删子任务，但 sanitizeParents() 会把它们的 parent 置成 null（升格成顶层），
+       撤销时也要逐个写回，否则父子关系就永久丢了（本卡要修的第三个 bug）。
+       按卡面口径只记"被改动的那个字段"parent；对象引用留着，撤销时直接插回 S.items。 */
+  const tree = (kids && kids.length) ? kids.slice() : allDescendants(it);
+  const snap = tree.map(k => ({ obj: k, parent: k.parent }));
   const commit = () => {
-    S.items.splice(idx, 1);
+    const cascade = !!(kids && kids.length);
+    /* ★ 5D：先 splice 完再撤闹钟 —— syncNotify 判的是"还在不在库里"，
+       删干净了才会走"只撤不排"（正是下面那句注释说的事）。顺序反了会一边撤一边又被排回来。 */
+    if (cascade){
+      tree.forEach(k => { const i = S.items.indexOf(k); if (i >= 0) S.items.splice(i, 1); });
+    }
+    const pi = S.items.indexOf(it);
+    if (pi >= 0) S.items.splice(pi, 1);
     /* ★ 3A：删掉的正好是焦点条 → 焦点必须跟着消失（否则下一句"改成明天"会指向一条
        已经不在库里的条目）。只动内存 + sessionStorage。 */
     if (typeof aiFocusId === 'function' && typeof aiFocusClear === 'function'
@@ -12500,10 +12563,26 @@ function remove(it, el){
     /* ★ 阶段1：删掉的条目还在 S.items 里就已经被剔除了 —— syncNotify 判"还在不在库里"
        得出"只撤不排"，正好是删除该做的事（约定 7 里唯一那个入口）。 */
     notifyFire(it);
+    /* ★ 5D：被一起删掉的子任务也要撤闹钟 —— 它们已经从库里摘掉了，notifyFireMany
+       对"不在库里的 id"走的就是 syncNotify 的"只撤不排"那条路（见 syncNotifyMany）。
+       「只删这条」时**不调用它**：子任务还在库里、本来就该继续响（验收 3 钉住）。 */
+    if (cascade) notifyFireMany(tree.map(k => k.id));
+    /* ★ 5D：删除后跑一次全量对账（阶段1 定的唯一全量出口）——
+       兜住任何漏撤的排期。typeof 守卫：纯 Node 回归会把本函数切进隔离环境，那里没有提醒层。 */
+    if (typeof notifyReconcile === 'function') notifyReconcile();
     save(); refresh();
-    toast('已删除「' + it.title + '」', '撤销', () => {
+    toast(cascade ? ('已删除「' + it.title + '」和它下面的 ' + tree.length + ' 项')
+                  : ('已删除「' + it.title + '」'), '撤销', () => {
       S.items.splice(idx, 0, it);
+      /* ★ 5D：整棵子树的 parent 逐个写回（一起删时它们要重新插回库里）。 */
+      snap.forEach(s => {
+        if (S.items.indexOf(s.obj) < 0) S.items.push(s.obj);
+        s.obj.parent = s.parent;
+      });
       notifyFire(it);          // 撤销 = 这一条又回来了 → 提醒排回来
+      /* ★ 5D：全部 id（父 + 整棵子树）一起排回来 —— 这时它们都回到库里了，走的是排期那条路。 */
+      notifyFireMany([it.id].concat(snap.map(s => s.obj.id)));
+      if (typeof notifyReconcile === 'function') notifyReconcile();
       save(); refresh();
     });
   };
@@ -14392,7 +14471,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.15.0';
+const APP_VERSION = '5.15.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
