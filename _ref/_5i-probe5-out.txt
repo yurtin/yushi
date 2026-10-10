@@ -1,0 +1,17 @@
+reduceMotion() 在页面里 = false
+
+===== A-3(redux) 长按菜单 → 点「编辑」 =====
+  菜单: {"classes":"mask sheet-mode on","align":"flex-end","modalTop":386,"modalBottom":888,"modalH":502,"title":"","inputTop":null,"inputVis":null}
+  点编辑后 300ms: {"classes":"mask sheet-mode on","align":"flex-end","modalTop":227,"modalBottom":888,"modalH":661,"title":"编辑","inputTop":414,"inputVis":true}
+  点编辑后 1000ms: {"classes":"mask sheet-mode on","align":"flex-end","modalTop":227,"modalBottom":888,"modalH":661,"title":"编辑","inputTop":414,"inputVis":true}
+
+===== A-4 上一步之后，直接点子想法（sheet-mode 还在的话，编辑框也会贴底）=====
+  泄漏后的遮罩: {"classes":"mask sheet-mode on"}
+  点后: {"classes":"mask on","align":"center","modalTop":325,"modalBottom":563,"modalH":237,"title":"改这一步","inputTop":434,"inputVis":true}
+
+===== A-5 逐个动作试：菜单里每一项打开的新弹层会不会继承抽屉态 =====
+  「续写」→ {"classes":"mask","align":"center","modalTop":0,"modalBottom":0,"modalH":0,"title":"","inputTop":null,"inputVis":null}
+  「生长」→ {"classes":"mask sheet-mode on","align":"flex-end","modalTop":621,"modalBottom":888,"modalH":267,"title":"从「深夜写东西为什么更快」生长","inputTop":763,"inputVis":true}
+  「立项」→ {"classes":"mask sheet-mode on","align":"flex-end","modalTop":160,"modalBottom":888,"modalH":728,"title":"立项确认","inputTop":347,"inputVis":true}
+
+异常: （无）

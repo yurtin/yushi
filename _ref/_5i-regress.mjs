@@ -382,5 +382,138 @@ console.log('\n[6] 红线自检');
     !/touch-action:\s*none/.test(extractFn(html, 'seedHTML')));
 }
 
+/* ══════════════════════════════════════════════════════════════
+   [7] 5I 追加修复（真机反馈）
+     A. 抽屉态不能泄漏给下一个弹层（openMask 一处收口）
+     B. 记下 / 回车 = 这条记完了（收输入框 + 卡片留在原位）
+   ══════════════════════════════════════════════════════════════ */
+console.log('\n[7] 追加修复：抽屉态由 openMask 收口 + 续写写完就收');
+{
+  /* --- A：sheet-mode 的真相源 --- */
+  tOk('openMask 收了参数 sheet，并按它 toggle（不再只在 closeModalNow 里清）',
+    /function openMask\(sheet\)\{/.test(html) && /mask\.classList\.toggle\('sheet-mode', !!sheet\)/.test(html));
+  tOk('没有任何调用点再自己往遮罩上加 sheet-mode（0 处）',
+    (htmlNC.match(/mask\.classList\.add\('sheet-mode'\)/g) || []).length === 0);
+  t('长按动作菜单用 openMask(true) 声明抽屉态',
+    (extractFn(htmlNC, 'openSeedSheet').match(/openMask\(true\)/g) || []).length, 1);
+  t('AI 挂载建议那个抽屉也用 openMask(true)',
+    (extractFn(htmlNC, 'openSuggestSheet').match(/openMask\(true\)/g) || []).length, 1);
+  tOk('closeModalNow 里那道清理保留（关闭这条路仍然清）',
+    /function closeModalNow\(\)\{[\s\S]{0,900}mask\.classList\.remove\('sheet-mode'\)/.test(htmlNC));
+
+  /* --- B：两条出口都走 finishSparkWrite；锚点工具是 keepSeedPlace --- */
+  const fin = extractFn(html, 'finishSparkWrite');
+  const keep = extractFn(html, 'keepSeedPlace');
+  const keepC = extractConst(html, 'SEED_KEEP_FRAMES') + '\n' + extractConst(html, 'SEED_KEEP_MS');
+  tOk('新增 keepSeedPlace（"钉住卡片屏幕位置"只有一处）', !!keep);
+  tOk('新增 finishSparkWrite（收尾只有一处）', !!fin, 'function finishSparkWrite(id)');
+  tOk('点「记下」这条路接了它',
+    /if \(act === 'sparkok'\)\{[\s\S]{0,200}seedAddSpark\(it, inp\.value\)\) finishSparkWrite\(it\.id\)/.test(htmlNC));
+  tOk('回车这条路也接了它',
+    /e\.key === 'Enter'[\s\S]{0,260}seedAddSpark\(t2, inp\.value\)\) finishSparkWrite\(t2\.id\)/.test(htmlNC));
+  tOk('Escape 那条出口仍是"收起输入框 + refresh"（原样）',
+    /e\.key === 'Escape'\)\{ e\.preventDefault\(\); ideaUI\.sparkOpen = null; refresh\(\); \}/.test(htmlNC));
+  tOk('下滑续写那条（打开输入框时）也钉一次位置',
+    /if \(g\.dir === 'down'\)\{[\s\S]{0,320}keepSeedPlace\(g\.it\.id, \(\) => \{ ideaUI\.sparkOpen = g\.it\.id; save\(\); refresh\(\); \}\)/.test(htmlNC));
+  tOk('菜单里点「续写」那条同样钉',
+    /keepSeedPlace\(it\.id, \(\) => \{ ideaUI\.sparkOpen = it\.id; refresh\(\); \}\)/.test(htmlNC));
+
+  /* --- B 行为：收输入框 + 把卡片按原屏幕位置放回去 --- */
+  function runFinish(opts){
+    const calls = { refresh: 0, scrollBy: [], frames: 0 };
+    const state = { ideaUI: { sparkOpen: 'demo-s05' }, scrollY: 0, docTop: opts.docTop0 };
+    const sandbox = {
+      ideaUI: state.ideaUI, refreshSeq: 0,
+      refresh: () => { calls.refresh++; },
+      requestAnimationFrame: cb => { calls.frames++; cb(); },
+      window: { addEventListener(){}, removeEventListener(){}, innerHeight: 888, scrollBy: (x, y) => { state.scrollY += y; calls.scrollBy.push([x, y]); } },
+      view: { querySelector: () => (opts.present === false ? null
+        : { closest: () => ({ getBoundingClientRect: () => ({ top: state.docTop - state.scrollY, bottom: state.docTop - state.scrollY + 100 }) }) }) },
+    };
+    const src = keepC + '\n' + keep + '\n' + fin + '\nreturn { finishSparkWrite, keepSeedPlace };';
+    const api = new Function(...Object.keys(sandbox), src)(...Object.values(sandbox));
+    api.finishSparkWrite(opts.id);
+    if (opts.docTop1 != null){ state.docTop = opts.docTop1; }   // work() 里重排了
+    return { calls, open: state.ideaUI.sparkOpen, scrollY: state.scrollY };
+  }
+  /* 情形 1：重排把卡片在文档里上移 240 → 页面要往上补 240，且**只补一次**（补到位就不动） */
+  {
+    const calls = { frames: 0 };
+    const state = { ideaUI: { sparkOpen: 'demo-s05' }, scrollY: 0, docTop: 300 };
+    const sandbox = {
+      ideaUI: state.ideaUI, refreshSeq: 0,
+      refresh: () => { calls.refresh = (calls.refresh || 0) + 1; state.docTop = 60; },
+      requestAnimationFrame: cb => { cb(); },
+      window: { addEventListener(){}, removeEventListener(){}, innerHeight: 888, scrollBy: (x, y) => { state.scrollY += y; (calls.scrollBy = calls.scrollBy || []).push([x, y]); } },
+      view: { querySelector: () => ({ closest: () => ({ getBoundingClientRect: () => ({ top: state.docTop - state.scrollY, bottom: state.docTop - state.scrollY + 100 }) }) }) },
+    };
+    const src = keepC + '\n' + keep + '\n' + fin + '\nreturn { finishSparkWrite, keepSeedPlace };';
+    const api = new Function(...Object.keys(sandbox), src)(...Object.values(sandbox));
+    api.finishSparkWrite('demo-s05');
+    t('写完就收：sparkOpen 被清掉', state.ideaUI.sparkOpen, null);
+    t('仍然 refresh 一次（重新渲染）', calls.refresh, 1);
+    t('按原来的屏幕位置补回差值，且补到位后不再重复滚（240 一次）', calls.scrollBy, [[0, -240]]);
+    t('卡片回到原来的屏幕位置（300）', state.docTop - state.scrollY, 300);
+  }
+  /* 情形 2：位置没变 → 一帧都不滚 */
+  {
+    const r = runFinish({ id: 'demo-s05', docTop0: 120, docTop1: 120 });
+    t('位置没变就不滚（不做无谓抖动）', r.calls.scrollBy, []);
+  }
+  /* 情形 3：量不到卡片（不在这一屏/被筛掉）→ 照样收输入框，不炸、不排帧 */
+  {
+    const r = runFinish({ id: 'nope', docTop0: 0, present: false });
+    t('量不到卡片：照样收起输入框、不排帧、不滚', [r.open, r.calls.refresh, r.calls.frames, r.calls.scrollBy], [null, 1, 0, []]);
+  }
+  /* 情形 4：布局连续几帧都在动（就是抽屉收起那 0.4s 的样子）→ 逐帧补，最终停在原位 */
+  {
+    const calls = { refresh: 0, scrollBy: [], frames: 0 };
+    const state = { ideaUI: { sparkOpen: 'x' }, scrollY: 0, docTop: 200, anim: 6 };
+    const sandbox = {
+      ideaUI: state.ideaUI, refreshSeq: 0,
+      refresh: () => {},
+      requestAnimationFrame: cb => {
+        calls.frames++;
+        /* 这一帧里布局又收了一点（高度动画的一帧） */
+        if (state.anim > 0){ state.docTop -= 12; state.anim--; }
+        cb();
+      },
+      window: { addEventListener(){}, removeEventListener(){}, innerHeight: 888, scrollBy: (x, y) => { state.scrollY += y; calls.scrollBy.push([x, y]); } },
+      view: { querySelector: () => ({ closest: () => ({ getBoundingClientRect: () => ({ top: state.docTop - state.scrollY, bottom: state.docTop - state.scrollY + 100 }) }) }) },
+    };
+    const src = keepC + '\n' + keep + '\n' + fin + '\nreturn { finishSparkWrite };';
+    const api = new Function(...Object.keys(sandbox), src)(...Object.values(sandbox));
+    api.finishSparkWrite('x');
+    t('布局连续动了几帧：每一帧都补（6 帧动 → 6 次补）', calls.scrollBy.length, 6);
+    t('每帧补的就是那一帧的位移（-12）', calls.scrollBy, Array.from({ length: 6 }, () => [0, -12]));
+    t('全部动完之后，卡片仍在原来的屏幕位置', state.docTop - state.scrollY, 200);
+    t('帧数有上限（不会一直补下去）', calls.frames <= 26, true);
+  }
+  tOk('id 为空时直接返回（不 refresh、不动 sparkOpen）',
+    /function finishSparkWrite\(id\)\{\s*\n\s*if \(!id\) return;/.test(fin));
+  tOk('keepSeedPlace 里：先量 → 跑 work() → 再逐帧补（不是只补一帧 —— 抽屉收起是逐帧高度动画）',
+    /const r0 = c0 \? c0\.getBoundingClientRect\(\) : null;\s*\n\s*const top0 = \(r0 && r0\.bottom > 0 && r0\.top < window\.innerHeight\) \? r0\.top : null;\s*\n\s*work\(\);\s*\n\s*if \(top0 == null\) return;\s*\n\s*const t0 = Date\.now\(\);\s*\n\s*let left = SEED_KEEP_FRAMES/.test(keep));
+  tOk('keepSeedPlace 只在"位置真的变了"时才滚（|dy| > 1）',
+    /if \(Math\.abs\(dy\) > 1\)\{ window\.scrollBy\(0, dy\); stable = 0; \}/.test(keep));
+  t('补帧的上限是个常量（≈0.2s，与项目动画同量级）',
+    /const SEED_KEEP_FRAMES = 12;/.test(html) ? 12 : 0, 12);
+  /* ★ verify-idea 5.15 的 A/B 抓出来的三条纪律（见报告）：缺任何一条，后面的合成事件用例必红 */
+  tOk('① 收工判断排在**滚动之前**（rAF 降频时第一帧可能几百毫秒后才来，先滚就凭 stale 的 top0 把页面挪走）',
+    /const tick = \(\) => \{\s*\n\s*\/\*[\s\S]*?\*\/\s*\n\s*if \(stop \|\| refreshSeq !== gen\)\{ done\(\); return; \}[\s\S]{0,400}window\.scrollBy\(0, dy\)/.test(keep));
+  tOk('② 别人又刷新了一次界面（refreshSeq 变了）→ 立刻收工，不跟下一步抢',
+    /let refreshSeq = 0;/.test(html) && /function refresh\(\)\{\s*\n\s*refreshSeq\+\+;/.test(html)
+    && /const gen = refreshSeq;/.test(keep));
+  tOk('③ 卡片整个在视口外时不钉（没有"原位"可言，钉它只会把页面凭空滚走）',
+    /const top0 = \(r0 && r0\.bottom > 0 && r0\.top < window\.innerHeight\) \? r0\.top : null;/.test(keep));
+  tOk('④ 用户一动（pointerdown / touchstart / 滚轮）就把控制权还给他',
+    /window\.addEventListener\('pointerdown', cancel, true\);\s*\n\s*window\.addEventListener\('touchstart', cancel, true\);\s*\n\s*window\.addEventListener\('wheel', cancel, true\);/.test(keep));
+  tOk('⑤ 连续三帧位置没变就收工（位置稳了没必要继续补）',
+    /else stable\+\+;[\s\S]{0,220}stable >= 3/.test(keep));
+
+  /* --- 反例：不许把"空输入也收起来"做成误触 --- */
+  tOk('空串 / 只有空白：seedAddSpark 返回 false（两条出口都不收输入框）',
+    /if \(!tx\) return false;/.test(extractFn(html, 'seedAddSpark')));
+}
+
 console.log('\n===== ' + pass + '/' + (pass + fail) + ' =====');
 process.exit(fail ? 1 : 0);

@@ -32,7 +32,8 @@ const NAMES = [
   'isSeed', 'seedSleepDays', 'isSleeping', 'seedAncestorUsed',
   'seedHTML', 'renderIdeas', 'ideaLastAt', 'newSeed', 'seedAddSpark',
   'seedGrow', 'seedPromote', 'openSeedPromote', 'seedMerge', 'seedUse', 'openSeedNew',
-  'openSeedSheet', 'openSeedPrompt', 'openSparkEdit', 'it_byId', 'taskToSeed', 'seedFromTask', 'seedOfTask',
+  'openSeedSheet', 'openSeedPrompt', 'openSparkEdit', 'finishSparkWrite', 'keepSeedPlace',
+  'it_byId', 'taskToSeed', 'seedFromTask', 'seedOfTask',
   'reviewDaysSinceUse', 'reviewPicked', 'reviewWhy', 'reviewDrawerHTML',
   'refocusIdeaSearch',
   /* ---- 多选批量（第 2 批第 1 块） ---- */

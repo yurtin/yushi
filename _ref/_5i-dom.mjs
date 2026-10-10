@@ -487,6 +487,192 @@ say('\n[3] 下滑续写：单发能触发 / 经过别的卡不被抢');
   await sleep(400);
 }
 
+/* ══════════════════════════════════════════════════════════
+   [4] 真机反馈的两条追加修复
+   ⚠️ 必须先把 prefers-reduced-motion 仿真成 **no-preference**：
+   headless 默认是 reduce，而 reduce 时 closeModal() 直接走 closeModalNow()（同步清
+   sheet-mode），会把"抽屉态泄漏"整条路盖住 —— 这也是上一版本地全绿、真机却出问题的原因。
+   ══════════════════════════════════════════════════════════ */
+say('\n[4] 真机两条：抽屉态不泄漏 / 续写写完就收（no-preference）');
+await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
+t('reduceMotion() 现在是 false（有动画，跟真机一致）',
+  await ev(`return reduceMotion();`), false);
+
+const openSheetOn = async (title) => {
+  await ev(`try{ closeModalNow(); }catch(e){} mask.classList.remove('on','sheet-mode');
+    ideaUI.sparkOpen = null; S.ideaLayout='list'; ANIM=false; refresh(); return 1;`);
+  await sleep(650);
+  await gotoCard(title, 150);
+  const cp = await ev(`
+    var cs = [].slice.call(document.querySelectorAll('.idea-card'));
+    var card = null;
+    for (var k = 0; k < cs.length; k++){ if (cs[k].textContent.indexOf(${JSON.stringify(title)}) >= 0){ card = cs[k]; break; } }
+    var tx = card.querySelector('.sp-step.seed-first .sp-tx');
+    var r = tx.getBoundingClientRect();
+    return { x: Math.round(r.left + 30), y: Math.round(r.top + r.height / 2) };`);
+  await touch('touchStart', cp.x, cp.y); await sleep(560); await touch('touchEnd', 0, 0);
+  await sleep(800);
+};
+const sheetState = async () => await ev(`
+  var mask = document.getElementById('mask');
+  var m = document.getElementById('modal');
+  var r = m.getBoundingClientRect();
+  return { sheet: mask.classList.contains('sheet-mode'), on: mask.classList.contains('on'),
+    align: getComputedStyle(mask).alignItems,
+    top: Math.round(r.top), bottom: Math.round(r.bottom),
+    fullyVisible: (r.top >= 0 && r.bottom <= window.innerHeight + 1 && r.height > 0),
+    title: (document.getElementById('modalTitle')||{}).textContent || '' };`);
+
+{
+  await openSheetOn('深夜写东西');
+  const menu = await sheetState();
+  t('长按动作菜单本身仍然是抽屉态（贴底）', [menu.sheet, menu.align], [true, 'flex-end']);
+  /* 菜单里点「编辑」：新弹层必须回到屏幕居中，不能再继承抽屉态 */
+  await ev(`document.querySelector('.sheet-item[data-act="edit"]').click(); return 1;`);
+  await sleep(900);
+  const ed = await sheetState();
+  t('菜单点「编辑」→ 下一个弹层不再继承抽屉态（复现时这里是 sheet/贴底）',
+    [ed.sheet, ed.align], [false, 'center']);
+  tOk('编辑弹层整个在视口里（真机上它就是被顶到屏幕最底、掉进键盘后面的那个）',
+    ed.fullyVisible, JSON.stringify(ed));
+  /* 「生长」「立项」两条同型路径 */
+  for (const [act, label] of [['fork', '生长'], ['promote', '立项']]){
+    await openSheetOn('深夜写东西');
+    await ev(`document.querySelector('.sheet-item[data-act="${act}"]').click(); return 1;`);
+    await sleep(1000);
+    const st = await sheetState();
+    t('菜单点「' + label + '」→ 也是居中、看得见',
+      [st.sheet, st.align, st.fullyVisible], [false, 'center', true]);
+  }
+  /* 直接点子想法（本卡的新入口）也必须是居中的那个弹层 */
+  await ev(`try{ closeModalNow(); }catch(e){} mask.classList.remove('on','sheet-mode');
+    ideaUI.sparkOpen = null; ANIM=false; refresh(); return 1;`);
+  await sleep(650);
+  await gotoCard('深夜写东西', 150);
+  const spk = await ev(`
+    var cs = [].slice.call(document.querySelectorAll('.idea-card'));
+    var card = null;
+    for (var k = 0; k < cs.length; k++){ if (cs[k].textContent.indexOf('深夜写东西') >= 0){ card = cs[k]; break; } }
+    var tx = card.querySelector('.sp-tx[data-sparkedit]');
+    var r = tx.getBoundingClientRect();
+    return { x: Math.round(r.left + 20), y: Math.round(r.top + r.height / 2) };`);
+  await touch('touchStart', spk.x, spk.y); await sleep(70); await touch('touchEnd', 0, 0);
+  await sleep(800);
+  const st2 = await ev(`
+    var mask = document.getElementById('mask');
+    var inp = document.getElementById('sq_t');
+    var m = document.getElementById('modal');
+    var mr = m.getBoundingClientRect(); var ir = inp ? inp.getBoundingClientRect() : null;
+    return { sheet: mask.classList.contains('sheet-mode'), align: getComputedStyle(mask).alignItems,
+      title: (document.getElementById('modalTitle')||{}).textContent || '',
+      inputVisible: ir ? (ir.top >= 0 && ir.bottom <= window.innerHeight) : null,
+      hitInside: ir ? m.contains(document.elementFromPoint(Math.round(ir.left + ir.width/2), Math.round(ir.top + ir.height/2))) : null };`);
+  t('「改这一步」弹层居中、输入框在视口里且点得到',
+    [st2.sheet, st2.align, st2.title, st2.inputVisible, st2.hitInside], [false, 'center', '改这一步', true, true]);
+  await ev(`document.getElementById('sq_no').click(); return 1;`);
+  await sleep(600);
+}
+
+/* ---- B：记下 / 回车 = 这条记完了 ---- */
+{
+  const sparkCount = async id => await ev(`var it = S.items.find(function(x){ return x.id === ${JSON.stringify(id)}; });
+    return it && it.sparks ? it.sparks.length : -1;`);
+  const cardTop = async id => await ev(`
+    var s = document.querySelector('.item.seed[data-id="${id}"]');
+    var c = s ? s.closest('.idea-card') : null;
+    return c ? Math.round(c.getBoundingClientRect().top) : null;`);
+  const downSwipeToSpark = async () => {
+    await ev(`try{ closeModalNow(); }catch(e){} mask.classList.remove('on','sheet-mode');
+      ideaUI.sparkOpen = null; ANIM=false; refresh(); return 1;`);
+    await sleep(650);
+    await gotoCard('深夜写东西', 220);
+    const sp = await ev(`
+      var cs = [].slice.call(document.querySelectorAll('.idea-card'));
+      var card = null;
+      for (var k = 0; k < cs.length; k++){ if (cs[k].textContent.indexOf('深夜写东西') >= 0){ card = cs[k]; break; } }
+      var tx = card.querySelector('.sp-step.seed-first .sp-tx');
+      var r = tx.getBoundingClientRect();
+      return { x: Math.round(r.left + 30), y: Math.round(r.top + r.height / 2) };`);
+    await touch('touchStart', sp.x, sp.y); await sleep(520);
+    await touch('touchMove', sp.x, sp.y + 70); await sleep(140);
+    const topDuring = await ev(`
+      var s = document.querySelector('.item.seed[data-id="demo-s05"]');
+      var c = s ? s.closest('.idea-card') : null;
+      return c ? Math.round(c.getBoundingClientRect().top) : null;`);
+    await touch('touchEnd', 0, 0);
+    await sleep(900);
+    const topAfter = await ev(`
+      var s = document.querySelector('.item.seed[data-id="demo-s05"]');
+      var c = s ? s.closest('.idea-card') : null;
+      var inp = document.getElementById('sp_in');
+      var ir = inp ? inp.getBoundingClientRect() : null;
+      return { top: c ? Math.round(c.getBoundingClientRect().top) : null,
+        inpVisible: ir ? (ir.top >= 0 && ir.bottom <= window.innerHeight) : null };`);
+    return { topDuring, topAfter };
+  };
+
+  /* B-1 下滑打开输入框：卡片和输入框必须还在你按的那张卡上 */
+  const sw = await downSwipeToSpark();
+  t('下滑后行内输入框出现', await ev(`return !!document.getElementById('sp_in');`), true);
+  say('  卡片屏幕位置: 松手前 ' + sw.topDuring + ' → 出现输入框后 ' + sw.topAfter.top);
+  tOk('打开行内输入框时卡片**留在原地**（不钉的话会因为顶部回顾抽屉收起 + 列表重排整块位移）',
+    sw.topDuring != null && sw.topAfter.top != null && Math.abs(sw.topAfter.top - sw.topDuring) <= 40,
+    sw.topDuring + ' → ' + sw.topAfter.top);
+  tOk('输入框在视口里看得见', sw.topAfter.inpVisible === true, JSON.stringify(sw.topAfter));
+  const n0 = await sparkCount('demo-s05');
+  const topBefore = await cardTop('demo-s05');
+  const idxBefore = await ev(`
+    var cards = [].slice.call(document.querySelectorAll('.idea-card'));
+    return cards.map(function(c){ var s = c.querySelector('.item.seed'); return s ? s.dataset.id : '?'; }).indexOf('demo-s05');`);
+  await ev(`var inp = document.getElementById('sp_in'); inp.value = '记下这条就结束';
+    document.querySelector('[data-act="sparkok"]').click(); return 1;`);
+  await sleep(900);
+  t('点「记下」：行内输入框**收起来了**（原来它空着等你再写一条）',
+    await ev(`return { input: !!document.getElementById('sp_in'), sparkOpen: ideaUI.sparkOpen || null };`),
+    { input: false, sparkOpen: null });
+  t('这一步真的写进去了', await sparkCount('demo-s05'), n0 + 1);
+  const topAfter = await cardTop('demo-s05');
+  const idxAfter = await ev(`
+    var cards = [].slice.call(document.querySelectorAll('.idea-card'));
+    return cards.map(function(c){ var s = c.querySelector('.item.seed'); return s ? s.dataset.id : '?'; }).indexOf('demo-s05');`);
+  say('  这张卡在列表里的位置: 第 ' + idxBefore + ' 张 → 第 ' + idxAfter + ' 张；屏幕 top: ' + topBefore + ' → ' + topAfter);
+  tOk('确实发生了重排（续写写的就是"今天这一步"，它会跳到列表最前）',
+    idxAfter >= 0 && idxBefore >= 0 && idxAfter !== idxBefore, idxBefore + ' → ' + idxAfter);
+  tOk('但卡片留在**原来的屏幕位置**（|Δtop| ≤ 40；原来会连同滚动一起被甩走）',
+    topAfter != null && topBefore != null && Math.abs(topAfter - topBefore) <= 40,
+    topBefore + ' → ' + topAfter);
+
+  /* B-2 回车这条出口 */
+  await ev(`try{ closeModalNow(); }catch(e){} mask.classList.remove('on','sheet-mode'); ANIM=false; refresh(); return 1;`);
+  await sleep(650);
+  await gotoCard('深夜写东西', 150);
+  await ev(`ideaUI.sparkOpen = 'demo-s05'; refresh(); return 1;`);
+  await sleep(700);
+  t('行内输入框按需展开', await ev(`return !!document.getElementById('sp_in');`), true);
+  const n1 = await sparkCount('demo-s05');
+  await ev(`var inp = document.getElementById('sp_in'); inp.value = '回车这条也算记完';
+    inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return 1;`);
+  await sleep(900);
+  t('回车：输入框同样收起来、sparkOpen 清空',
+    await ev(`return { input: !!document.getElementById('sp_in'), sparkOpen: ideaUI.sparkOpen || null };`),
+    { input: false, sparkOpen: null });
+  t('回车写进去的也真落库', await sparkCount('demo-s05'), n1 + 1);
+
+  /* B-3 空输入：不写、也不收（免得误触把写了一半的框收掉） */
+  await ev(`ideaUI.sparkOpen = 'demo-s05'; refresh(); return 1;`);
+  await sleep(700);
+  const n2 = await sparkCount('demo-s05');
+  await ev(`var inp = document.getElementById('sp_in'); inp.value = '   ';
+    document.querySelector('[data-act="sparkok"]').click(); return 1;`);
+  await sleep(700);
+  t('空输入点记下：不写数据、输入框留着',
+    await ev(`return { input: !!document.getElementById('sp_in'), sparkOpen: ideaUI.sparkOpen || null };`),
+    { input: true, sparkOpen: 'demo-s05' });
+  t('空输入没往 sparks 里塞东西', await sparkCount('demo-s05'), n2);
+  await ev(`ideaUI.sparkOpen = null; refresh(); return 1;`);
+  await sleep(400);
+}
+
 say('\n页面里的 JS 异常：' + (errors.length ? errors.join(' | ') : '（无）'));
 say('\n===== ' + pass + '/' + (pass + fail) + ' =====');
 try { fs.writeFileSync(path.join(ROOT, '_ref', '_5i-dom-out.txt'), LINES.join('\n'), 'utf8'); } catch (e){ /* 被重定向占着就跳过 */ }

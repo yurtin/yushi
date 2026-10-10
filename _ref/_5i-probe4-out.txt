@@ -1,0 +1,22 @@
+===== A-1 直接点第 1 层子想法（不开菜单）=====
+  点后: {"maskOn":true,"maskClasses":"mask on","maskAlign":"center","modalTop":325,"modalBottom":563,"modalH":237,"modalScrollTop":0,"inputTop":434,"inputBottom":480,"inputVisible":true,"hitInsideModal":true,"activeId":"sq_t","scrollY":1277,"innerH":888,"kb":"","locked":"gpu-render liquid-glass locked"}
+  滚动位移: 1277 → 1277
+
+===== A-2 先长按出菜单、点「取消」关掉，再点子想法 =====
+  菜单打开: {"sheet":true,"on":true}
+  取消后: {"sheet":false,"on":false}
+  点后: {"maskOn":true,"maskClasses":"mask on","maskAlign":"center","modalTop":325,"modalBottom":563,"modalH":237,"modalScrollTop":0,"inputTop":434,"inputBottom":480,"inputVisible":true,"hitInsideModal":true,"activeId":"sq_t","scrollY":1277,"innerH":888,"kb":"","locked":"gpu-render liquid-glass locked"}
+
+===== A-3 长按菜单 → 点「编辑」（走 closeModal + openEdit 这条）=====
+  点「编辑」后: {"maskOn":true,"maskClasses":"mask on","maskAlign":"center","modalTop":107,"modalBottom":781,"modalH":673,"modalScrollTop":0,"inputTop":null,"inputBottom":null,"inputVisible":null,"hitInsideModal":null,"activeId":"modal","scrollY":1277,"innerH":888,"kb":"","locked":"gpu-render liquid-glass locked"}
+  编辑器标题: "编辑"
+
+===== B 下滑续写 → 输入 → 点「记下」=====
+  续写输入框: {"sparkOpen":"demo-s05","hasInput":true}
+  点「记下」后: {"sparkOpen":"demo-s05","inputStillThere":true,"inputValue":"","sparksLen":3,"maskOn":false}
+  这张卡在列表里的位置: 第 5 张 → 第 1 张；scrollY 1244 → 666
+
+===== B-2 回车这条出口 =====
+  回车结果(sent): {"sparkOpen":"demo-s05","inputStillThere":true,"sparksLen":4}
+
+异常: （无）

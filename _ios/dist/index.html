@@ -7000,7 +7000,12 @@ function renderIdeas(){
   if (inp){
     inp.focus();
     inp.addEventListener('keydown', e => {
-      if (e.key === 'Enter'){ e.preventDefault(); if (seedAddSpark(it_byId(inp.dataset.id), inp.value)) refresh(); }
+      if (e.key === 'Enter'){
+        e.preventDefault();
+        /* ★ 5I：回车 = 这条记完了（收起输入框 + 卡片留在原位），见 finishSparkWrite */
+        const t2 = it_byId(inp.dataset.id);
+        if (t2 && seedAddSpark(t2, inp.value)) finishSparkWrite(t2.id);
+      }
       else if (e.key === 'Escape'){ e.preventDefault(); ideaUI.sparkOpen = null; refresh(); }
     });
   }
@@ -7043,6 +7048,74 @@ function seedAddSpark(it, text){
   save();
   reviewMark(it.id);      // 回顾槽位的"续写并成功写入"才算处理过（§14 C-17）
   return true;
+}
+/* ★ 5I 追加修复（用户真机）：把一张想法卡**钉在原来的屏幕位置**。
+   打开行内续写框、写完收起、以及改完之后，想法页会整块重排 —— 两件事都会让用户正在看的
+   那张卡从视口里跑掉：
+     ① 下滑续写那一下会写 `S.ideaUsedAt`，顶部那块「回顾」抽屉随即收起，整列内容上移
+        （实测卡片屏幕 top 从 221 直接变 -333，输入框跟着跑出视口 —— 用户说的"输入框那个
+        区域并不在我能看到的界面里边"）；
+     ② 续写写下的"今天这一步"改变 ideaLastAt，这张卡跳到列表最前。
+   做法：先量它现在的屏幕位置，跑完 work()（里面会 refresh，而 refresh 是 rAF 里重建 DOM 的）
+   之后逐帧把差值补回来。**不能只补一帧** —— 抽屉收起是 rAF 逐帧的高度动画（revealAnim），
+   量一次只补第一帧，后面的位移照样跑掉；所以这里跟着补 SEED_KEEP_FRAMES 帧（≈0.4s，
+   与项目里 240~280ms 的动画同量级），位置稳了就自然不动。 */
+const SEED_KEEP_FRAMES = 12;
+const SEED_KEEP_MS = 300;              // 兜底：rAF 被系统降频时按时间收
+function keepSeedPlace(id, work){
+  const cardEl = () => {
+    const s = id ? view.querySelector('.item.seed[data-id="' + id + '"]') : null;
+    return s ? s.closest('.idea-card') : null;
+  };
+  const c0 = cardEl();
+  /* 「你看得见的那张卡」才需要钉 —— 卡片整个在视口外时（合成事件/离屏状态）没有"原位"可言，
+     钉它只会把页面凭空滚走，反而把别人正在看的内容顶掉。 */
+  const r0 = c0 ? c0.getBoundingClientRect() : null;
+  const top0 = (r0 && r0.bottom > 0 && r0.top < window.innerHeight) ? r0.top : null;
+  work();
+  if (top0 == null) return;
+  const t0 = Date.now();
+  let left = SEED_KEEP_FRAMES, stop = false, stable = 0;
+  /* 第四条收工条件：**别人又刷新了一次界面**（说明页面已经被另一个动作改了），
+     立刻收工 —— 不然它会替后来那次改动继续补偿，等于跟用户的下一步抢。
+     （verify-idea 5.15 就是这条抓出来的：续写之后再 refresh 一次，锚点还在补。） */
+  const gen = refreshSeq;
+  const cancel = () => { stop = true; };
+  window.addEventListener('pointerdown', cancel, true);
+  window.addEventListener('touchstart', cancel, true);
+  window.addEventListener('wheel', cancel, true);
+  const done = () => {
+    window.removeEventListener('pointerdown', cancel, true);
+    window.removeEventListener('touchstart', cancel, true);
+    window.removeEventListener('wheel', cancel, true);
+  };
+  const tick = () => {
+    /* ⚠️ 收工判断必须在**滚之前**：rAF 被系统降频时，第一帧可能过了几百毫秒才来，
+       那时用户/别的动作早就走远了 —— 先滚一下再用 stale 的 top0 去补，等于凭空把页面挪走
+       （verify-idea 5.15 的合并用例就是这么被弄红的：A/B 里把这次滚动去掉就 230/0）。 */
+    if (stop || refreshSeq !== gen){ done(); return; }
+    const c = cardEl();
+    if (c){
+      const dy = c.getBoundingClientRect().top - top0;
+      if (Math.abs(dy) > 1){ window.scrollBy(0, dy); stable = 0; }
+      else stable++;
+    }
+    if (stable >= 3 || Date.now() - t0 > SEED_KEEP_MS || --left <= 0){ done(); return; }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+/* ★ 5I：续写写完的收尾，**记下 / 回车两条出口共用**：
+   ① **收起行内输入框** —— 用户原话："我按一下记下，或者说按一下回车，这条想法就算记录完了呗？
+      那怎么还让我记下一条想法"。原来 `ideaUI.sparkOpen` 一直留着（`seedAddSpark` 不动它），
+      于是输入框清空后还挂在卡片上，等你再写一条。
+   ② 顺便把它钉回原来的屏幕位置（见 keepSeedPlace）。 */
+function finishSparkWrite(id){
+  if (!id) return;
+  keepSeedPlace(id, () => {
+    ideaUI.sparkOpen = null;
+    refresh();
+  });
 }
 /* 长出：从这条分出去一条新的。新种子保留原文作为"来自"的线索，但**不复制**时间轴 ——
    时间轴是这条种子自己的生长记录，复制过去会让两条看起来一模一样，反而看不出是从哪儿长出来的。 */
@@ -7497,7 +7570,8 @@ function openSeedNew(){
    为什么是长按而不是双击：双击是浏览器手势约定，安卓上还会被系统选词菜单抢。
    复用现有 mask/modal（层序、焦点陷阱、滚动锁、退场都在那一套里）—— 本项目在浮层层序上踩过坑。 */
 function openSeedSheet(it){
-  mask.classList.add('sheet-mode');
+  /* ★ 5I：抽屉态改成由 openMask(true) 声明（原来这里自己 add —— 见 openMask 的说明：
+     那样会在"菜单里再开一个弹层"时把 sheet-mode 泄漏给下一个弹层）。 */
   /* ★ v5.0：图标单独占一格固定宽度，标签才竖着对齐。
      之前把符号和文字拼在一个字符串里，`⑂` 比 `✎` 窄、`☀`/`⏸` 还会被系统
      当成 emoji 渲染成彩色的 —— 用户原话「这些至少在列上面……它们都不照应」。
@@ -7521,7 +7595,7 @@ function openSeedSheet(it){
        ${item('del', '✕', '删除', '删掉这条想法')}
      </div>
      <div class="sheet-foot"><button type="button" class="btn" data-act="sheetclose">取消</button></div>`;
-  openMask();
+  openMask(true);
 }
 /* ★ 5I：第 5 参 initial 是给「改这一步」预填原文用的（省略时行为与改动前逐字一致）。
    预填时全选 —— 直接打字就是替换，不用先手动清空。 */
@@ -8768,8 +8842,7 @@ function openSuggestSheet(it){
      <p class="ai-note">AI 觉得这几条和你这条有关系。挂上去只是多一层缩进，内容一个字都不改。</p>
      <div>${list.length ? list.map(row).join('') : '<p class="ai-note">没有待处理的建议了。</p>'}</div>
      <div class="sheet-foot"><button type="button" class="btn" data-act="sheetclose">关闭</button></div>`;
-  mask.classList.add('sheet-mode');
-  openMask();
+  openMask(true);
 }
 function aiSuggestApply(it, idx){
   const s = (Array.isArray(it.suggest) ? it.suggest : [])[idx];
@@ -10647,7 +10720,11 @@ function imageCommit(items){
 })();
 
 let rafRefresh = 0;
+/* ★ 5I：刷新代次。keepSeedPlace 靠它判断"别人是不是又刷新了一次界面"——
+   是的话就收工，不再替后来那次改动继续补偿（否则会跟用户的下一步抢）。 */
+let refreshSeq = 0;
 function refresh(){
+  refreshSeq++;
   if (rafRefresh) return;
   rafRefresh = requestAnimationFrame(() => {
     rafRefresh = 0;
@@ -12254,7 +12331,12 @@ view.addEventListener('click', e => {
     } else toast('这个壳没有电池设置入口');
     return;
   }
-  if (act === 'sparkok'){ const inp = document.getElementById('sp_in'); if (inp && it && seedAddSpark(it, inp.value)) refresh(); return; }
+  /* ★ 5I：点「记下」= 这条记完了 —— 收起输入框 + 卡片留在原位（两条出口共用一个收尾）。 */
+  if (act === 'sparkok'){
+    const inp = document.getElementById('sp_in');
+    if (inp && it && seedAddSpark(it, inp.value)) finishSparkWrite(it.id);
+    return;
+  }
   if (act === 'sparkdel' && it){
     const i = +el.dataset.i;
     if (Array.isArray(it.sparks) && i >= 0 && i < it.sparks.length){
@@ -13102,9 +13184,19 @@ function modalFocusables(){
     'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
   )].filter(el => el.getClientRects().length);
 }
-function openMask(){
+function openMask(sheet){
   clearTimeout(maskOutTimer); maskOutTimer = 0;
   mask.classList.remove('closing');
+  /* ★ 5I 追加修复（用户真机："我选择去写编辑之后，它变到页面最底下了……输入框那个区域
+     并不在我能看到的界面里边"）：抽屉态（底部 sheet）由**这一次调用**说了算。
+     原来只在 closeModalNow() 里清 sheet-mode，可是"在长按菜单里点一项、它又开一个弹层"
+     这条路是 `closeModal()` + `openMask()` 在同一拍里跑 —— openMask 把关闭定时器清掉、
+     closeModalNow 永远不执行，sheet-mode 就留在遮罩上了。headless 默认
+     prefers-reduced-motion: reduce，而 closeModal() 在 reduce 下直接走 closeModalNow()，
+     所以本地脚本一直没复现出来；真机（有动画）上就变成「编辑 / 生长 / 立项 / 后续任何弹层
+     全都贴屏幕最底」，输入框正好落在软键盘后面看不见（实测见 _ref/_5i-probe5-out.txt）。
+     口径与项目其它全局副作用类同源：统一入口按调用方重置，不靠调用点自觉。 */
+  mask.classList.toggle('sheet-mode', !!sheet);
   mask.classList.add('on');
   /* ★ 0G：每次打开弹层都回到**最上面**。
      `.modal` 是常驻元素（每次只换 innerHTML），浏览器会把它的滚动位置留着 —— 上一次看到一半
@@ -13354,7 +13446,10 @@ view.addEventListener('pointerup', () => {
   if (g.dir === 'left'){ openEdit(g.it); return; }           // 左滑 → 编辑
   if (g.dir === 'down'){                                     // 下滑 → 续写
     S.lastOpenedSeed = g.it.id; S.ideaUsedAt = ymd(new Date());
-    ideaUI.sparkOpen = g.it.id; save(); refresh(); return;
+    /* ★ 5I：打开行内输入框这一下也会让整列重排（回顾抽屉按 ideaUsedAt 收起），
+       把这张卡钉回原来的屏幕位置 —— 否则用户按的那张卡连输入框一起跑出视口。 */
+    keepSeedPlace(g.it.id, () => { ideaUI.sparkOpen = g.it.id; save(); refresh(); });
+    return;
   }
   if (g.dir === 'up'){ openSeedSheet(g.it); return; }        // 上滑 → 动作菜单
   openSeedSheet(g.it);                                       // 没动 → 菜单（兜底 + 可发现）
@@ -13426,7 +13521,9 @@ modal.addEventListener('click', e => {
         v => { if (seedAddSpark(it, v)) refresh(); });
       return;
     }
-    ideaUI.sparkOpen = it.id; refresh(); return;
+    /* ★ 5I：同下滑那条 —— 打开输入框时把卡片钉在原位（列表会因抽屉收起/重排而整体位移） */
+    keepSeedPlace(it.id, () => { ideaUI.sparkOpen = it.id; refresh(); });
+    return;
   }
   if (act === 'fork'){
     openSeedPrompt('从「' + it.title + '」生长', '新的想法第一句', '从这里分出去的那条',
@@ -14956,7 +15053,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.17.1';
+const APP_VERSION = '5.17.2';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
