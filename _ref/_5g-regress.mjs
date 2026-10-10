@@ -244,9 +244,14 @@ console.log('\n[6] foldZoneWithMotion：折叠终点高度量 DOM');
       && /const finishFold = \(\) => \{/.test(body));
   tOk('兜底定时器仍在（过渡没建起来时 transitionend 不触发）',
     /setTimeout\(finishFold, FOLD_MS \+ \d+\)/.test(body));
-  tOk('折叠态把下内边距收成 0（让"真实折叠高度"落到标题栏底边，终态不再露内容）',
-    /\.zone\.folded\{padding-bottom:0\}/.test(htmlNC)
-      && /\.zone\.folded>header::after\{bottom:0;border-radius:32px\}/.test(htmlNC));
+  /* ★ 5H 改断言（脚本漂移，不是产品回退）：5G 原来靠"折叠态把下内边距收成 0"来不露内容，
+     该修法已被用户否掉（"削足适履"）→ 5H 改成让**内容层** `.zone-body` 归零、卡片 padding 不动，
+     热区恢复成盖满整卡（bottom:-16px）。这一条的**意图**（收起不露内容 + 热区形状）不变，
+     只是实现换了地方 —— 判据改成钉新形态，并额外钉住"padding 那一刀不许回来"。 */
+  tOk('折叠态**不削卡片 padding**（不露内容改由内容层 .zone-body 归零承担；5G 的 padding-bottom:0 不许回来）',
+    !/\.zone\.folded\{[^}]*padding/.test(htmlNC)
+      && /\.zone\.folded>\.zone-body\{display:none\}/.test(htmlNC)
+      && /\.zone\.folded>header::after\{bottom:-16px;border-radius:32px\}/.test(htmlNC));
   tOk('content-visibility 的还原推迟到下一帧（否则收尾那一帧会按占位尺寸结算，抖 16px）',
     /_cvRaf = requestAnimationFrame\(/.test(htmlNC) && /cancelAnimationFrame\(sec\._cvRaf\)/.test(htmlNC));
 }

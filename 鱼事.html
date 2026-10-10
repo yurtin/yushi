@@ -792,15 +792,24 @@ body.view-enter .entry-extra{animation:entryIn .62s cubic-bezier(.16,1,.3,1) .12
   content:'';position:absolute;left:-8px;right:-8px;top:-6px;bottom:0;
   border-radius:16px;background:transparent;cursor:pointer;
 }
-/* ★ 5G（用户："收起这个条目时，底下会出现一丁点儿，然后再消失"）：
-   收起态把卡片的下内边距收成 0 —— 让"真实折叠高度"正好落在**标题栏底边**。
-   为什么：条目是跟在标题栏后面的普通流内容，`overflow:hidden` 只裁到**内边距盒**的底边，
-   折叠终态那 16px 下内边距里还露着第一条内容的上沿，等 .folded 挂上才消失。
-   收成 0 之后高度终态 = 内容起点，动画末帧不再露任何内容，且"动画终点"与
-   "挂 .folded 后的真实高度"是同一个数（_5g-dom.mjs 逐帧量 + elementFromPoint 验）。
-   代价：收起态的卡片比原来矮 16px —— 那 16px 本来就是空白。 */
-.zone.folded{padding-bottom:0}
-.zone.folded>header::after{bottom:0;border-radius:32px}
+/* ★ 5H（用户否掉了 5G 的修法，原话："你这不是削足适履的做法吗？"）：
+   收起态露内容这件事只能在**裁剪层**解决，不能动卡片的几何。
+   5G 那版把 `.zone.folded` 的 padding-bottom 收成 0 来"让真实折叠高度落到标题栏底边"，
+   代价写着"卡片矮 16px" —— 而内边距是组件的不变量：卡片居中、灰罩 `::before`、
+   热区 `::after`、圆角全按它算，削一个其余全错位。用户当场看到的就是这三样一起对不上
+   （"内容不居中、交互范围没改、阴影范围比收起来的 UI 还大"）。
+
+   正解：把"内容变没"交给**内容那一层**。条目现在装在 `.zone-body` 里：
+     · 折叠时它的高度补间到 0（配 `.zone.folding>.zone-body` 的 overflow:hidden），
+       内容被自己的盒子裁住，永远够不到卡片底部那 16px 内边距带；
+     · 卡片自己的 padding 一个字节不动，"折叠前后四个值相等"由断言钉住；
+     · "overflow:hidden 只裁到内边距盒底边"这件事因此不再有害 —— 那条带子里没有内容。
+   热区同步恢复成"盖满整张可见卡片"：底部 -16px 正好吃掉下内边距，与卡片边框盒逐边相等
+   （`_5h-dom.mjs` 量四份 rect + 角点 elementFromPoint 验）。
+   ⚠️ 别再把 padding 拿回来当补丁用：谁把 `.zone.folded{padding-bottom:0}` 加回来，
+   收起态会矮 16px、热区比卡片小 —— `_5h-regress` 有源码级断言盯着它是 0 处。
+   终态隐藏那一条在 `.z-chev` 下面（`.zone.folded>.zone-body{display:none}`），只有一处定义。 */
+.zone.folded>header::after{bottom:-16px;border-radius:32px}
 /* ★ v3.38-b（用户："灰罩只盖住标题那一条"）：视觉灰罩和热区分成两层 ——
    `::before` 只做视觉，永远铺满**整张卡片**；`::after` 只管"点得到"，展开态只到标题那一条。
    为什么不能合成一层：展开态热区一旦铺满整卡，底下的条目就点不到了；
@@ -856,9 +865,11 @@ body.view-enter .entry-extra{animation:entryIn .62s cubic-bezier(.16,1,.3,1) .12
   transition:transform .22s cubic-bezier(.2,.8,.2,1),opacity .2s ease;
 }
 .zone.folded .z-chev{transform:rotate(0)}               /* 收起 → 朝右 */
-/* 收起时只剩下标题栏。用 `:not(header)` 是因为条目和空态提示都是 header 的**兄弟**节点，
-   不是它的子节点 —— 写成 `.zone.folded > *` 会把标题也藏掉。 */
-.zone.folded>:not(header){display:none}
+/* 收起时只剩下标题栏 + 卡片自己的上下内边距（padding 不动，这是 5H 的红线）。
+   ★ 5H：条目与空态提示现在装在 `.zone-body` 这一个包裹层里 —— 它们仍是 header 的**兄弟**，
+   只是被内容层包住了。折叠动画把这一层的高度补间到 0（`.zone.folding>.zone-body`），
+   归零之后它自己的 overflow:hidden 就把内容裁在自己的盒子里，够不到卡片下内边距那条带子。 */
+.zone.folded>.zone-body{display:none}
 .empty{color:var(--faint);font-size:13px;padding:16px 2px;text-align:center}
 
 /* ★ 0E（用户原话："静态页面在功能定位上就是'还没完成的事'，那为什么要加'已完成'？"）：
@@ -3383,8 +3394,12 @@ html.tree-full .merge-bar{z-index:85}
 /* ---------- 分区折叠高度过渡（v3 新增，复用 foldWithMotion / FOLD_MS） ----------
    原来 `.zone.folded>:not(header){display:none}` 是纯 display 切换，必然一帧到位。
    这里给折叠过程加高度过渡：折叠时把 .zone 高度从全高塌到"只剩标题栏"，
-   展开时反向长回。动画期间临时摘掉 content-visibility:auto（否则可能闪烁），收尾恢复。 */
+   展开时反向长回。动画期间临时摘掉 content-visibility:auto（否则可能闪烁），收尾恢复。
+   ★ 5H：折叠动画**同时**作用在内容层 `.zone-body` 上（它自己的高度也补间到 0）——
+   见上面 `.zone-body` 那段；卡片 padding 不动是红线。 */
 .zone.folding{overflow:hidden;
+  transition:height var(--mo-base) var(--mo-size)}
+.zone.folding>.zone-body{overflow:hidden;
   transition:height var(--mo-base) var(--mo-size)}
 
 @media (prefers-reduced-motion:reduce){
@@ -4303,7 +4318,16 @@ function parseSmart(input){
        顺序要紧：3~4 位那条必须先试，否则 `915交报告` 会先去撞第二条而落空。 */
     const lm = text.match(/^(\d{1,2}\.\d{1,2}|\d{3,4})[\s、,，]*(.+)$/)
             || text.match(/^(\d{1,2})[\s、,，]+(.+)$/);
-    if (lm){
+    /* ★ 5H（真机复现）：`3 号交材料` —— 数字与「号」之间有一个空格（全角空格同）时，
+       这条 1~2 位正则先命中（`3` + 空格 + `号交材料`），把它读成"3月1日"+标题「号交材料」，
+       而下面 X号 那条双闸根本轮不到；用户报的"识别到了 3、号字被加到标题里、识别成 3 月了"
+       就是这个。同型 `17 号开会` 更糟：读成 1月7日（已过就顺延到 2027-01-07）+ 标题「号开会」。
+       窄修：分隔符后面紧跟「号」时**不认**行首数字，把手交给 X号 分支（它自带
+       动作词白名单 / 名词后缀黑名单两道闸）。三条限定，避免误伤：
+         · 只在 1~2 位数字那一支生效（3~4 位的强信号路径逐字符不变，`915 交报告` 照旧）；
+         · `号` 必须紧跟分隔符（`3、号` 这类罕见形状也一并交给 X号，行为与 `17号 开会` 对齐）；
+         · 不改 X号 分支一个字节 —— `3号交材料`（无空格）本来就是好的。 */
+    if (lm && !(lm[1].length <= 2 && /^号/.test(lm[2]))){
       const r = numToDate(lm[1]);
       if (r){ date = r.date; monthOnly = r.monthOnly; text = lm[2].trim(); }
     }
@@ -5263,8 +5287,17 @@ function chipDate(it){
      不改这里的话，区间条目会出现"卡片没染红、chip 上却写着逾期1天"的自相矛盾。 */
   const due = (it.dateEnd && (!it.date || daysFromToday(it.dateEnd) >= daysFromToday(it.date))) ? it.dateEnd : it.date;
   const df = daysFromToday(due);
-  if (df < 0) cls += ' late'; else if (df === 0) cls += ' today';
-  const txt = it.done ? dl : (df < 0 ? dl + ' · 逾期' + (-df) + '天' : (df === 0 ? dl + ' · 今天' : dl));
+  /* ★ 5H：`today` 这一档从"截止日就是今天"扩成**「进行中」** —— 截止日就是今天，
+     **或**区间已经开始且还没到截止日。5G 把 due 换成截止日时只补了「逾期」那一档，
+     "区间已开始、还没到截止日"这个状态根本不存在，于是 `10/8~10/11` 掉进默认色
+     （用户原话："它不应该是绿色的吗？因为这正处于期限进行中，但它现在却是灰色的"）。
+     单日条目逐字段不变：单日时 `it.date === due`，`started` 与 `df===0` 同时成立或
+     同时不成立（`df<0` 时 first 走 late），所以这一档对单日完全是恒等变换。
+     无起始日（只有 dateEnd 的脏数据）视为"已开始"—— 与 due 取 dateEnd 的口径一致。 */
+  const started = !it.date || daysFromToday(it.date) <= 0;
+  if (df < 0) cls += ' late'; else if (df === 0 || started) cls += ' today';
+  const txt = it.done ? dl : (df < 0 ? dl + ' · 逾期' + (-df) + '天'
+    : (df === 0 ? dl + ' · 今天' : (started ? dl + ' · 进行中' : dl)));
   /* data-fk：FLIP 身份键。分区和时间轴对同一天的表达不一样（时间轴"未定截止"那条不渲染日期），
      所以这个键只在两边都真的渲染出日期 chip 时才配得上 —— 配不上的自然不参与动画。 */
   return `<span class="${cls}" data-fk="d:${esc(it.id)}">${txt}</span>`;
@@ -5782,7 +5815,7 @@ function renderZoneBody(){
         <span class="dot"></span><h3>${c.label}</h3><span class="n mono">${live.length}</span>
         <i class="z-chev" aria-hidden="true"></i>
       </header>
-      ${live.length ? live.map(x => renderTree(x)).join('') : `<div class="empty">${c.empty}</div>`}
+      <div class="zone-body">${live.length ? live.map(x => renderTree(x)).join('') : `<div class="empty">${c.empty}</div>`}</div>
     </section>`;
   });
 
@@ -12245,10 +12278,18 @@ function resetFold(box){
    ⑤ reduced-motion：不量不补间，直接切；
    ⑥ .zone 默认带 content-visibility:auto，量高度前临时摘成 visible，否则可能跳帧/量不准，
       收尾再清掉 inline 让它回到 auto。
-   折叠的"终态"仍交给 CSS `.zone.folded>:not(header){display:none}`（永久隐藏条目），
-   所以这里动画只负责"高度从全高塌到标题栏"，塌完把 .folded 挂上即可。 */
+   折叠的"终态"仍交给 CSS `.zone.folded>.zone-body{display:none}`（永久隐藏条目），
+   所以这里动画只负责"高度从全高塌到标题栏"，塌完把 .folded 挂上即可。
+   ★ 5H：动画**同时作用在内容层** `.zone-body`（它自己的高度也补间到 0）——
+   卡片 padding 一个字节都不许动，"收起不露内容"靠内容层归零、不靠削内边距。
+   5G 那版 `.zone.folded{padding-bottom:0}` 已被用户否掉（理由见 CSS 里 `.zone-body` 那段），
+   `_5h-regress` 有源码级断言盯着它是 0 处。 */
 function resetFoldZone(sec){
   sec.style.height = ''; sec.style.overflow = ''; sec.classList.remove('folding');
+  /* ★ 5H：内容层那两行 inline（折叠动画的起点/终点高度与 overflow）也要一起清，
+     否则下一次展开会从"钉死的高度"开始。 */
+  const fb = sec.querySelector(':scope > .zone-body');
+  if (fb){ fb.style.height = ''; fb.style.overflow = ''; }
   /* ★ 5G：`content-visibility` **不能在同一帧里还原**。原实现直接 `= ''`（还原成
      `.zone{content-visibility:auto}`）：那一帧浏览器会先按"占位/记忆尺寸"结算一次
      （实测 55 → 39 → 55，一帧 16px 的下陷抖动），下一帧才按真实内容结算。
@@ -12329,12 +12370,26 @@ function foldZoneWithMotion(el){
   }
   const FULL = sec.scrollHeight;          // 此刻条目可见，量得真实全高
 
+  /* ★ 5H：折叠动画同时作用在**内容层**（.zone-body）——
+     收起时它的高度补间到 0，内容被自己的盒子裁住，永远够不到卡片底部那 16px 内边距带。
+     这是"收起不露内容"的正解：卡片 padding 不动（5G 那一刀削的正是它）。
+     展开方向不给内容补间：内容本来就该整块长出来，由卡片的 overflow 逐帧揭开就行
+     （给内容补间反而会让长出来的过程多一层"内容自己也在压扁"的假象）。
+     量 bodyFull 必须在摘掉 .folded 之后（display:none 的元素量出来是 0）。 */
+  const foldBody = sec.querySelector(':scope > .zone-body');
+  const bodyFull = (foldBody && !wasFolded) ? Math.round(foldBody.offsetHeight) : 0;
+
   sec.style.overflow = 'hidden';          // ---- 起点 ----
   sec.style.height = (wasFolded ? collapsedH : FULL) + 'px';
+  if (foldBody && !wasFolded){
+    foldBody.style.overflow = 'hidden';
+    foldBody.style.height = bodyFull + 'px';
+  }
   void sec.offsetHeight;                   // 提交起点（此刻还没挂 transition）
   sec.classList.add('folding');
   void sec.offsetHeight;                   // 提交 transition 本身，别和高度变化挤同一帧
   sec.style.height = (wasFolded ? FULL : collapsedH) + 'px';   // ---- 终点 ----
+  if (foldBody && !wasFolded) foldBody.style.height = '0px';   // ---- 内容同时收到 0 ----
 
   /* ★ 5G：收尾**以 transitionend 为准**，不再写死 280ms。
      原来那个定时器会在高度过渡还没跑完时就掐断它（定时器 280ms vs 过渡 --mo-base .24s，
@@ -14605,7 +14660,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.16.2';
+const APP_VERSION = '5.16.3';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
