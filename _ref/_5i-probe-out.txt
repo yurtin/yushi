@@ -1,0 +1,172 @@
+被测文件: D:\DSH\工作区\待办集\鱼事.html  716983 bytes
+
+===== 第一项 · ① 想法卡上的子想法行 =====
+{
+  "seedId": "demo-s05",
+  "sparkCountInData": 2,
+  "rowCount": 3,
+  "rows": [
+    {
+      "i": 0,
+      "text": "深夜写东西为什么更快",
+      "acts": [],
+      "txClosestAct": null,
+      "txClosestButton": false,
+      "txTag": "SPAN",
+      "txHasTabindex": false,
+      "txCursor": "auto",
+      "rowHTML": "<div class=\"sp-step seed-first\"><span class=\"sp-dot\"></span><span class=\"sp-at\">2026-09-20</span><span class=\"sp-tx\">深夜写东西为什么更快</span></div>"
+    },
+    {
+      "i": 1,
+      "text": "因为没人打断？",
+      "acts": [
+        "sparkpromote",
+        "sparkdel"
+      ],
+      "txClosestAct": null,
+      "txClosestButton": false,
+      "txTag": "SPAN",
+      "txHasTabindex": true,
+      "txCursor": "pointer",
+      "rowHTML": "<div class=\"sp-step\"><span class=\"sp-dot\"></span><span class=\"sp-at\">2026-09-20</span><span class=\"sp-tx\" role=\"button\" tabindex=\"0\" data-sparkedit=\"0\" title=\"点一下改这一步\" aria-label=\"改这一步：因为没人打断？\">因为没人打断？</span><button type"
+    },
+    {
+      "i": 2,
+      "text": "还是因为白天一直在做别人的事",
+      "acts": [
+        "sparkpromote",
+        "sparkdel"
+      ],
+      "txClosestAct": null,
+      "txClosestButton": false,
+      "txTag": "SPAN",
+      "txHasTabindex": true,
+      "txCursor": "pointer",
+      "rowHTML": "<div class=\"sp-step\"><span class=\"sp-dot\"></span><span class=\"sp-at\">2026-09-22</span><span class=\"sp-tx\" role=\"button\" tabindex=\"0\" data-sparkedit=\"1\" title=\"点一下改这一步\" aria-label=\"改这一步：还是因为白天一直在做别人的事\">还是因为白天一直在做别人的事</spa"
+    }
+  ]
+}
+
+===== 第一项 · ② 编辑弹层里有没有 sparks 行 =====
+{
+  "modalOpen": true,
+  "title": "编辑",
+  "fieldLabels": [
+    "分区",
+    "标题",
+    "挂在…下面",
+    "原文",
+    "重要程度",
+    "标签（可多选，也可以不选）",
+    "这是作业",
+    "课程",
+    "状态",
+    "详细要求",
+    "提交渠道",
+    "命名要求"
+  ],
+  "sparkishNodesInModal": 0,
+  "textOfModalHasSparkText": false,
+  "inputs": [
+    "m_title",
+    "te_dtxt",
+    "te_ttxt",
+    "te_sw",
+    "te_gap",
+    "m_hw",
+    "m_course",
+    "m_detail",
+    "m_channel",
+    "m_naming"
+  ]
+}
+
+===== 第一项 · ③ 长按菜单有哪些项 =====
+起点: {"x":158,"y":178,"cardId":"demo-s05","cardRect":{"top":150,"bottom":315,"h":165},"nextKind":null,"nextSeedId":null,"nextRect":null,"scrollY":1319}
+长按 400ms 后手势态: {"hudOn":true}
+{
+  "sheetMode": true,
+  "open": true,
+  "items": [
+    {
+      "act": "sparkadd",
+      "label": "续写",
+      "hint": "现在多了什么信息"
+    },
+    {
+      "act": "fork",
+      "label": "生长",
+      "hint": "从这里分出去一条新的"
+    },
+    {
+      "act": "promote",
+      "label": "立项",
+      "hint": "把它变成一条待办"
+    },
+    {
+      "act": "edit",
+      "label": "编辑",
+      "hint": "改标题 / 标签 / 重要程度"
+    },
+    {
+      "act": "mergepick",
+      "label": "合并",
+      "hint": "选上它，再勾别的"
+    },
+    {
+      "act": "aiask",
+      "label": "问我一问",
+      "hint": "要先在设置里打开 AI"
+    },
+    {
+      "act": "seeduse",
+      "label": "收起来",
+      "hint": "变暗、沉到底部"
+    },
+    {
+      "act": "del",
+      "label": "删除",
+      "hint": "删掉这条想法"
+    }
+  ]
+}
+
+===== 第一项 · ④ 长按后左滑 → 打开的是什么 =====
+左滑方向判定: {"left":true}
+{
+  "open": true,
+  "sheetMode": false,
+  "title": "编辑",
+  "hasSparkText": false,
+  "fnHint": "openEdit(it) → openItemEditor(it,false)"
+}
+
+===== 第一项 · 补：直接点一下子想法文字会怎样 =====
+点向: {"x":152,"y":206,"text":"因为没人打断？"}
+{"modalOpen":true,"sheetMode":false,"sparkOpen":null,"scrollY":1319}
+
+===== 第二项 · 先单独发一次下滑（确认它能触发） =====
+起点: {"x":158,"y":248,"cardTop":220,"cardBottom":385,"cardH":165,"scrollY":1249}
+单步下滑 70px 后: {"down":true,"over":false,"scrollY":1249}
+松手结果: {"sparkOpen":"demo-s05","hasInput":true,"modalOpen":false}
+
+===== 第二项 · 让手指经过另一张卡（多步下滑） =====
+起点: {"x":158,"y":148,"cardTop":120,"cardBottom":285,"cardH":165,"scrollY":868}
+逐步轨迹：
+  {"y":164,"scrollY":868,"under":"sp-tx","underCardId":"demo-s05","dirDown":false,"dirLeft":false,"over":false,"dropTarget":null}
+  {"y":180,"scrollY":868,"under":"sp-tx","underCardId":"demo-s05","dirDown":false,"dirLeft":false,"over":false,"dropTarget":null}
+  {"y":196,"scrollY":868,"under":"sp-tx","underCardId":"demo-s05","dirDown":true,"dirLeft":false,"over":false,"dropTarget":null}
+  {"y":212,"scrollY":868,"under":"sp-tx","underCardId":"demo-s05","dirDown":true,"dirLeft":false,"over":false,"dropTarget":null}
+  {"y":228,"scrollY":868,"under":"sp-tx","underCardId":"demo-s05","dirDown":true,"dirLeft":false,"over":false,"dropTarget":null}
+  {"y":244,"scrollY":868,"under":"body","underCardId":"demo-s05","dirDown":true,"dirLeft":false,"over":false,"dropTarget":null}
+  {"y":260,"scrollY":868,"under":"chip","underCardId":"demo-s05","dirDown":true,"dirLeft":false,"over":false,"dropTarget":null}
+  {"y":276,"scrollY":868,"under":"item","underCardId":"demo-s05","dirDown":true,"dirLeft":false,"over":false,"dropTarget":null}
+  {"y":292,"scrollY":868,"under":"idea-list","underCardId":null,"dirDown":true,"dirLeft":false,"over":false,"dropTarget":null}
+  {"y":308,"scrollY":868,"under":"item","underCardId":"demo-s01","dirDown":true,"dirLeft":false,"over":false,"dropTarget":null}
+多次下滑经过别的卡后松手: {"sparkOpen":"demo-s05","hasInput":true,"modalOpen":false,"modalTitle":"","mergeMode":false,"scrollY":1244}
+
+===== 第二项 · 非手势态下滑必须滚页面 =====
+非手势态上滑: scrollY 0 → 155  [PASS 页面滚了]
+
+页面里的 JS 异常：（无）

@@ -3067,6 +3067,13 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
 .sp-at{flex:0 0 auto;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums;
   min-width:0}
 .sp-tx{min-width:0;word-break:break-word;line-height:1.5}
+/* ★ 5I：子想法那一行的文字**点一下就能改**（原来整行只有 → 和 ✕，字根本改不了）。
+   补一点内边距把可点区域撑到手指大小，再用等量负外边距把它吃回去 ——
+   行高、缩进、以及那条绝对定位的竖线位置一个字不动。
+   只有真长出来的那一步带 [data-sparkedit]；种子本身那一行不带（它用长按菜单的「编辑」改标题）。 */
+.sp-step .sp-tx[data-sparkedit]{cursor:pointer;padding:4px 6px;margin:-4px -6px;border-radius:8px}
+@media (hover:hover){ .sp-step .sp-tx[data-sparkedit]:hover{background:var(--tap,var(--pill))} }
+.sp-step .sp-tx[data-sparkedit]:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .sp-x{
   flex:0 0 auto;margin-left:auto;border:0;background:none;color:var(--faint);
   font-size:11px;padding:2px 6px;border-radius:8px;cursor:pointer;line-height:1;
@@ -5581,7 +5588,10 @@ function seedHTML(it, info){
         `<div class="sp-step"><span class="sp-dot"></span>` +
         atSpan(s.at || '') +
         (s.by === 'ai' ? `<span class="sp-ai" title="AI 以「${esc(s.role || '')}」的身份问的">✦${esc(s.role || 'AI')}</span>` : '') +
-        `<span class="sp-tx">${esc(s.text)}</span>` +
+        /* ★ 5I：这一步的**文字**是可点的编辑入口（role/tabindex + keydown 补键盘）。
+           刻意**不挂 data-act** —— 长按手势的排除名单只认 `[data-act]`，
+           挂上去这一行就再也长按不了（旧行为是长按整张卡出菜单）。 */
+        `<span class="sp-tx" role="button" tabindex="0" data-sparkedit="${i}" title="点一下改这一步" aria-label="改这一步：${esc(s.text)}">${esc(s.text)}</span>` +
         (s.promotedTo ? `<span class="sp-done" title="这一步已经立项">↗</span>` : '') +
         `<button type="button" class="sp-go" data-act="sparkpromote" data-id="${esc(it.id)}" data-i="${i}" title="把这一句变成待办" aria-label="把这一句变成待办">→</button>` +
         (pushTask ? `<button type="button" class="sp-push" data-act="sparkpush" data-id="${esc(it.id)}" data-i="${i}" title="把这一句补到待办里" aria-label="把这一句补到待办里">↑</button>` : '') +
@@ -7513,17 +7523,21 @@ function openSeedSheet(it){
      <div class="sheet-foot"><button type="button" class="btn" data-act="sheetclose">取消</button></div>`;
   openMask();
 }
-function openSeedPrompt(title, label, placeholder, onOk){
+/* ★ 5I：第 5 参 initial 是给「改这一步」预填原文用的（省略时行为与改动前逐字一致）。
+   预填时全选 —— 直接打字就是替换，不用先手动清空。 */
+function openSeedPrompt(title, label, placeholder, onOk, initial){
+  const init = (initial == null) ? '' : String(initial);
   modal.innerHTML =
     `<h3 id="modalTitle">${esc(title)}</h3>
      <div class="field"><label>${esc(label)}</label>
-       <input type="text" id="sq_t" value="" placeholder="${esc(placeholder || '')}"></div>
+       <input type="text" id="sq_t" value="${esc(init)}" placeholder="${esc(placeholder || '')}"></div>
      <div class="foot"><div class="spacer"></div>
        <button class="btn" id="sq_no">取消</button>
        <button class="btn primary" id="sq_yes">确定</button></div>`;
   openMask();
   const inp = document.getElementById('sq_t');
   inp.focus();
+  if (init) inp.select();
   const ok = () => { const v = inp.value; closeModal(); onOk(v); };
   document.getElementById('sq_no').onclick = closeModal;
   document.getElementById('sq_yes').onclick = ok;
@@ -7531,6 +7545,25 @@ function openSeedPrompt(title, label, placeholder, onOk){
     if (e.key === 'Enter'){ e.preventDefault(); ok(); }
     else if (e.key === 'Escape'){ e.preventDefault(); closeModal(); }
   });
+}
+/* ★ 5I：改**某一步子想法**的文字（用户："下面的两个子想法就没办法编辑"）。
+   复用现有弹层（openSeedPrompt）与现有数据层，不新造浮层、不新造字段：
+   只改 sparks[i].text，其余字段（at / by / role / promotedTo）原样不动 ——
+   时间轴的顺序与"这一步已立项"的标记都不受影响。
+   取消 / Esc / 点遮罩一律只是 closeModal，**一个字都不写**；空串当取消。
+   撤销把原串写回同一个 i（不是删了再加，时间轴的顺序因此不会变）。
+   与深度无关：seedHTML 在任意层级都会调用它，所以第 2~5 层同样能改。 */
+function openSparkEdit(it, i){
+  const sp = (Array.isArray(it.sparks) ? it.sparks : [])[i];
+  if (!sp) return;
+  const before = sp.text;
+  openSeedPrompt('改这一步', '这一步写的是什么', '比如：因为没人打断', v => {
+    const t = String(v == null ? '' : v).trim();
+    if (!t || t === before) return;
+    sp.text = t;
+    save(); refresh();
+    toast('改好了', '撤销', () => { sp.text = before; save(); refresh(); });
+  }, before);
 }
 
 /* ==================== ★ 0E：统计页的「内部子页」（就地替换，不新增浮层） ====================
@@ -11676,10 +11709,31 @@ view.addEventListener('keydown', e => {
     e.preventDefault();
     sp.click();
   }
+  /* ★ 5I：子想法那一行是 role="button" + tabindex=0（不能用真 <button> 包整行 ——
+     行里还有 → / ↑ / ✕ 三枚按钮，嵌套按钮是非法结构）。键盘的 Enter / 空格
+     走上面同一套写法，点出来的 click 由 #view 的委托接住。 */
+  const sptx = e.target.closest && e.target.closest('[data-sparkedit]');
+  if (sptx && (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar')){
+    e.preventDefault();
+    sptx.click();
+  }
 });
 
 view.addEventListener('click', e => {
   const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart],[data-statpage],[data-statback],[data-statentry],[data-jump]');
+  /* ★ 5I：子想法那一行的文字（.sp-tx[data-sparkedit]）点一下就能改。
+     必须**留在上面那串选择器之外**：长按手势的排除名单只认 `[data-act]`，
+     一旦给它挂 data-act，这一行从此再也长按不了（旧行为是长按整张卡出菜单）。 */
+  const spTx = e.target.closest ? e.target.closest('[data-sparkedit]') : null;
+  if (spTx){
+    const spCard = spTx.closest('.idea-card');
+    const spSeed = spCard ? spCard.querySelector('.item.seed[data-id]') : null;
+    const spIt = spSeed ? S.items.find(x => x.id === spSeed.dataset.id) : null;
+    if (spIt && !(e.target.closest && e.target.closest('button'))){
+      openSparkEdit(spIt, +spTx.dataset.sparkedit);
+      return;
+    }
+  }
   if (!el) return;
 
   /* ★ 0E：清单页底部那块「已完成」折叠区整块撤掉了 —— 连它的展开 / 收起分支一起删。
@@ -13151,7 +13205,16 @@ document.addEventListener('keydown', e => {
    长按震一下、落到另一张卡上再震一下才合并；只长按后上下滑不会。 */
 const SEED_LONG_MS = 400;
 const SEED_SWIPE_PX = 44;            // 方向判定阈值：太短会把"手抖"也当成滑动
+/* ★ 5I：落点认成"合并目标"之前要求手指在那一张上**停住**多久（见 pointermove 里的说明）。
+   快速滑过任何一张卡都不算；停住一下才亮描边 + 震一下，松手才合并。 */
+const SEED_MERGE_HOLD_MS = 180;
 let seedPressTimer = 0, seedPressCard = null, seedPressFrom = null, seedG = null;
+/* ★ 5I：长按手势收尾后浏览器还会补发一发 click（手指几乎没动时）——
+   它的落点是**刚打开的遮罩**，会把菜单立刻关掉（实测日志：
+   `pointerup@sp-tx → click@mask → CALL closeModal → CALL closeModalNow`，
+   openSeedSheet 确实被调用了 1 次，用户看到的是"菜单闪一下就没了"）。
+   只吞掉手势收尾后的那一发，日常点击不受影响。 */
+let seedClickMute = 0;
 
 /* 手势态的方向提示。挂在 body 上、进手势态才显示 —— 不做成常驻 UI，
    它只在"你已经长按了"这 1~2 秒里有用。 */
@@ -13208,7 +13271,7 @@ view.addEventListener('pointerdown', e => {
     const it = S.items.find(x => x.id === seed.dataset.id);
     if (!it){ seedPressCancel(); return; }
     buzz(30);   // 第一下：进入了（原来 10ms，真机上太弱）
-    seedG = { card, it, dir: '', target: '', buzzed: false };
+    seedG = { card, it, dir: '', target: '', buzzed: false, targetElId: '', holdId: '', holdAt: null };
     seedHudShow(true); seedHudMark('', '');
   }, SEED_LONG_MS);
 });
@@ -13220,29 +13283,47 @@ view.addEventListener('pointermove', e => {
   }
   if (!seedG) return;
   const dx = e.clientX - seedPressFrom.x, dy = e.clientY - seedPressFrom.y;
-  /* 落点优先：指针停在**另一张**卡上 = 拖过去合并（第二下震动就在这里） */
-  let target = '';
-  const under = document.elementFromPoint(e.clientX, e.clientY);
-  const tCard = under && under.closest ? under.closest('.idea-card') : null;
+  /* 指针底下是不是**另一张**卡 */
+  let under = '';
+  const underEl = document.elementFromPoint(e.clientX, e.clientY);
+  const tCard = underEl && underEl.closest ? underEl.closest('.idea-card') : null;
   const tSeed = tCard ? tCard.querySelector('.item.seed[data-id]') : null;
-  if (tSeed && tSeed.dataset.id !== seedG.it.id) target = tSeed.dataset.id;
-  if (target !== seedG.target){
-    seedG.target = target;
-    if (target && !seedG.buzzed){
-      seedG.buzzed = true;
-      buzz(16);   // 抓到目标的那一下（跟着震动档位缩放）
+  if (tSeed && tSeed.dataset.id !== seedG.it.id) under = tSeed.dataset.id;
+  let dir = '';
+  if (Math.abs(dx) > SEED_SWIPE_PX && Math.abs(dx) > Math.abs(dy)) dir = dx > 0 ? 'right' : 'left';
+  else if (dy > SEED_SWIPE_PX) dir = 'down';
+  /* ★ 本轮（用户："长按时上滑没有反应"）：上滑原来**没有分支** —— 手势成了，但没有任何
+     方向被认定，松手就落到"打开菜单"那条兜底上，看着像"没反应"。现在把它定义成
+     「上滑 → 打开动作菜单」，四个方向都有回应（菜单跟松手不动打开的是同一个）。 */
+  else if (dy < -SEED_SWIPE_PX) dir = 'up';
+  /* ★ 5I 复现后的修法（复现轨迹见 _ref/_5i-probe-out.txt 第二项）：
+     原来是**落点优先**——只要指针这一帧压在另一张卡上，target 立刻成立、dir 被清成 ''，
+     于是"下滑续写"在手指经过下面那张卡的一瞬间被翻成「合并成一条新想法」（实测：
+     第 3 步 +48px 还在自己卡里时 dir 已是 down；第 10 步 +160px 压到下一张卡，
+     drop-target 亮起、dir 被清空，松手弹出的就是合并确认页）。
+     修法：**落点要"停住"才算数** —— 指针压在另一张卡上、且连续 SEED_MERGE_HOLD_MS
+     内位移 ≤8px 才把它认成合并目标（认下来仍给一下震动 + 描边，原来那套"两段确认"保留）。
+     快速滑过不算（手指一直在动 → 计时一直重来），↓ 续写照旧生效；
+     手指离开目标卡就退回未定态，可以重新按方向判。 */
+  if (under){
+    if (under !== seedG.holdId){
+      seedG.holdId = under; seedG.holdAt = { x: e.clientX, y: e.clientY, t: Date.now() };
+    } else if (Math.abs(e.clientX - seedG.holdAt.x) > 8 || Math.abs(e.clientY - seedG.holdAt.y) > 8){
+      seedG.holdAt = { x: e.clientX, y: e.clientY, t: Date.now() };   // 还在滑：计时重来
+    } else if (Date.now() - seedG.holdAt.t >= SEED_MERGE_HOLD_MS){
+      seedG.target = under;
     }
+  } else {
+    seedG.holdId = ''; seedG.holdAt = null;
+    if (seedG.target) seedG.target = '';                  // 拖离目标卡 → 退回未定态
+  }
+  const target = seedG.target;
+  if (target !== seedG.targetElId){                      // 目标变了才震（原来那一下"抓到"）
+    seedG.targetElId = target;
+    if (target && !seedG.buzzed){ seedG.buzzed = true; buzz(16); }
     if (!target) seedG.buzzed = false;
   }
-  let dir = '';
-  if (!target){
-    if (Math.abs(dx) > SEED_SWIPE_PX && Math.abs(dx) > Math.abs(dy)) dir = dx > 0 ? 'right' : 'left';
-    else if (dy > SEED_SWIPE_PX) dir = 'down';
-    /* ★ 本轮（用户："长按时上滑没有反应"）：上滑原来**没有分支** —— 手势成了，但没有任何
-       方向被认定，松手就落到"打开菜单"那条兜底上，看着像"没反应"。现在把它定义成
-       「上滑 → 打开动作菜单」，四个方向都有回应（菜单跟松手不动打开的是同一个）。 */
-    else if (dy < -SEED_SWIPE_PX) dir = 'up';
-  }
+  if (target) dir = '';                                  // 合并目标认下来之后，方向不再参与
   /* 目标卡片给一圈强调色描边 —— 光靠震动看不见是哪一张 */
   const tEl = target ? tCard : null;
   if (seedG.targetEl !== tEl){
@@ -13255,6 +13336,10 @@ view.addEventListener('pointermove', e => {
 });
 view.addEventListener('pointerup', () => {
   const g = seedG;
+  /* ★ 5I：手势期内**几乎没动**（没方向、没目标）这一档，浏览器随后会补发一发 click，
+     落点是刚打开的遮罩 → 菜单被立刻关掉。这里做个标记，让下面那个捕获监听吞掉那一发。
+     有方向 / 有目标的那几档本来就不会补 click（拖动被浏览器当成手势），不受影响。 */
+  if (g && !g.dir && !g.target) seedClickMute = Date.now();
   seedPressCancel();
   if (!g) return;
   if (g.target){                                          // 落到另一条上 → 合并这两条
@@ -13290,6 +13375,20 @@ window.addEventListener('pointercancel', () => { if (seedG) seedPressCancel(); }
 view.addEventListener('touchmove', e => {
   if (seedG && e.cancelable) e.preventDefault();
 }, { passive: false });
+/* ★ 5I：吞掉长按收尾后浏览器补发的那一发 click（见 seedClickMute 的说明）。
+   必须在**捕获阶段**拦在 document 上：遮罩的关闭监听在 #mask 上，
+   捕获先跑，stopPropagation 之后它就到不了 #mask。
+   两个限定，缺一不可：
+     · 只吞手势收尾后 300ms 内的第一发（补发的那一发是抬手后立刻到，实测量到 <50ms）；
+     · 只吞 **isTrusted === true** 的（浏览器补发的真事件）。脚本里 `el.click()` 造出来的
+       是 isTrusted=false 的合成事件 —— 决不能吞，`_verify-idea.mjs` 就是靠它在菜单里点
+       「收起来 / 生长」，一口吞掉会让那一整段假红。 */
+document.addEventListener('click', e => {
+  if (!seedClickMute) return;
+  const fresh = Date.now() - seedClickMute < 300;
+  seedClickMute = 0;
+  if (fresh && e.isTrusted){ e.stopPropagation(); e.preventDefault(); }
+}, true);
 
 /* 长按菜单里的动作：**先收菜单再执行** —— 否则菜单会盖在结果上面
    （"续写"要展开行内输入框、"立项"要弹编辑器、"编辑"要弹整页编辑器，都不能被挡着）。
@@ -14857,7 +14956,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.17.0';
+const APP_VERSION = '5.17.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：

@@ -1,0 +1,64 @@
+===== ③ 长按不动松手：逐帧看 mask 状态 =====
+  按满 400ms: {"log":["pointerdown@sp-tx","touchstart@sp-tx"],"hudOn":true}
+  松手后  60ms: {"maskOn":false,"log":["pointerdown@sp-tx","touchstart@sp-tx","pointerup@sp-tx","touchend@sp-tx","click@mask","CALL closeModal","CALL closeModalNow"]}
+  松手后 360ms: {"maskOn":false,"log":["pointerdown@sp-tx","touchstart@sp-tx","pointerup@sp-tx","touchend@sp-tx","click@mask","CALL closeModal","CALL closeModalNow"]}
+  松手后 760ms: {"maskOn":false,"sheetCalls":1,"log":["pointerdown@sp-tx","touchstart@sp-tx","pointerup@sp-tx","touchend@sp-tx","click@mask","CALL closeModal","CALL closeModalNow"]}
+
+===== ③b 直接把菜单打开，看它有哪些项（不经过手势） =====
+{
+  "open": true,
+  "sheetMode": true,
+  "head": "深夜写东西为什么更快",
+  "items": [
+    {
+      "act": "sparkadd",
+      "label": "续写",
+      "hint": "现在多了什么信息"
+    },
+    {
+      "act": "fork",
+      "label": "生长",
+      "hint": "从这里分出去一条新的"
+    },
+    {
+      "act": "promote",
+      "label": "立项",
+      "hint": "把它变成一条待办"
+    },
+    {
+      "act": "edit",
+      "label": "编辑",
+      "hint": "改标题 / 标签 / 重要程度"
+    },
+    {
+      "act": "mergepick",
+      "label": "合并",
+      "hint": "选上它，再勾别的"
+    },
+    {
+      "act": "aiask",
+      "label": "问我一问",
+      "hint": "要先在设置里打开 AI"
+    },
+    {
+      "act": "seeduse",
+      "label": "收起来",
+      "hint": "变暗、沉到底部"
+    },
+    {
+      "act": "del",
+      "label": "删除",
+      "hint": "删掉这条想法"
+    }
+  ],
+  "hasSparkEdit": false,
+  "sparkLikedRows": 1
+}
+
+===== ③c 长按后移动一点点（<10px）再松手 =====
+{"maskOn":false,"sheetCalls":1,"log":["pointerdown@sp-tx","touchstart@sp-tx","pointermove@sp-tx","pointerup@sp-tx","touchend@sp-tx","click@mask","CALL closeModal","CALL closeModalNow"]}
+
+===== ③d 长按后下滑 70px 松手（对照组：正常能开/能续写） =====
+{"sparkOpen":"demo-s05","maskOn":false,"log":["pointerdown@sp-tx","touchstart@sp-tx","pointermove@sp-tx","pointerup@sp-tx","touchend@sp-tx"]}
+
+异常: （无）
