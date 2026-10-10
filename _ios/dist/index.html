@@ -3847,10 +3847,16 @@ function cnNum(s){
 const SHELL_LEAD = /^(?:帮我|给我|替我|帮忙|请|麻烦|我想|我要)\s*(?:设置|设|记一下|记|记录|添加|加|新建|创建|建|安排|定|留|做)\s*(?:一下|一?[个条])?\s*/;
 const SHELL_CALL = /^(?:提醒我|提醒一下|叫我|记得)\s*/;
 const SHELL_TAIL = /的(?:待办|提醒|事项|事情)$/;
-function stripShell(t){
+function stripShell(t, whole){
   let s = String(t == null ? '' : t).trim();
   if (!s) return s;
   const raw = s;
+  /* ★ 5E：`whole` = 用户**原始那一整句**（parseSmart 传进来的）。只有一种情况会用到它：
+     前置壳剥掉了、后置壳又是剩下的全部（`帮我设置一个…的提醒` 里的「的提醒」）——
+     这时"剩下的整段都是说话方式"，自己没有内容可当标题。原来的写法会把 `的提醒`
+     这种碎片当标题（实测用户真机句 `帮我设置一个晚上九点五十一的提醒` → title「的提醒」）；
+     现在退回**用户原句**，与"标题为空时回落到用户原始输入"这条既有约定一致（不丢字）。 */
+  const outer = (whole == null ? raw : String(whole).trim()) || raw;
   let lead = 0;
   /* 前端壳最多剥两层（`帮我设置一条` + `提醒我`），每层都必须真剥掉东西才算数 */
   for (let i = 0; i < 2; i++){
@@ -3866,10 +3872,12 @@ function stripShell(t){
     s = s.replace(/^[\-—·、,，。;；:：\s]+/, '').replace(/[。，,.!！~～、\s]+$/, '');
     const t2 = s.replace(SHELL_TAIL, '').trim();
     if (t2.length >= 1) s = t2;
+    else if (SHELL_TAIL.test(s)) s = '';   // ★ 5E：剩下的整段就是后置壳 → 按"全是壳"处理
   }
   s = s.trim();
-  if (!s || s === raw) return raw;
-  if (s.length < 2 && raw.length >= 4) return raw;   // 剥得太狠 → 多半剥错了
+  if (!s) return outer;                                // ★ 5E：全句都是壳 → 退回用户原句
+  if (s === raw) return raw;                           // 没剥过壳 → 原样返回传进来的文本
+  if (s.length < 2 && raw.length >= 4) return raw;     // 剥得太狠 → 多半剥错了
   return s;
 }
 
@@ -4044,6 +4052,22 @@ function parseSmart(input){
      zone='idea' 由 addItem / openEditNew 接手，按 kind='seed' 落库。 */
   if (/[?？]$/.test(text)){ explicit = 'idea'; text = text.replace(/[?？]+$/, '').trim(); }
 
+  /* ★ 5E：本地落点 —— 「还没定要不要做」这类句子，AI 关着时不该一律沉进「长期」。
+     与 2C 定的口径配套（2C 那句护栏说的是**相反**的一档）：
+       · 2C 逼回待办的是「什么时候/哪天/几点/在哪/跟谁/怎么弄/该怎么办」——
+         那种句子有一个能直接去做的动作，只是细节没定；
+       · 真正的 idea 是**还没决定要不要做**（要不要 / 该不该 / 值不值得）与
+         **纯愿望**（以后想…）—— 2C 原话"那三组才是真的还没定要不要做，正是 idea 该管的"。
+     三条纪律：
+       ① 只认**行首**这一小块，不做语义猜测（宁可漏认：`我要不要换工作` 不命中，留给 AI）；
+       ② **带日期/钟点/循环的一律不认 idea**（2B 的硬门槛，本地也照办）—— 有安排的事就是待办；
+       ③ 2C 那七组词出现时照样不认（同一个护栏，本地先挡一道）。
+     注意：**没有**给这两条 cue 往 smartHintCount 里加探测 —— 见那条红线说明：
+     路由判据不在本卡射程内，而且 AI 开着时模型判落点比这两条正则细，收回来反而更差。 */
+  let localIdeaCue = false;
+  if (/^(?:要不要|该不该|值不值(?:得)?)\s*\S/.test(text)
+    || /^(?:以后|将来|未来)\s*想\s*\S/.test(text)) localIdeaCue = true;
+
   // 显式标签：#任意词 都收下（内置 3 个之外的自动成为自定义标签，见 addItem）
   const forced = [];
   text = text.replace(/#([\u4e00-\u9fa5A-Za-z0-9_]+)/g, (m, g) => {
@@ -4213,8 +4237,12 @@ function parseSmart(input){
     text = text.replace(/(之前|以前|前)\s*$/, '').trim();
   }
 
-  // 相对词：今天/明天/后天
-  for (const k in REL){
+  /* 相对词：今天/明天/后天
+     ★ 5E：**按词长从长到短**匹配。原来用 `for (const k in REL)` 按对象字面量顺序走，
+     而 `大后天` 排在 `后天` 后面 → 输入「大后天」先命中「后天」，date 对了、但标题
+     剩一个「大」（实测：title='大'，用户看到的就是"大"）。
+     长词优先是这类"包含关系词表"的通例，改完所有老词的行为逐字符不变。 */
+  for (const k of Object.keys(REL).sort((a, b) => b.length - a.length)){
     if (text.includes(k)){
       const d = today0(); d.setDate(d.getDate() + REL[k]);
       date = ymd(d); text = text.replace(k, '').trim(); break;
@@ -4332,13 +4360,20 @@ function parseSmart(input){
   }
 
   // X号
+  /* ★ 5E：`X号` 原来**只认贴在行尾**的（`17号` / `看书 17号`），于是用户最习惯的
+     「日期写最前」这个形状 `17号 开会` 既没日期也没被剥掉 —— zone 落「长期」。
+     放宽到「号后面是空白 / 行尾 / 标点」，并顺带修掉原来的删除方式
+     （`text.slice(0, hm.index)` 会把 号 后面剩的内容一起丢掉，`17号 开会` 会变成空标题）。
+     刻意**不**收 `17号开会`（号后面直接粘汉字）：`17号码头`、`17号线` 是正常词，
+     宁可漏认，也不猜错 —— 想收它得先有一张"号 后面不允许的词"白名单。 */
   if (!date){
-    const hm = text.match(/(\d{1,2})\s*号\s*(之前|以前|前)?\s*$/);
+    const hm = text.match(/(\d{1,2})\s*号\s*(?:之前|以前|前)?(?=\s|$|[、,，。;；:：])/);
     if (hm && +hm[1] >= 1 && +hm[1] <= 31){
       const now0 = today0();
       let d = new Date(now0.getFullYear(), now0.getMonth(), +hm[1]);
       if (Math.round((now0 - d) / 86400000) > 15) d = new Date(now0.getFullYear(), now0.getMonth() + 1, +hm[1]);
-      date = ymd(d); text = text.slice(0, hm.index).trim();
+      date = ymd(d);
+      text = (text.slice(0, hm.index) + ' ' + text.slice(hm.index + hm[0].length)).replace(/\s+/g, ' ').trim();
     }
   }
 
@@ -4379,11 +4414,16 @@ function parseSmart(input){
   if (repeatKind && !repeat) repeat = 1;
 
   const cleaned0 = text.replace(/^[\-—·、,，。;；:：\s]+/, '').replace(/[\-—·、,，。;；:：\s]+$/, '').trim();
-  const cleaned = stripShell(cleaned0);
+  const cleaned = stripShell(cleaned0, input);   // ★ 5E：把"用户原句"传下去，全句都是壳时退它
   const fallback = String(input || '').trim();
   const tags = forced.length ? forced.slice(0, TAG_PER_ITEM) : guessTags((cleaned || fallback) + ' ' + fallback);
   // 循环任务没写日期时归短期 —— 它总是「近期要做」的
-  const zone = explicit || (date ? (daysFromToday(date) <= 14 ? 'short' : 'long') : (repeat ? 'short' : 'long'));
+  /* ★ 5E：本地落点 cue（要不要 / 以后想）在"没有日期 / 钟点 / 循环、也没碰 2C 那七组词"时
+     才落 idea —— 三条纪律见上面 localIdeaCue 那段。 */
+  const localIdea = localIdeaCue && !date && !time && !repeat
+    && !/什么时候|哪天|几点|在哪|跟谁|怎么弄|该怎么办/.test(fallback);
+  const zone = explicit || (localIdea ? 'idea'
+    : (date ? (daysFromToday(date) <= 14 ? 'short' : 'long') : (repeat ? 'short' : 'long')));
 
   return {
     title: (cleaned || fallback).replace(/\s{2,}/g, ' '),
@@ -8007,6 +8047,13 @@ function smartAppendWord(text){
   for (const w of SMART_APPEND_WORDS) if (s.indexOf(w) >= 0) return w;
   return null;
 }
+/* ★ 5E：加任何本地口语规则时，必须问一句 —— 「**关掉 AI 它还能用吗**？」
+   本地不认 → AI 关着时它会静默变成"没时间 + 落长期 + 不提醒"，不报错。
+   `_ref/_5e-regress.mjs` 是这张压力测试表（探针 `_ref/_5e-probe.mjs` 扫出真相）。
+   配套纪律：新规则若让 parseSmart 产出**非 title 字段**（date/time/repeat/tags/path/dayParts），
+   必须在下面 smartHintCount 里补一条对应探测，否则 AI 开着时会白出一次网。
+   ⚠️ 唯一的例外是**落点**（zone）：它不进 smartHintCount —— 路由判据是 2A 定的、不在本卡射程，
+   而且 AI 开着时模型判落点比本地正则细，收回来会让"AI 开着"变差。 */
 /* 本地"语法命中"计数 —— 用户**主动写了语法**的证据。
    命中 ≥1 且没有追加词 → 本地解析已经把这一行吃干净了，不必问模型。
    这条就是"语法降级为可选"的闸门：`买西瓜 明天`、`论文> 查文献 921`
@@ -14471,7 +14518,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.15.1';
+const APP_VERSION = '5.16.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
