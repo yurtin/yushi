@@ -115,7 +115,9 @@ const NAMES = [
   'aiSnapField', 'aiRestoreSnap', 'aiApplyZone', 'aiExecOps',
   'aiOpsFail', 'aiRunCommand', 'aiOpsReply', 'aiCommand',
   /* ================= 3B 遥控器的呈现与接线 ================= */
-  'aiFocusItem', 'aiIsFocused', 'aiFocusBarHTML', 'syncFocusStrip', 'aiRouteForEntry',
+  /* ★ 5G：`aiFocusBarHTML` 已删（卡片左侧那道焦点竖条按用户要求整条去掉），
+     名字从清单里摘掉 —— 留着它这份体检会报"0 处定义 ← 没落地"。 */
+  'aiFocusItem', 'aiIsFocused', 'syncFocusStrip', 'aiRouteForEntry',
   'aiSnapMap', 'aiOpsUndo', 'aiOpsActs', 'aiConfirmOps', 'aiOpsApply', 'aiOpenRemount',
   'aiRunUpdateEntry',
   /* ================= 4A 重复模型升级（每 N 天 / 每周几 / 每月某日） ================= */

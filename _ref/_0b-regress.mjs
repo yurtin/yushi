@@ -454,8 +454,10 @@ console.log('\n[8b] 0B.8  统计口径加 !isSeed');
       /function statPageHits/.test(html) && !/const doneItems = statDoneItems\(\);/.test(html));
     t('「今日完成 / 历史完成」两个子页都走 statDoneItems（口径同源）',
       (sph.match(/statDoneItems\(\)/g) || []).length, 2);
+    /* ★ 5G 改断言（脚本漂移）：5G 把 overdue 那个 filter 的参数名从 `i` 改成 `it`
+       （为的是和卡片染色共用**逐字符相同**的一行 due 表达式），口径没变。 */
     t('「已逾期 / 作业未交」两个子页各自显式排除了想法（!isSeed）',
-      (sph.match(/!isSeed\(i\)/g) || []).length, 2);
+      (sph.match(/!isSeed\((?:i|it)\)/g) || []).length, 2);
   }
 }
 

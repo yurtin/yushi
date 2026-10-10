@@ -165,20 +165,12 @@ console.log('[1] 焦点真的看得见（卡片高亮 + 顶部「正在改：XXX
   const f = await ev(`${ALPHA}
     var it = S.items.find(function(x){ return x.id === 'x1'; });
     var card = document.querySelector('.item[data-id="x1"]');
-    var bar = card ? card.querySelector('.focus-bar') : null;
+    var bars = document.querySelectorAll('.focus-bar');
+    var barsInCard = card ? card.querySelectorAll('.focus-bar').length : -1;
     var strip = document.getElementById('focusStrip');
     var out = { date: it ? it.date : null, time: it ? it.time : null,
-      n: S.items.length, hasBar: !!bar,
+      n: S.items.length, bars: bars.length, barsInCard: barsInCard,
       btns: [].slice.call(document.querySelectorAll('#toast button')).map(function(b){ return b.textContent; }) };
-    if (bar){
-      var r = bar.getBoundingClientRect(), cs = getComputedStyle(bar);
-      out.barH = Math.round(r.height); out.barW = Math.round(r.width);
-      out.barOpacity = cs.opacity; out.barAlpha = __alpha(cs.backgroundColor);
-      out.barDisplay = cs.display; out.barColor = cs.backgroundColor;
-      var hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      out.hitIsBar = hit === bar;
-      out.hitWhat = hit ? (hit.className || hit.tagName) : null;
-    }
     out.stripHidden = strip.hidden;
     var sr = strip.getBoundingClientRect(), scs = getComputedStyle(strip);
     out.stripH = Math.round(sr.height); out.stripDisplay = scs.display;
@@ -192,11 +184,11 @@ console.log('[1] 焦点真的看得见（卡片高亮 + 顶部「正在改：XXX
   const tmrStr = tmr.getFullYear() + '-' + String(tmr.getMonth() + 1).padStart(2, '0') + '-' + String(tmr.getDate()).padStart(2, '0');
   await shot('1-focus');
   t('改期真的落到那一条上（不是新建一条）', [f.n, f.date, f.time], [3, tmrStr, '15:00']);
-  tOk('卡片上有高亮条这个真元素', f.hasBar === true, '');
-  tOk('★ 高亮条有实际高度（> 0）', f.barH > 0, 'h=' + f.barH + ' w=' + f.barW);
-  tOk('★ 高亮条 opacity 不是 0', f.barOpacity !== '0' && f.barOpacity !== 0, String(f.barOpacity));
-  tOk('★ 高亮条是**实色**（alpha = 1，不靠 backdrop-filter）', f.barAlpha === 1, f.barColor);
-  tOk('★ elementFromPoint 命中的就是高亮条本身', f.hitIsBar === true, String(f.hitWhat));
+  /* ★ 5G 改断言（脚本漂移）：卡片左侧那道 `.focus-bar` 竖条按用户要求整条删掉了。
+     原来这五条（真元素 / 有高度 / opacity / 实色 / 命中它自己）改成"它必须不存在"的正向断言；
+     顶部「正在改」那行（用户要的"状态可见"）照旧全量验，一条都没少。 */
+  tOk('★ 5G：卡片左侧不再有焦点竖条（卡片内 0 个 .focus-bar）', f.barsInCard === 0, 'barsInCard=' + f.barsInCard);
+  tOk('★ 5G：全页面 0 个 .focus-bar（想法卡宿主也一起清了）', f.bars === 0, 'bars=' + f.bars);
   tOk('顶部「正在改」那行显示着', f.stripHidden === false && f.stripDisplay === 'flex',
     'hidden=' + f.stripHidden + ' display=' + f.stripDisplay);
   tOk('★ 顶栏有实际高度（> 0）', f.stripH > 0, 'h=' + f.stripH);
@@ -300,29 +292,23 @@ console.log('\n[3] 浅色 / 深色两套主题下，高亮与顶栏都不丢');
     await sleep(500);
     const r = await ev(`${ALPHA}
       var card = document.querySelector('.item[data-id="x1"]');
-      var bar = card ? card.querySelector('.focus-bar') : null;
+      var bars = document.querySelectorAll('.focus-bar');
+      var barsInCard = card ? card.querySelectorAll('.focus-bar').length : -1;
       var strip = document.getElementById('focusStrip');
       var sr = strip.getBoundingClientRect(), scs = getComputedStyle(strip);
       var bg = getComputedStyle(document.body).backgroundColor;
       var out = { theme: document.documentElement.getAttribute('data-theme') || S.theme,
-        hasBar: !!bar, stripHidden: strip.hidden, stripH: Math.round(sr.height),
+        bars: bars.length, barsInCard: barsInCard, stripHidden: strip.hidden, stripH: Math.round(sr.height),
         stripAlpha: __alpha(scs.backgroundColor), stripColor: scs.backgroundColor,
         bgAccept: __alpha(bg), text: strip.textContent.replace(/\\s+/g, ' ').trim() };
-      if (bar){
-        var br = bar.getBoundingClientRect(), bcs = getComputedStyle(bar);
-        out.barH = Math.round(br.height);
-        out.barAlpha = __alpha(bcs.backgroundColor);
-        out.barColor = bcs.backgroundColor;
-      }
       return out;`);
-    console.log('     ── ' + theme + '：高亮 ' + r.barColor + ' α=' + r.barAlpha
+    console.log('     ── ' + theme + '：竖条 ' + r.bars + ' 个'
       + ' · 顶栏底 ' + r.stripColor + ' · 页面底 ' + r.bgAccept);
-    tOk('[' + theme + '] 高亮条还在、有高度', r.hasBar === true && r.barH > 0, 'h=' + r.barH);
-    tOk('[' + theme + '] ★ 高亮条实色', r.barAlpha === 1, String(r.barAlpha));
+    /* ★ 5G：竖条两条断言改成正向的"不存在"；顶栏三条照旧。 */
+    tOk('[' + theme + '] 没有焦点竖条（卡片内 + 全页面都是 0）',
+      r.barsInCard === 0 && r.bars === 0, 'inCard=' + r.barsInCard + ' all=' + r.bars);
     tOk('[' + theme + '] 顶栏还在、有高度', r.stripHidden === false && r.stripH > 0, 'h=' + r.stripH);
     tOk('[' + theme + '] ★ 顶栏实色', r.stripAlpha === 1, String(r.stripAlpha));
-    tOk('[' + theme + '] ★ 高亮颜色与顶栏底色不是同一个（没被主题吃掉）',
-      r.barColor !== r.stripColor, r.barColor + ' vs ' + r.stripColor);
     tOk('[' + theme + '] 文案还在', /正在改/.test(r.text), r.text);
   }
   await ev(`applyTheme('light', false); refresh(); return 1;`);

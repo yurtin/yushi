@@ -588,9 +588,8 @@ body.view-enter .hero{animation:entryIn .62s cubic-bezier(.16,1,.3,1) backwards}
    或 filter 就会新建包含块，虽然吸顶仍按自身生效，但没必要为一段入场动画去动它的合成状态。 */
 body.view-enter .capture-wrap{animation:entryFade .48s ease .06s backwards}
 body.view-enter .entry-extra{animation:entryIn .62s cubic-bezier(.16,1,.3,1) .12s backwards}
-/* v3.14：页脚那行灰色小字（"单文件 · 零联网 · 数据只存在这台手机里"）只在设置页出现，
-   别的页面底部不再有它（用户："除了设置页面，其他每个页面底下就不要有这一行了"）。 */
-body:not([data-view="settings"]) .pdaim-footer{display:none}
+/* ★ 5G：v3.14 那条「页脚灰字只在设置页出现」的规则（body:not([data-view="settings"]) .pdaim-footer）
+   随 .pdaim-footer 整块删除。 */
 .tb-wrap>.tb-row{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;min-width:0}
 .tb-row.search-row .search{flex:1 1 auto;min-width:130px}
 .tb-row.search-row .btn{flex:0 0 auto}
@@ -793,7 +792,15 @@ body:not([data-view="settings"]) .pdaim-footer{display:none}
   content:'';position:absolute;left:-8px;right:-8px;top:-6px;bottom:0;
   border-radius:16px;background:transparent;cursor:pointer;
 }
-.zone.folded>header::after{bottom:-16px;border-radius:32px}
+/* ★ 5G（用户："收起这个条目时，底下会出现一丁点儿，然后再消失"）：
+   收起态把卡片的下内边距收成 0 —— 让"真实折叠高度"正好落在**标题栏底边**。
+   为什么：条目是跟在标题栏后面的普通流内容，`overflow:hidden` 只裁到**内边距盒**的底边，
+   折叠终态那 16px 下内边距里还露着第一条内容的上沿，等 .folded 挂上才消失。
+   收成 0 之后高度终态 = 内容起点，动画末帧不再露任何内容，且"动画终点"与
+   "挂 .folded 后的真实高度"是同一个数（_5g-dom.mjs 逐帧量 + elementFromPoint 验）。
+   代价：收起态的卡片比原来矮 16px —— 那 16px 本来就是空白。 */
+.zone.folded{padding-bottom:0}
+.zone.folded>header::after{bottom:0;border-radius:32px}
 /* ★ v3.38-b（用户："灰罩只盖住标题那一条"）：视觉灰罩和热区分成两层 ——
    `::before` 只做视觉，永远铺满**整张卡片**；`::after` 只管"点得到"，展开态只到标题那一条。
    为什么不能合成一层：展开态热区一旦铺满整卡，底下的条目就点不到了；
@@ -1550,21 +1557,10 @@ body.has-focus .page-shell{padding-top:calc(var(--focus-h) + 10px)}
    两行都看得见（实测：不挪的话 400px 宽下提示整条盖住焦点条）。
    用 body 类提权重，压过 @media 里那条 #toast{top:…}（权重高，不靠书写顺序）。 */
 body.has-focus #toast{top:calc(var(--focus-h) + 10px)}
-/* 聚焦卡片：左侧一道**实色**细高亮。
-   做成**真元素**而不是 ::before —— ::before 既没有 getBoundingClientRect()、
-   也不能被 elementFromPoint 命中，"焦点看不看得见"就没有可测的接缝
-   （本卡的验收 9 要的正是这两样）。`.item` 本来就是 position:relative，
-   所以 absolute 一挂就出流、不参与 flex 布局（不会把标题挤歪）。
-   颜色用 --accent 实色，不写透明度、不靠 backdrop-filter。 */
-.item .focus-bar,
-.idea-card .focus-bar{
-  position:absolute;left:-8px;top:5px;bottom:5px;width:3px;border-radius:2px;
-  background:var(--accent);display:block
-}
-@media (hover:none){
-  /* 手机上卡片左右各让 18px（.zone 的内边距），细高亮贴 -8px 会紧贴屏边 —— 收进来一点。 */
-  .item .focus-bar,.idea-card .focus-bar{left:-4px}
-}
+/* ★ 5G（用户："我编辑了一个待办，在待办那个点的前面就会出现一个竖状的蓝色条。我不想要这个条"）：
+   卡片左侧那道 `.focus-bar` 细高亮**整条删掉**（CSS 三条规则 + aiFocusBarHTML + 两处调用点）。
+   卡片上仍挂 `ai-focus` 类（只是身份标记，没有对应样式，不产生任何可见元素）；
+   屏幕顶部那行「正在改：XXX」保留 —— 那行写出了标题、能定位，是用户要的"状态可见"（见 #focusStrip）。 */
 
 /* ★ 3B 确认页（「改前 → 改后」）。它住在 .mask / .modal 里，所以**不需要**自己的底色 ——
    `.mask .modal` 已经是实底 var(--bg)（见那条规则里的注释），浮层硬门槛天然满足。 */
@@ -1599,21 +1595,12 @@ body.has-focus #toast{top:calc(var(--focus-h) + 10px)}
   .cf-holder{height:min(360px,52vh)}
 }
 
-/* ---------- 页脚（原站 .pdaim-footer） ----------
-   ★ 0F.3：全文件**只有这一处**顶层定义（原先底部内边距还另有一条 .pdaim-footer 覆盖规则，
-   那份"避开通栏"的意图已经并进这条 padding 简写，别再拆回去：一个选择器只留一处真相源）。
-   底部 = 118px + 安全区（env() 不支持或安全区为 0 时就是 118px，安卓/桌面零影响）。 */
-.pdaim-footer{position:relative;z-index:2;padding:40px 24px calc(118px + env(safe-area-inset-bottom));text-align:center;color:var(--faint);font-size:12.5px}
-/* 同一句话在电脑上和在手机上不可能都对 ——「数据只在这台电脑的浏览器里」
-   放进安卓 App 里就是错的（那儿的运行环境根本不是浏览器）。
-   这里用 pointer/hover 媒体查询分设备，而不是宽度断点：把窗口拖窄的台式机依然是鼠标、
-   数据确实在"这台电脑"上；平板外接键盘也不会被误判成电脑。
-   默认（浏览器不支持这两个媒体特性时）显示电脑版。 */
-.fw-touch{display:none}
-@media (hover:none) and (pointer:coarse){
-  .fw-mouse{display:none}
-  .fw-touch{display:inline}
-}
+/* ---------- 页脚：★ 5G 整块删除 ----------
+   原来这里定义 .pdaim-footer（padding:40px 24px calc(118px + env(safe-area-inset-bottom))）
+   与 .fw-mouse / .fw-touch 两套文案的显示切换。用户 2026-10-10 明确要删：
+   "咱们现在是 AI 版本，『零联网』这个其实也没必要这样"。
+   元素、规则、两个类一起删（页脚只在设置页显示过，删掉不影响其它屏的底部留白 ——
+   那由 .page-shell 的 padding-bottom:var(--bar-keep) 单独承担）。 */
 
 /* ---------- 流畅模式：软件渲染（如内嵌预览 iframe 关了 GPU）时自动降级 ----------
    软件渲染把整页每个像素都用 CPU 画，且不支持分层滚动，
@@ -1832,15 +1819,14 @@ html.soft-render .reveal-on-scroll{opacity:1;transform:none;filter:none;transiti
 /* 「页面说明文字」那颗开关（外观栏里）一并管到设置页自己的灰字：
    关掉后只剩设置项本身，不留解释。⚠️ AI 那段隐私告知（.ai-quote）**不在**此列 ——
    它是知情同意，不该被一个显示开关藏起来。
-   ★ v5.2（用户："关于这个栏目下面的版本灰字说明永久显示"）：带 data-keephelp 的那段
-   也**不在**此列 —— 它是"数据在哪、有没有账号"的交代，不该被显示开关收掉，所以用
-   `:not([data-keephelp])` 把它摘出去。
+   ★ 5G：v5.2 那条 `:not([data-keephelp])` 例外已删 —— 带该属性的版本介绍段按用户要求
+   整段删掉了，机制没有使用者，跟着一起清掉（不留空转的选择器）。
    选择器必须写成 `.set-txt > span`（直接子元素）：示例数、配额数那些数字是
    `<b>…<span class="mono">N</span>…</b>`，用后代选择器会把数字本身也一起隐藏。
    收起态和 .intro-note 同一套：高度 0 + overflow:hidden + 淡出 + visibility:hidden
    （不是 display:none —— 那样就没有"撑开"的过程），真实高度由 revealAnim() 量。 */
 body[data-help="off"] .set-card .set-sub,
-body[data-help="off"] .set-row .set-txt > span:not([data-keephelp]){
+body[data-help="off"] .set-row .set-txt > span{
   max-height:0;overflow:hidden;opacity:0;margin-top:0;visibility:hidden}
 /* 数字一行写完，前后各留一点空隙（用户："这个数字跟左右两边的字体稍微空出一些距离，
    就可以了"）—— 不学统计页那种"标签 / 大数字 / 单位"三行块。
@@ -3687,7 +3673,11 @@ html.tree-full .merge-bar{z-index:85}
 
 </main>
 
-<footer class="pdaim-footer"><span class="fw-mouse">零联网 · 无账号 · 数据只在这台电脑的浏览器里</span><span class="fw-touch">零联网 · 无账号 · 数据只存在这台手机里</span></footer>
+<!-- ★ 5G（用户："底下最底部的『零联网 无账号 数据只存在这部手机里』这个灰色小字…要不把这个删了吧，
+     因为咱们现在是 AI 版本，这个其实也没必要这样"）：整块 .pdaim-footer 已删。
+     它原来只在设置页显示，是 0D.3「把页脚摆到关于块与基准线正中」那套定位的唯一载体 ——
+     删掉它顺手解决了那个动画错位（根因见下面 __syncBarFit 那段注释：定位依赖了会漂移的测量）。
+     页面底部的呼吸位由 .page-shell 的 padding-bottom:var(--bar-keep) 单独承担，不再叠这 118px。 -->
 
 <div class="mask" id="mask"><div class="glass modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1"></div></div>
 
@@ -4364,16 +4354,29 @@ function parseSmart(input){
      「日期写最前」这个形状 `17号 开会` 既没日期也没被剥掉 —— zone 落「长期」。
      放宽到「号后面是空白 / 行尾 / 标点」，并顺带修掉原来的删除方式
      （`text.slice(0, hm.index)` 会把 号 后面剩的内容一起丢掉，`17号 开会` 会变成空标题）。
-     刻意**不**收 `17号开会`（号后面直接粘汉字）：`17号码头`、`17号线` 是正常词，
-     宁可漏认，也不猜错 —— 想收它得先有一张"号 后面不允许的词"白名单。 */
+     ★ 5G（用户实测："为什么非得是中间加了一个空格才能完成？"）：`17号开会` 这种
+     号后直接粘汉字的现在**双闸**收 ——
+       闸 2（黑名单·**优先**）：号后紧跟名词性后缀（码头/线/楼/院/店/口…）一律不收；
+       闸 1（白名单）：号后紧跟动作词（开会/买/交/送/写…）才收。
+     判据仍是"宁可漏认，也不猜错"：动词不在表里的（`17号打球`）照旧不收，
+     别为了收全放宽成"号后是汉字就收"。
+     号后是空白 / 行尾 / 标点的**老路径一个字不动**（`17号 码头` 照旧收）。 */
   if (!date){
-    const hm = text.match(/(\d{1,2})\s*号\s*(?:之前|以前|前)?(?=\s|$|[、,，。;；:：])/);
-    if (hm && +hm[1] >= 1 && +hm[1] <= 31){
-      const now0 = today0();
-      let d = new Date(now0.getFullYear(), now0.getMonth(), +hm[1]);
-      if (Math.round((now0 - d) / 86400000) > 15) d = new Date(now0.getFullYear(), now0.getMonth() + 1, +hm[1]);
-      date = ymd(d);
-      text = (text.slice(0, hm.index) + ' ' + text.slice(hm.index + hm[0].length)).replace(/\s+/g, ' ').trim();
+    /* 两张词表内联在这里、不建全局常量：parseSmart 会被 _0a/_0c/_2a/_5e 等回归
+       整段切进隔离环境跑，新全局在那些环境里不存在，会静默把整条路打红。 */
+    const hm = text.match(/(\d{1,2})\s*号(?:之前|以前|前)?/);
+    if (hm){
+      const rest = text.slice(hm.index + hm[0].length);   // 「号」后面原样剩下的内容（不 trim）
+      const oldPath = !rest || /^\s|^[、,，。;；:：]/.test(rest);   // 5E 的老路径
+      const nounTail = /^(?:码头|线|楼|院|店|口|厅|房|桌|柜|机|船|班|车|路|桥|站|库|棚|仓|井|亭|台|杆|箱|袋|桶|盆|瓶|本|册|页|版|期|次|份|名|个|位|户|家|组|队)/.test(rest);
+      const verbTail = /^(?:开会|准备|整理|申请|提交|联系|复习|锻炼|买|写|交|打|发|约|找|问|去|来|见|看|听|读|学|考|做|送|取|还|寄|订|报|洗|修|搬|办)/.test(rest);
+      if ((oldPath || verbTail) && !nounTail && +hm[1] >= 1 && +hm[1] <= 31){
+        const now0 = today0();
+        let d = new Date(now0.getFullYear(), now0.getMonth(), +hm[1]);
+        if (Math.round((now0 - d) / 86400000) > 15) d = new Date(now0.getFullYear(), now0.getMonth() + 1, +hm[1]);
+        date = ymd(d);
+        text = (text.slice(0, hm.index) + ' ' + text.slice(hm.index + hm[0].length)).replace(/\s+/g, ' ').trim();
+      }
     }
   }
 
@@ -5276,7 +5279,10 @@ function chipDate(it){
     return it.time ? `<span class="chip date" data-fk="d:${esc(it.id)}">${esc(it.time)}</span>` : '';
   }
   let cls = 'chip date';
-  const df = daysFromToday(it.date);
+  /* ★ 5G：日期 chip 的「逾期 N 天」也算到**截止日** —— 与卡片染色 / 统计子页同一行 due 表达式。
+     不改这里的话，区间条目会出现"卡片没染红、chip 上却写着逾期1天"的自相矛盾。 */
+  const due = (it.dateEnd && (!it.date || daysFromToday(it.dateEnd) >= daysFromToday(it.date))) ? it.dateEnd : it.date;
+  const df = daysFromToday(due);
   if (df < 0) cls += ' late'; else if (df === 0) cls += ' today';
   const txt = it.done ? dl : (df < 0 ? dl + ' · 逾期' + (-df) + '天' : (df === 0 ? dl + ' · 今天' : dl));
   /* data-fk：FLIP 身份键。分区和时间轴对同一天的表达不一样（时间轴"未定截止"那条不渲染日期），
@@ -5410,7 +5416,6 @@ function seedHTML(it, info){
     ? `<div class="lead"><button type="button" class="pick${ideaUI.mergeSel.has(it.id) ? ' on' : ''}" data-act="pick" data-id="${esc(it.id)}" role="checkbox" aria-checked="${ideaUI.mergeSel.has(it.id) ? 'true' : 'false'}" title="选中以合并">✓</button></div>`
     : '';
   return `<div class="${cls}" data-id="${esc(it.id)}" data-fk="i:${esc(it.id)}" data-u="0">
-    ${aiFocusBarHTML(it.id)}
     ${lead}
     <div class="body">
       ${spine}
@@ -5443,7 +5448,14 @@ function itemHTML(it, kidsHTML, goalInfo, extraHTML, noDel){
   const tags = (it.tags || []).map(t => `<span class="chip" data-tag="${esc(t)}" data-id="${esc(it.id)}" data-fk="g:${esc(it.id)}:${esc(t)}">${esc(t)}</span>`).join('');
   // overdue 只用来把标题染红；紧急度不再靠这些类，统一由行首那颗 udot 表达
   // stale 给长期区放了超 30 天的条目挂一个「放了N天」chip
-  const overdue = !it.done && it.date && daysFromToday(it.date) < 0;
+  /* ★ 5G：逾期看**截止日** —— 区间条目看 dateEnd，单日看 date 自己（用户实测：
+     「10月9号到10月12号」在 10/10 被标成逾期，因为原来只看起始日）。
+     ⚠️ 下面这行 `const due = …` 在 statPageHits('overdue') / chipDate / renderTimelineBody
+     里**逐字符相同**（唯一真相源）—— 统计卡的数字与卡片红标题必须同一个谓词，改一处要改全部；
+     _5g-regress 的 [2] 有源码级断言钉住"这几处一模一样、且旧的只看 date 的写法一处不剩"。
+     dateEnd < date 的脏数据（老备份可能有）：取两者**较晚**的那个，不会误报逾期。 */
+  const due = (it.dateEnd && (!it.date || daysFromToday(it.dateEnd) >= daysFromToday(it.date))) ? it.dateEnd : it.date;
+  const overdue = !it.done && due && daysFromToday(due) < 0;
   const staleDays = (!it.done && !it.date && it.zone === 'long' && it.createdAt)
     ? Math.floor((Date.now() - it.createdAt) / 86400000) : 0;
   const stale = staleDays > 30;
@@ -5462,7 +5474,6 @@ function itemHTML(it, kidsHTML, goalInfo, extraHTML, noDel){
      渲染出来的，同一颗点在两边都拿同一个键 → 切视图时它跟着自己那行文字搬过去，
      而不是"这边消失、那边出现"。 */
   return `<div class="${cls}" data-id="${esc(it.id)}" data-fk="i:${esc(it.id)}" data-u="${lvl}">
-    ${aiFocusBarHTML(it.id)}
     <div class="lead">
       <span class="udot u${lvl}" data-fk="u:${esc(it.id)}" title="紧急度：${URG_TXT[lvl]}"></span>
       <button class="tick" data-act="tick" title="完成">✓</button>
@@ -5855,7 +5866,12 @@ function renderTimelineBody(){
   const list = ordered()
     .filter(i => !i.done && i.date)
     .sort((a, b) => { const A = a.date || '', B = b.date || ''; return A < B ? -1 : A > B ? 1 : 0; });
-  const late = list.filter(i => daysFromToday(i.date) < 0).length;
+  /* ★ 5G：这一行的「其中逾期 N 条」也按截止日算（同一行 due 表达式），
+     否则区间条目会在时间轴上被算成逾期，而卡片并不红。 */
+  const late = list.filter(it => {
+    const due = (it.dateEnd && (!it.date || daysFromToday(it.dateEnd) >= daysFromToday(it.date))) ? it.dateEnd : it.date;
+    return daysFromToday(due) < 0;
+  }).length;
 
   if (!list.length){
     return `<div class="glass zone${rv()}" style="margin-top:clamp(30px,4vw,48px)">
@@ -7362,7 +7378,12 @@ function statPageHits(key){
     return statDoneItems().filter(i => i.doneAt && ymd(new Date(i.doneAt)) === today);
   }
   if (key === 'history') return statDoneItems().slice();
-  if (key === 'overdue') return S.items.filter(i => !i.done && !isSeed(i) && i.date && daysFromToday(i.date) < 0);
+  /* ★ 5G：与卡片染色（itemHTML）/ chipDate / 时间轴**同一个谓词** —— 那行 `const due = …`
+     逐字符相同。两处对不上，统计卡的「已逾期」数字就会和卡片上的红标题打架。 */
+  if (key === 'overdue') return S.items.filter(it => {
+    const due = (it.dateEnd && (!it.date || daysFromToday(it.dateEnd) >= daysFromToday(it.date))) ? it.dateEnd : it.date;
+    return !it.done && !isSeed(it) && due && daysFromToday(due) < 0;
+  });
   if (key === 'hw') return S.items.filter(i => i.hw && !i.done && !isSeed(i) && i.hw.status !== 'submitted');
   return [];
 }
@@ -9265,10 +9286,11 @@ function applyHelp(animate){
   }
 }
 /* 受「页面说明文字」开关管的元素（设置页自己的灰字 + 各页标题下的解释）。
-   带 data-keephelp 的**不在**其中（版本说明要永久显示，见 renderSettings 的「关于」栏）。 */
+   ★ 5G：v5.2 的 data-keephelp 例外已删（唯一使用者是「关于」栏那段版本介绍，
+   按用户要求整段删掉了）—— 机制没有使用者，跟着清掉，只剩一条直白的查询。 */
 const HELP_SEL = '.intro-note,.set-card .set-sub,.set-row .set-txt > span';
 function helpEls(){
-  return [...view.querySelectorAll(HELP_SEL)].filter(el => !el.hasAttribute('data-keephelp'));
+  return [...view.querySelectorAll(HELP_SEL)];
 }
 
 /* 高度"撑开 / 收回"的通用动画（说明文字、设置栏目折叠共用）。
@@ -9655,12 +9677,10 @@ function renderSettings(){
         <div class="set-row">
           <div class="set-txt">
             <b>版本 v${APP_VERSION}</b>
-            <!-- ★ v5.2（用户："关于这个栏目下面的版本灰字说明永久显示，不跟这个页面说明文字开关相关联"）：
-                 这段是"数据在哪、有没有账号"的关键交代，属于该永远看得见的信息 ——
-                 加 data-keephelp 把自己从 body[data-help=off] 那条收起规则里摘出去。 -->
-            <span data-keephelp="1">装在这台手机上的独立 App，没有账号：数据只存在这台手机里，不会上传到任何地方。
-              「AI」那一栏默认是关的 —— 关着的时候它一个字都不出这台手机；打开后也只发当前这一条想法的文字。
-              换手机时用「备份」导出一份文件，在新手机上导入即可。</span>
+            <!-- ★ 5G（用户："还有这个版本的介绍，感觉也是多余了"）：版本号下面那段
+                 「装在手机上的独立 App，没有账号…」整段删除 —— 连同它的 data-keephelp 机制
+                 （那套"把它从页面说明文字开关里摘出去"的例外已经没有使用者了，
+                 见 HELP_SEL 与 body[data-help="off"] 那条规则）。 -->
           </div>
         </div>
       </section>
@@ -9901,11 +9921,9 @@ function aiIsFocused(id){
   const f = aiFocusId();
   return !!f && f === id;
 }
-/* 卡片上那段高亮的 HTML（真元素，不是 ::before —— 理由见 CSS 里 .focus-bar 那段）。
-   itemHTML / seedHTML 共用这一处，两边的呈现不会各说各话。 */
-function aiFocusBarHTML(id){
-  return aiIsFocused(id) ? '<span class="focus-bar" aria-hidden="true"></span>' : '';
-}
+/* ★ 5G：卡片左侧那道细高亮（focus-bar）已按用户要求整条删掉 —— 这里不再生成任何元素。
+   `ai-focus` 这个类保留在卡片上：它只是"这一条是当前焦点"的身份标记，没有样式，
+   顶部「正在改：XXX」那行（syncFocusStrip）不看它，两者互不依赖。 */
 /* 顶部那条「正在改：XXX」。在 afterRender() 里每帧同步一次 —— 渲染出口只留一处，
    换页 / 改数据 / 清焦点都会自动跟上，不需要散到各个调用点去自觉。 */
 function syncFocusStrip(){
@@ -12250,8 +12268,19 @@ function resetFold(box){
    折叠的"终态"仍交给 CSS `.zone.folded>:not(header){display:none}`（永久隐藏条目），
    所以这里动画只负责"高度从全高塌到标题栏"，塌完把 .folded 挂上即可。 */
 function resetFoldZone(sec){
-  sec.style.height = ''; sec.style.overflow = ''; sec.style.contentVisibility = '';
-  sec.classList.remove('folding');
+  sec.style.height = ''; sec.style.overflow = ''; sec.classList.remove('folding');
+  /* ★ 5G：`content-visibility` **不能在同一帧里还原**。原实现直接 `= ''`（还原成
+     `.zone{content-visibility:auto}`）：那一帧浏览器会先按"占位/记忆尺寸"结算一次
+     （实测 55 → 39 → 55，一帧 16px 的下陷抖动），下一帧才按真实内容结算。
+     推到下一帧还原，并加两道闸：① 期间又开始折叠（.folding 又挂上）就不还原，
+     由 foldZoneWithMotion 自己继续用 visible；② 重复调用先取消上一个 rAF。 */
+  if (sec._cvRaf){ cancelAnimationFrame(sec._cvRaf); sec._cvRaf = 0; }
+  if (sec.style.contentVisibility){
+    sec._cvRaf = requestAnimationFrame(() => {
+      sec._cvRaf = 0;
+      if (!sec.classList.contains('folding')) sec.style.contentVisibility = '';
+    });
+  }
 }
 /* ★ v3.38-b：分区卡片的"按下"反馈自己记账（挂 .pressing），不只靠 CSS 的 :active。
    原因：触摸端 :active 的触发与持续在各家 WebView 上不一致（用户实测"快速点击时
@@ -12289,20 +12318,29 @@ function foldZoneWithMotion(el){
   save();
   el.setAttribute('aria-expanded', wasFolded ? 'true' : 'false');
 
-  /* ③ 上一次收尾先立刻补上 */
-  if (sec._foldTimer){ clearTimeout(sec._foldTimer); sec._foldTimer = 0; sec.classList.toggle('folded', wasFolded); resetFoldZone(sec); }
+  /* ③ 上一次收尾先立刻补上（顺手把上一轮挂着的 transitionend 监听摘掉） */
+  if (sec._foldTimer || sec._foldEnd){
+    if (sec._foldTimer){ clearTimeout(sec._foldTimer); sec._foldTimer = 0; }
+    if (sec._foldEnd){ sec.removeEventListener('transitionend', sec._foldEnd); sec._foldEnd = null; }
+    sec.classList.toggle('folded', wasFolded); resetFoldZone(sec);
+  }
   /* ⑤ */
   if (reduceMotion()){ sec.classList.toggle('folded', !wasFolded); resetFoldZone(sec); return; }
 
-  const head = sec.querySelector(':scope > header');
-  const cs = getComputedStyle(sec);
-  /* border-box 下 height 含 padding，折叠终态 = 标题栏 + 卡片上下内边距（body 已 display:none），
-     padV 必须把上下都算上，否则塌到的值比真实折叠高度矮一截，落定 .folded 时会跳一下。 */
-  const padV = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-  const collapsedH = (head ? head.offsetHeight : 0) + padV;   // 折叠态可见高度
-
-  /* ⑥ 量高度前摘掉 content-visibility，免得它把内容"虚拟化"导致量不准 */
-  sec.style.contentVisibility = 'visible';
+  /* ★ 5G：收起动画的**终点高度必须量 DOM**，不能"header.offsetHeight + padding"手算。
+     手算假定 border-box、header 无 margin、卡片无 border，任一项变化就失真 ——
+     用户实测的"收起到底部露出一丁点儿内容"就是终点偏高：那几像素窗口里条目还没
+     display:none，只是被 overflow 裁着，多出来的高度露的正是内容的最后几像素。
+     做法与 0D 设置页折叠同型（"临时 max-height:none 再 offsetHeight"）：
+       临时挂 .folded → **强制一次重排**（不重排会量到旧值）→ 量 offsetHeight → 还原类。
+     ⚠️ 只能量 DOM、不能靠算 —— 改这段别再退回手算。 */
+  sec.style.contentVisibility = 'visible';   // 量高度前摘掉 content-visibility，免得内容被"虚拟化"
+  if (sec._cvRaf){ cancelAnimationFrame(sec._cvRaf); sec._cvRaf = 0; }   // 上一轮推迟的还原作废
+  const hadFoldClass = sec.classList.contains('folded');
+  sec.classList.add('folded');
+  void sec.offsetHeight;                      // 提交重排（此刻 .folded 已生效，量的就是真实折叠高度）
+  const collapsedH = sec.offsetHeight;
+  if (!hadFoldClass) sec.classList.remove('folded');   // 还原测量前的状态
 
   if (wasFolded){                         // 展开：先把高度钉在 collapsedH，再摘 .folded 让条目显形（被 overflow 兜住不闪）
     sec.style.overflow = 'hidden';
@@ -12318,12 +12356,22 @@ function foldZoneWithMotion(el){
   void sec.offsetHeight;                   // 提交 transition 本身，别和高度变化挤同一帧
   sec.style.height = (wasFolded ? FULL : collapsedH) + 'px';   // ---- 终点 ----
 
-  sec._foldTimer = setTimeout(() => {
-    sec._foldTimer = 0;
+  /* ★ 5G：收尾**以 transitionend 为准**，不再写死 280ms。
+     原来那个定时器会在高度过渡还没跑完时就掐断它（定时器 280ms vs 过渡 --mo-base .24s，
+     加上一帧抖动就有几十毫秒的窗口）：此时代码里的高度已被清掉、`.folded` 还没挂，
+     卡片底部那条下内边距里露着第一条内容的上沿 —— 用户看到的就是"底下出现一丁点儿，
+     然后再消失"。改成"过渡真的走完才收尾"，末帧与折叠态是同一个几何。
+     定时器保留为**兜底**：过渡没建起来（display 变化 / 元素不可见 / 时长 0）时 transitionend 不触发。 */
+  const finishFold = () => {
+    if (sec._foldTimer){ clearTimeout(sec._foldTimer); sec._foldTimer = 0; }
+    if (sec._foldEnd){ sec.removeEventListener('transitionend', sec._foldEnd); sec._foldEnd = null; }
     if (!sec.isConnected) return;         // ④ 整页已被换掉，别写孤儿节点
     sec.classList.toggle('folded', !wasFolded);   // 收起：动画走完才真正 display:none 条目
     resetFoldZone(sec);                   // ①② 清掉 inline，高度交还给内容
-  }, FOLD_MS);
+  };
+  sec._foldEnd = e => { if (e && e.target === sec && e.propertyName === 'height') finishFold(); };
+  sec.addEventListener('transitionend', sec._foldEnd);
+  sec._foldTimer = setTimeout(finishFold, FOLD_MS + 260);
 }
 function foldWithMotion(chip, it){
   /* ★ 审查修复（2026-10-04）：同一个函数同时服务两种折叠容器 ——
@@ -12752,7 +12800,7 @@ function unlockPage(){ document.documentElement.classList.remove('locked'); }
    弹层和 toast 都在 .page-shell 之外，所以不会被自己设的 inert 误伤。 */
 /* ★ 2026-10-06 清理：`.site-header` 是顶栏时代的死选择器（顶栏早已撤掉），
    留着只会让"到底哪几块被 inert"说不清 —— 与验收脚本同步删掉。 */
-const MASK_BG = ['.page-shell', '.pdaim-footer'];
+const MASK_BG = ['.page-shell'];
 function setBackgroundInert(on){
   for (const sel of MASK_BG){
     const el = document.querySelector(sel);
@@ -14577,7 +14625,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.16.1';
+const APP_VERSION = '5.16.2';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
@@ -14703,42 +14751,15 @@ const barHeardSpan = barHeardEl ? barHeardEl.querySelector('span') : null;
         return r.top - wrap;
       };
       let _barKeep = -1;
-      /* 设置页收起态：把最底部那行灰色小字摆到「关于」块下边缘与基准线的正中，
-         并把页脚底部留白收掉 —— 于是收起态整页正好装得下、不需要滑动；
-         一旦展开某个栏目（下面会提前 return）就交回正常流：该滑就滑，滑到底也不会被遮。 */
-      const syncSettingsFoot = () => {
-        const foot = document.querySelector('.pdaim-footer');
-        if (!foot) return;
-        const clear = () => {
-          if (foot.style.marginTop) foot.style.removeProperty('margin-top');
-          if (foot.style.paddingBottom) foot.style.removeProperty('padding-bottom');
-        };
-        if (S.view !== 'settings'){ clear(); return; }
-        const cards = document.querySelectorAll('.set-wrap .set-card');
-        if (!cards.length || document.querySelectorAll('.set-wrap .set-card.open').length){ clear(); return; }
-        /* 全程用**视口坐标**做相对运算：页面当前滚到哪都不影响结果。
-           用 margin-top（可以是负数）而不是 padding-top：收起态的页脚**本来就在中点下方**
-           （它上面还压着 .page-shell 那段给底栏预留的高度），只加下边距只会把它推得更低。 */
-        const aboutBottom = cards[cards.length - 1].getBoundingClientRect().bottom;
-        const mid = aboutBottom + (barBaselineY() - aboutBottom) / 2;
-        const fcs = getComputedStyle(foot);
-        const mtNow = parseFloat(fcs.marginTop) || 0;
-        const pbNow = parseFloat(fcs.paddingBottom) || 0;    // 这一趟要把它压成 0
-        const naturalBottom = foot.getBoundingClientRect().bottom - mtNow;
-        /* 目标：压掉底部留白之后，整个页脚的底边落在中点。
-           注意别用 span 的 rect 高度当行高 —— 那是 inline 盒的字体高（18px），
-           而真正决定页脚高度的是**行框**（line-height 1.6 × 12.5px = 20px），直接量
-           页脚自己的 rect 才不会差这 2px。 */
-        const mt = mid - naturalBottom + pbNow;
-        const v = mt.toFixed(1) + 'px';
-        if (foot.style.marginTop !== v) foot.style.marginTop = v;
-        if (foot.style.paddingBottom !== '0px') foot.style.paddingBottom = '0px';
-      };
+      /* ★ 5G：0D.3 那段 syncSettingsFoot（把设置页页脚灰字摆到「关于」块与基准线正中）
+         已整段删除 —— 页脚本身按用户要求删掉了，而且那段定位依赖"关于块当时的测量位置"，
+         5A/5C/5F 往设置页加行之后它就漂移了（收起时算出过大的负 margin-top，
+         灰字被顶到「AI」上面 —— 用户报的那个动画问题）。**根因是"定位算法依赖会漂移的测量"，
+         不是动画**。这里只保留 0D.3 的另一半：--bar-keep 的实测与 fit-view 滚动锁。 */
       const _syncFit = () => {
         try {
           const keep = Math.max(0, window.innerHeight - barBaselineY());
           if (keep !== _barKeep){ _barKeep = keep; _de.style.setProperty('--bar-keep', keep + 'px'); }
-          syncSettingsFoot();
           const fit = _de.scrollHeight - window.innerHeight <= 0.5;
           _de.classList.toggle('fit-view', fit);
           if (fit && window.scrollY > 0) window.scrollTo(0, 0);   // 锁死的同时把偏移归零

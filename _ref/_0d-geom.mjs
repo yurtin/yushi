@@ -109,13 +109,14 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: [
   '      barTop:R(bar).t, barBottom:R(bar).b, capTop:R(cap).t, capBottom:R(cap).b,',
   '      barVarTop:cs.getPropertyValue("--bar-top").trim(), cyTop:cs.getPropertyValue("--cy-top").trim() };',
   '  };',
-  /* 真内容底（文档坐标）：遍历页壳与页脚里可见、有高度的元素，取最大 bottom。
+  /* 真内容底（文档坐标）：遍历页壳里可见、有高度的元素，取最大 bottom。
      排除底栏与浮层本身；visibility:hidden（收起的分区/设置栏）按不可见处理。
-     ⚠️ 只取**后代**，不取 .page-shell / .pdaim-footer 这两个容器自身 —— 它们的 rect
-     含底部那段"给底栏预留的空白"，算进去就变成"永远等于文档高"，这条断言就恒真了。 */
+     ⚠️ 只取**后代**，不取 .page-shell 自身 —— 它的 rect 含底部那段"给底栏预留的空白"，
+     算进去就变成"永远等于文档高"，这条断言就恒真了。
+     ★ 5G：`.pdaim-footer`（设置页页脚灰字）已整块删除，这里只剩页壳一个容器。 */
   '  var contentBottom = function(){',
   '    var max = 0;',
-  '    var list = document.querySelectorAll(".page-shell *, .pdaim-footer span");',
+  '    var list = document.querySelectorAll(".page-shell *");',
   '    for(var i=0;i<list.length;i++){',
   '      var el = list[i];',
   '      if(el.closest(".tabbar") || el.closest(".mask") || el.closest("#toast")) continue;',
@@ -380,33 +381,29 @@ for (const v of views){
     tOk('[' + v.name + '] 内容底 > 基准线 → 可滑', canScroll, 'canScroll=' + canScroll);
     tOk('[' + v.name + '] 滑到底后内容底不低于基准线', coveredAfter <= 0.5, '差值 ' + coveredAfter.toFixed(2));
   }
-  /* 设置页收起态专门再量一组：灰字底 是否正好落在「关于」块下边缘 ↔ 基准线的中点 */
+  /* ★ 5G 改断言（脚本漂移）：设置页页脚灰字（.pdaim-footer）按用户要求整块删掉了，
+     原来这里量"灰字行底是否落在关于块与基准线的中点"。现在改成两条正向断言：
+     ① 页脚整块删除；② 收起态仍然装得下（0D.3 的滚动那一半没被带走）。 */
   if (v.name === '设置页'){
     const f = await ev(`
       var cards = document.querySelectorAll('.set-wrap .set-card');
-      var foot = document.querySelector('.pdaim-footer');
-      var span = null;
-      foot.querySelectorAll('span').forEach(function(s){ if(s.getBoundingClientRect().height > 0) span = s; });
+      var info = window.__G.scrollInfo();
       var aboutBottom = cards[cards.length-1].getBoundingClientRect().bottom;
       var base = window.__G.baseline().y;
       return { aboutBottom:+aboutBottom.toFixed(2), baseline:base,
-        mid:+((aboutBottom + (base - aboutBottom) / 2)).toFixed(2),
-        /* 灰字那一行的"底"取**行框底边** = 页脚自己的底边（底部留白已被压成 0）。
-           不用 span 的 rect.bottom：那是 inline 盒的字体高（18px），比行框（line-height
-           1.6 x 12.5px = 20px）短 2px，量出来会平白少 2px。两个数都打出来。 */
-        textBottom:+foot.getBoundingClientRect().bottom.toFixed(2),
-        spanBottom:+(span ? span.getBoundingClientRect().bottom : NaN).toFixed(2),
-        footPadTop:getComputedStyle(foot).paddingTop, footPadBottom:getComputedStyle(foot).paddingBottom,
-        footMarginTop:getComputedStyle(foot).marginTop,
+        footerCount: document.querySelectorAll('.pdaim-footer').length,
+        keephelpCount: document.querySelectorAll('[data-keephelp]').length,
+        scrollHeight: info.scrollHeight, clientHeight: info.clientHeight,
         openCards: document.querySelectorAll('.set-wrap .set-card.open').length };
     `);
-    console.log('     ── 设置页收起态：'); 
-    console.log('        「关于」块下边缘 = ' + f.aboutBottom + '   基准线 = ' + f.baseline + '   两者中点 = ' + f.mid);
-    console.log('        灰字行底 y      = ' + f.textBottom + '   （差 ' + (f.textBottom - f.mid).toFixed(2) + '；span 内联盒底 ' + f.spanBottom + '）');
-    console.log('        页脚 padding-top=' + f.footPadTop + '  padding-bottom=' + f.footPadBottom + '  margin-top=' + f.footMarginTop + '  展开的栏目数=' + f.openCards);
-    tOk('[设置页] 收起态：灰字那一行落在「关于」块与基准线的中点（差 ≤ 1px）',
-      Math.abs(f.textBottom - f.mid) <= 1, '差 ' + (f.textBottom - f.mid).toFixed(2));
-    tOk('[设置页] 收起态：页脚底部留白收掉（padding-bottom=0）', f.footPadBottom === '0px', f.footPadBottom);
+    console.log('     ── 设置页收起态：');
+    console.log('        「关于」块下边缘 = ' + f.aboutBottom + '   基准线 = ' + f.baseline
+      + '   scrollHeight=' + f.scrollHeight + ' / clientHeight=' + f.clientHeight
+      + '   展开的栏目数=' + f.openCards);
+    tOk('[设置页] 页脚灰字整块删除（.pdaim-footer 0 个、data-keephelp 0 个）',
+      f.footerCount === 0 && f.keephelpCount === 0, 'footer=' + f.footerCount + ' keephelp=' + f.keephelpCount);
+    tOk('[设置页] 收起态装得下（不可滑 —— 0D.3 的 fit-view 判据还在）',
+      f.scrollHeight - f.clientHeight <= 0.5, 'scrollHeight=' + f.scrollHeight + ' clientHeight=' + f.clientHeight);
     report['设置页'].foot = f;
     /* 展开一栏再量：应该变回"能滑、且滑到底不被遮" */
     await ev('var c = document.querySelector(".set-wrap .set-card .set-head"); c.click(); return 1;');

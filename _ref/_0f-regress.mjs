@@ -82,31 +82,22 @@ console.log('[1] 债务 1 · teParseTime 认「半」');
   t('全角冒号 9：30 没被这次的替换带坏', teParseTime('9：30'), '09:30');
 }
 
-/* ---------- 2. 债务 3：.pdaim-footer 只能有一处顶层定义 ---------- */
-console.log('\n[2] 债务 3 · .pdaim-footer 的真相源只有一处');
+/* ---------- 2. 页脚：★ 5G 整块删掉（原来这条盯的是"只能有一处顶层定义"） ---------- */
+console.log('\n[2] 页脚灰字已整块删除，且滚动那一半没被带走');
 {
-  const lines = html.split('\n');
-  /* 「顶层定义」= 选择器里 .pdaim-footer 处于顶层（后面紧跟 { 或 , 再 {），
-     带前缀/父选择器的（如 body:not([data-view="settings"]) .pdaim-footer）不算。 */
-  const topDefs = [];
-  lines.forEach((ln, i) => {
-    if (/^\s*(?:[^{}]*,\s*)?\.pdaim-footer\s*\{/.test(ln) && !/[^\s,{]/.test(ln.slice(0, ln.indexOf('.pdaim-footer')))) {
-      topDefs.push({ line: i + 1, text: ln.trim() });
-    }
-  });
-  tOk('.pdaim-footer 顶层定义恰好 1 处', topDefs.length === 1, JSON.stringify(topDefs));
-  tOk('那一处含「避开通栏」的底部留白（118px + 安全区）',
-    topDefs.length === 1 && /padding:40px 24px calc\(118px \+ env\(safe-area-inset-bottom\)\)/.test(topDefs[0].text),
-    topDefs.length === 1 ? topDefs[0].text : '');
-  /* 全角/半角两种写法都不许再出现第二处 padding-bottom 覆盖 */
-  tOk('没有残留的 .pdaim-footer{padding-bottom:...} 覆盖规则',
-    !/\.pdaim-footer\{padding-bottom/.test(html.replace(/\s+/g, '')));
-
-  /* 0D 的 --bar-keep 逻辑不许被这次合并带回旧值 */
+  /* ★ 5G 改断言（脚本漂移）：0F 当时盯的是 `.pdaim-footer` 只能有一处顶层定义；
+     5G 按用户要求把页脚（"零联网 · 无账号…"）整块删了 —— 判据反过来：一处都不该有。 */
+  const noCmt = html.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  const topDefs = (noCmt.match(/^\s*\.pdaim-footer\s*\{/gm) || []).length;
+  tOk('.pdaim-footer 顶层定义 0 处（整块已删）', topDefs === 0, String(topDefs) + ' 处');
+  tOk('两个设备文案类 .fw-mouse / .fw-touch 也不在',
+    !/fw-mouse/.test(noCmt) && !/fw-touch/.test(noCmt));
   tOk('.page-shell 的 padding-bottom 仍用 var(--bar-keep, …)',
     /\.page-shell\{[^}]*padding-bottom:var\(--bar-keep/.test(html.replace(/\n\s*/g, '')));
-  tOk('设置页收起态的页脚定位（inline padding-bottom=0）没被删',
-    /foot\.style\.paddingBottom = '0px'/.test(html));
+  tOk('0D.3 的滚动那一半还在（fit-view 的挂/摘）',
+    /classList\.toggle\('fit-view', fit\)/.test(noCmt));
+  tOk('"把页脚摆到中点"那段定位代码已随页脚一起删',
+    !/syncSettingsFoot/.test(noCmt) && !/foot\.style\.paddingBottom = '0px'/.test(noCmt));
 }
 
 console.log('\n' + (fail ? 'FAIL ' : 'PASS ') + pass + ' / ' + (pass + fail) + (fail ? '  —— ' + fail + ' 条失败' : '  全绿'));
