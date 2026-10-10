@@ -295,8 +295,11 @@ console.log('\n[5] 排期唯一出口 + 六个"条目变了"的入口都接到�
      注意仍然**去注释**再断言：Java / manifest 的注释里到处写着历史说明。 */
   const java = stripComments(fs.readFileSync(
     FILE.replace(/鱼事\.html$/, '_android/app/src/com/yushi/app/MainActivity.java'), 'utf8'));
-  tOk('精确排期只在探测通过时才用 setExactAndAllowWhileIdle（4C 新口径）',
-      /if \(exactAllowed\(ctx\)\)\{[\s\S]{0,240}?setExactAndAllowWhileIdle/.test(java),
+  /* ★ 5C 更新：精确那条路现在是"先 setAlarmClock（系统认定的用户可见闹钟）、再
+     setExactAndAllowWhileIdle"，所以窗口要放宽、并把 setAlarmClock 也纳进来。
+     口径没变：**必须**在 exactAllowed 守卫之内，拿不到就落回非精确 set()。 */
+  tOk('精确排期只在探测通过时才用（5C：setAlarmClock → setExactAndAllowWhileIdle）',
+      /if \(exactAllowed\(ctx\)\)\{[\s\S]{0,700}?setAlarmClock[\s\S]{0,700}?setExactAndAllowWhileIdle/.test(java),
       (java.match(/setExact\w*/g) || []).join(',') || '无');
   tOk('拿不到精确权限仍会落回非精确 set()（红线 4：拿不到也必须响）',
       /am\.set\(android\.app\.AlarmManager\.RTC_WAKEUP, ts, pi\)/.test(java), '');

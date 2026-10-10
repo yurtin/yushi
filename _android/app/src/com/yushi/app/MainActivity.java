@@ -89,6 +89,11 @@ public class MainActivity extends Activity {
      *  页面侧一个判断都不用写（用户 2026-10-09 定的口径）。
      *  渠道的 sound / importance 建后不可改 → 只能换新 id（4C 已经踩过一次）。 */
     private static final String N_CH_REMIND = "yushi_remind_v2";
+    /** ★ 5C：上一次到点提醒的**对账**（排的时刻 / 真的响的时刻）——
+     *  用户实测"定 8:36、8:37 才响"，页面侧又算得分毫不差（notifyTimeOf 差 0 秒），
+     *  所以必须能当场分清"我们排晚了"还是"系统推迟了"。设置页会把这行显示出来。 */
+    private static final String N_LAST_SCHED = "lastSched";
+    private static final String N_LAST_FIRED = "lastFired";
     /** ★ 5A：要不要走"锁屏全屏响铃（闹钟档）"。**默认关** —— 用户原话："如果我没让开闹钟的话，
      *  那就不要闹钟，直接像正常微信来信息一样弹窗提示就可以了"。
      *  为什么存在原生侧而不是页面侧：到点弹通知的是 {@link NotifyReceiver}，
@@ -772,9 +777,11 @@ public class MainActivity extends Activity {
                 .build();
     }
 
-    /** 真正排一个闹钟。★ 4C 起**分叉**：
-     *   有精确权限 → setExactAndAllowWhileIdle（到点就响，真闹钟）
-     *   没有       → **保持原来的 set()**（系统可以推迟几分钟，但一定会排出去）
+    /** 真正排一个闹钟。★ 4C 起**分叉**，★ 5C 起把最精确的那一档换成 setAlarmClock：
+     *   ① 有精确权限 → **setAlarmClock**（系统认定的"用户可见闹钟"：Doze 里也准点、
+     *      状态栏出现闹钟图标、点图标走 showIntent 回鱼事）
+     *      失败 → setExactAndAllowWhileIdle（同样准点，只是没有状态栏图标）
+     *   ② 没有精确权限 → **保持原来的 set()**（系统可以推迟几分钟，但一定会排出去）
      *  红线 4：无论哪一档都必须排出去 —— "因为没权限所以不提醒了"是明令禁止的。 */
     static void armAlarm(android.content.Context ctx, String id, String title, long ts){
         try {
@@ -785,15 +792,34 @@ public class MainActivity extends Activity {
             if (am == null) return;
             android.app.PendingIntent pi = fireIntent(ctx, id, title, ts);
             if (exactAllowed(ctx)){
+                /* ★ 5C：先上"用户可见闹钟"。它是系统最当回事的一档 ——
+                   用户实测"晚 1 分钟"多半就是被放进省电受限档后普通精确闹钟被推迟了。 */
+                try {
+                    am.setAlarmClock(new android.app.AlarmManager.AlarmClockInfo(ts, alarmShowIntent(ctx, id)), pi);
+                    return;
+                } catch (Throwable t) {
+                    /* 个别 ROM 不支持 / 探测通过后权限又被撤销 → 往下退，**仍然排** */
+                }
                 try {
                     am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, ts, pi);
                     return;
                 } catch (Throwable t) {
-                    /* 探测通过之后权限又被撤销 / 厂商 ROM 拦截 → 往下退回非精确，**仍然排** */
+                    /* 同上 → 再退到非精确 */
                 }
             }
             am.set(android.app.AlarmManager.RTC_WAKEUP, ts, pi);
         } catch (Throwable t) { }
+    }
+
+    /** ★ 5C：setAlarmClock 要求的 showIntent —— 点状态栏那枚闹钟图标时回到鱼事。 */
+    private static android.app.PendingIntent alarmShowIntent(android.content.Context ctx, String id){
+        android.content.Intent i = new android.content.Intent(ctx, MainActivity.class);
+        i.setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        if (id != null) i.putExtra("notifyId", id);
+        return android.app.PendingIntent.getActivity(ctx, nReq(id), i,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                        | android.app.PendingIntent.FLAG_IMMUTABLE);
     }
 
     /** 写一行排期并尽力上闹钟。页面每次改一条都调它 —— 幂等：同一个 id 覆盖。 */
@@ -1415,8 +1441,7 @@ public class MainActivity extends Activity {
             } catch (Throwable t) { }
         }
 
-        /** 跳系统的「全屏通知」开关页（Android 14+ 才有这一页；旧版本没有 → 退回应用详情）。
-         *  用**字符串常量**而不是 Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT ——
+        /** 跳系统的「全屏通知」开关页（Android 14+ 才有这一页；旧版本没有 → 退回应用详情）。         *  用**字符串常量**而不是 Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT ——
          *  与 POST_NOTIFICATIONS / 精确闹钟 / 照片选择器同一条理由：新常量在旧工具链里可能不存在。 */
         @android.webkit.JavascriptInterface
         public void openFullScreenSettings() {
@@ -1425,6 +1450,39 @@ public class MainActivity extends Activity {
                     android.content.Intent i = new android.content.Intent(
                             "android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT",
                             android.net.Uri.fromParts("package", getPackageName(), null));
+                    i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                    return;
+                } catch (Throwable t) { }
+                openNotifySettings();
+            });
+        }
+
+        /* ---- ★ 5C：上一次提醒的对账 + 电池优化入口 ---- */
+
+        /** "排的时刻|真响的时刻"（毫秒，竖线分隔）。没响过就返回空串。
+         *  设置页拿它显示"排 8:36 · 实际 8:37（晚了 62 秒）" —— 这是分清
+         *  "我们排晚了"和"系统推迟了"的唯一硬证据。 */
+        @android.webkit.JavascriptInterface
+        public String getLastFire() {
+            try {
+                android.content.SharedPreferences p = MainActivity.this
+                        .getSharedPreferences(N_PREF, android.content.Context.MODE_PRIVATE);
+                long s = p.getLong(N_LAST_SCHED, 0L), f = p.getLong(N_LAST_FIRED, 0L);
+                return (s > 0L && f > 0L) ? (s + "|" + f) : "";
+            } catch (Throwable t) { return ""; }
+        }
+
+        /** 跳系统的「电池优化」列表页 —— 用户把鱼事设成"不受限制"，闹钟才不会被省电档推迟。
+         *  用**字符串常量**（同 POST_NOTIFICATIONS / 精确闹钟 / 照片选择器一条理由），
+         *  并且**不申请 REQUEST_IGNORE_BATTERY_OPTIMIZATIONS**（那是一条新权限）：
+         *  只做深链，让用户自己点。 */
+        @android.webkit.JavascriptInterface
+        public void openBatterySettings() {
+            runOnUiThread(() -> {
+                try {
+                    android.content.Intent i = new android.content.Intent(
+                            "android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS");
                     i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(i);
                     return;
@@ -1665,6 +1723,15 @@ public class MainActivity extends Activity {
                 /* 正文写的是**当初排的那个时刻**（set() 是非精确闹钟，实际响的时刻可能晚几分钟）。
                    老 PendingIntent / 手工构造的 intent 没带 ts 时回落到"现在"。 */
                 long ts = it.getLongExtra("ts", System.currentTimeMillis());
+                /* ★ 5C：把"当初排的时刻"和"真的响的这一刻"都记下来 —— 设置页会把这条对账
+                   显示给用户（"排 8:36 · 实际 8:37，晚了 62 秒"）。用户实测晚 1 分钟，
+                   而页面侧算得分毫不差，能当场分清是系统推迟还是我们排错，全靠这两个数。 */
+                try {
+                    ctx.getSharedPreferences(N_PREF, android.content.Context.MODE_PRIVATE).edit()
+                       .putLong(N_LAST_SCHED, ts)
+                       .putLong(N_LAST_FIRED, System.currentTimeMillis())
+                       .apply();
+                } catch (Throwable t) { }
                 showNotif(ctx, id, title, ts);
                 /* 一次性提醒：弹过就从排期表里删掉。
                    不删的话，下次开机 rearmAll 会看到一行"时刻已过"的记录 ——

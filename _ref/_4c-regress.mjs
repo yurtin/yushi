@@ -278,9 +278,11 @@ tOk('拿不到精确 → 仍然落到 am.set(...)（**不是 return / 不排**�
   /am\.set\(android\.app\.AlarmManager\.RTC_WAKEUP, ts, pi\)/.test(armFn));
 tOk('精确那条路自己也有 try/catch 兜底（探测通过后被撤销也不能丢提醒）',
   /catch \(Throwable t\) \{[\s\S]{0,200}?am\.set\(/.test(armFn) || /setExactAndAllowWhileIdle[\s\S]*?catch \(Throwable t\)/.test(armFn));
+/* ★ 5C 更新：armAlarm 多了一档 setAlarmClock（最精确那档），"精确成功"从 1 个变 2 个
+   return → 3 条合法提前返回 + 2 次精确成功 = 5。红线本身没变：每一层都必须排出去。 */
 tOk('armAlarm 里"提前 return"只有三条合法理由（没通知权限 / 时刻已过 / 取不到 AlarmManager）',
-  count(armFn, 'return') === 4,
-  'return 出现 ' + count(armFn, 'return') + ' 次 = 三条提前返回 + 精确成功那一次');
+  count(armFn, 'return') === 5,
+  'return 出现 ' + count(armFn, 'return') + ' 次 = 三条提前返回 + 两次精确成功（setAlarmClock / setExact）');
 
 tOk('三层降级每一层都排：showNotif 里 nm.notify( 恰好 1 处（不分支丢通知）',
   count(notifFn, 'nm.notify(') === 1);

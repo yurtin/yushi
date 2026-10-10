@@ -22,7 +22,7 @@ const seed = { items: [], lastBackup: Date.now(), tags: [], statLayout: 'card', 
 
 /* 桥桩：这一批新加的三个方法都在（老壳那档在 [5] 里现删掉再验）。 */
 const BRIDGE = `<script>
-window.__nt = { perm: 'granted', full: 'denied', alarm: '0', openedNotify: 0, openedFull: 0, sets: [] };
+window.__nt = { perm: 'granted', full: 'denied', alarm: '0', openedNotify: 0, openedFull: 0, openedBattery: 0, lastFire: '', sets: [] };
 window.YuShiNative = {
   insets: function(){ return '0,0'; },
   isAvailable: function(){ return 'false'; },
@@ -34,7 +34,9 @@ window.YuShiNative = {
   notifyFullScreenState: function(){ return window.__nt.full; },
   openFullScreenSettings: function(){ window.__nt.openedFull++; },
   getAlarmFull: function(){ return window.__nt.alarm; },
-  setAlarmFull: function(v){ window.__nt.alarm = String(v); window.__nt.sets.push(String(v)); }
+  setAlarmFull: function(v){ window.__nt.alarm = String(v); window.__nt.sets.push(String(v)); },
+  getLastFire: function(){ return window.__nt.lastFire; },
+  openBatterySettings: function(){ window.__nt.openedBattery++; }
 };
 <\/script>`;
 const inject = s => html.replace('</head>',
@@ -190,6 +192,58 @@ console.log('\n[5] 老壳（没有 getAlarmFull）→ 这一行不出现，也�
       permHidden: document.getElementById('notifyPerm').hidden };`);
   tOk('完全没有桥时也不抛错', r2.err === '', r2.err);
   tOk('没有桥 → 开关行藏着', r2.rowHidden === true);
+}
+
+/* ==================================================================== */
+console.log('\n[6] 5C：上次提醒的对账（排 vs 实际）+ 「去放行」');
+{
+  /* 恢复被 [5] 删掉的两个方法 */
+  await ev(`
+    window.YuShiNative.getAlarmFull = function(){ return window.__nt.alarm; };
+    window.YuShiNative.setAlarmFull = function(v){ window.__nt.alarm = String(v); };
+    return 1;`);
+  /* 构造一条"排 08:36、实际 08:37:02"（晚 62 秒） */
+  const late = await ev(`
+    var s = new Date(); s.setHours(8, 36, 0, 0);
+    window.__nt.lastFire = String(s.getTime()) + '|' + String(s.getTime() + 62000);
+    window.__nt.openedBattery = 0;
+    goView('settings');
+    return 1;`);
+  await sleep(500);
+  {
+    const r = await ev(`
+      var last = document.getElementById('notifyLast');
+      var b = last ? last.querySelector('[data-act="batteryopen"]') : null;
+      return { hidden: last.hidden, txt: last.textContent,
+        hasBtn: !!b, btnTxt: b ? b.textContent : '' };`);
+    tOk('对账那一行露出来了', r.hidden === false, JSON.stringify(r));
+    tOk('写明"排 … · 实际 …"', /上次提醒：排 8月?\d*日? ?08:36/.test(r.txt) || /上次提醒：排 .*08:36/.test(r.txt), r.txt);
+    tOk('算出"晚了 62 秒"', /晚了 62 秒/.test(r.txt), r.txt);
+    tOk('晚 ≥60 秒 → 给了「去放行」', r.hasBtn && r.btnTxt === '去放行', JSON.stringify(r));
+    if (r.hasBtn) await ev(`document.querySelector('[data-act="batteryopen"]').click(); return 1;`);
+    await sleep(250);
+    t('点「去放行」调到了桥的 openBatterySettings', await ev(`return window.__nt.openedBattery;`), 1);
+  }
+  /* 准点：不该出现按钮 */
+  await ev(`
+    var s = new Date(); s.setHours(9, 5, 0, 0);
+    window.__nt.lastFire = String(s.getTime()) + '|' + String(s.getTime() + 1200);
+    goView('settings');
+    return 1;`);
+  await sleep(500);
+  {
+    const r = await ev(`
+      var last = document.getElementById('notifyLast');
+      return { hidden: last.hidden, txt: last.textContent,
+        hasBtn: !!last.querySelector('[data-act="batteryopen"]') };`);
+    tOk('准点也照实显示（不藏）', r.hidden === false && /准点/.test(r.txt), r.txt);
+    tOk('准点不给「去放行」（不打扰）', r.hasBtn === false, JSON.stringify(r));
+  }
+  /* 从没响过：整行收起，也不报错 */
+  await ev(`window.__nt.lastFire = ''; goView('settings'); return 1;`);
+  await sleep(500);
+  tOk('没响过 → 整行收起',
+    (await ev(`return document.getElementById('notifyLast').hidden;`)) === true);
 }
 
 console.log('\n页面里的 JS 异常：' + (errors.length ? errors.join(' | ') : '（无）'));

@@ -1954,6 +1954,12 @@ body[data-help="off"] .set-row .set-txt > span:not([data-keephelp]){
   color:var(--muted);text-align:right;justify-content:flex-end;max-width:240px;line-height:1.35}
 .notify-exact[hidden]{display:none}
 .notify-exact .pill{padding:3px 10px;font-size:12px;flex:0 0 auto}
+/* ★ 5C：提醒对账那一行（"排 8:36 · 实际 8:37（晚了 62 秒） [去放行]"）。
+   整行铺开的小字，与 .notify-perm 同一个色阶。 */
+.notify-last{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;
+  font-size:12px;font-weight:600;color:var(--muted)}
+.notify-last[hidden]{display:none}
+.notify-last .pill{padding:3px 10px;font-size:12px;flex:0 0 auto}
 
 /* 时间轴：条数 / 逾期这类事实数字单独一行常显，和上面那段可关掉的说明文案分开。
    放在列表正上方 —— 它说的是这份列表的事，本来就该挨着列表。
@@ -4931,6 +4937,22 @@ function setNotifyAlarmFull(on){
   try { b.setAlarmFull(on ? '1' : '0'); return true; } catch (_){ return false; }
 }
 
+/* ★ 5C：上次到点提醒的对账（排的时刻 / 真的响的时刻，毫秒）。
+   返回 {sched, fired} 或 null（老壳没这个方法 / 还没响过 → null）。 */
+function notifyLastFire(){
+  const b = notifyBridge();
+  if (!b || typeof b.getLastFire !== 'function') return null;
+  try {
+    const m = String(b.getLastFire() || '').split('|');
+    const s = +m[0], f = +m[1];
+    return (s > 0 && f > 0) ? { sched: s, fired: f } : null;
+  } catch (_){ return null; }
+}
+function notifyLastLabel(t){
+  const d = new Date(t);
+  return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+}
+
 /* 那一行的显隐与文案。只在"有桥 + 提醒总开关开着"时才出现 —— 关着的时候
    说"提醒可能不准"没有意义，反而多一行噪音。
    ★ unknown 与 denied 走同一档（探测不出来就按"可能不精确"说，宁可保守）。 */
@@ -4962,6 +4984,29 @@ function refreshNotifyExact(){
     if (bad){
       const txt = document.getElementById('notifyFullTxt');
       if (txt) txt.textContent = '锁屏上不会全屏弹，改成横幅 + 响铃提醒';
+    }
+  }
+  /* ★ 5C：上次提醒的对账。它回答的是"响了但晚了，怪谁"——
+     排的时刻是**我们算的**、实际时刻是**系统交的**，两个数一摆，责任立刻分明。
+     晚了 ≥60 秒才多给一枚「去放行」（跳电池优化页），平时不打扰。 */
+  const lastEl = document.getElementById('notifyLast');
+  if (lastEl){
+    const lf = on ? notifyLastFire() : null;
+    lastEl.hidden = !lf;
+    if (lf){
+      const late = Math.round((lf.fired - lf.sched) / 1000);
+      const tail = late >= 60 ? '（晚了 ' + late + ' 秒）'
+        : (late <= -60 ? '（早了 ' + (-late) + ' 秒）' : '（准点）');
+      lastEl.innerHTML = '<span>上次提醒：排 ' + esc(notifyLastLabel(lf.sched))
+        + ' · 实际 ' + esc(notifyLastLabel(lf.fired)) + esc(tail) + '</span>';
+      if (late >= 60){
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'pill';
+        btn.setAttribute('data-act', 'batteryopen');
+        btn.textContent = '去放行';
+        lastEl.appendChild(btn);
+      }
     }
   }
 }
@@ -9342,6 +9387,11 @@ function renderSettings(){
               <button type="button" class="pill" data-act="exactopen">去开启</button></span>
           </div>
         </div>
+        <!-- ★ 5C：上次提醒的对账（"排 10月10日 08:36 · 实际 08:37（晚了 62 秒）"）。
+             只有真的响过一次才出现；晚了 ≥60 秒时多给一枚「去放行」（跳电池优化页）。
+             它存在的理由：用户实测"定 8:36、8:37 才响"，而页面侧算得分毫不差 —— 
+             必须有个当场能分清"我们排晚了 / 系统推迟了"的地方，别再靠猜。 -->
+        <div class="notify-last" id="notifyLast" hidden></div>
         <!-- ★ 5A：锁屏全屏响铃（闹钟档）。**默认关** —— 用户 2026-10-09 定："如果我没让开闹钟的话，
              那就不要闹钟，直接像正常微信来信息一样弹窗提示就可以了"。
              关着：到点只发一条高优先级通知，声音/震动跟随手机静音·震动·响铃（横幅一定弹）；
@@ -11816,6 +11866,15 @@ view.addEventListener('click', e => {
     if (b && typeof b.openFullScreenSettings === 'function'){
       try { b.openFullScreenSettings(); } catch (_){}
     } else toast('这个壳没有全屏通知设置入口');
+    return;
+  }
+  /* ★ 5C：系统的「电池优化」列表页 —— 用户把鱼事设成"不受限制"，闹钟才不会被省电档推迟。
+     只做深链，不申请 REQUEST_IGNORE_BATTERY_OPTIMIZATIONS（那是新权限）。 */
+  if (act === 'batteryopen'){
+    const b = notifyBridge();
+    if (b && typeof b.openBatterySettings === 'function'){
+      try { b.openBatterySettings(); } catch (_){}
+    } else toast('这个壳没有电池设置入口');
     return;
   }
   if (act === 'sparkok'){ const inp = document.getElementById('sp_in'); if (inp && it && seedAddSpark(it, inp.value)) refresh(); return; }
@@ -14333,7 +14392,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.14.1';
+const APP_VERSION = '5.15.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：

@@ -222,5 +222,45 @@ console.log('\n[4] 到点提醒的呈现 —— 页面侧 + 红线');
   ]);
 }
 
+console.log('\n[5] 5C：提醒对账 + 最精确那一档换成 setAlarmClock + 电池放行入口');
+{
+  /* ---- 原生侧 ---- */
+  const iArm = javaNC.indexOf('static void armAlarm(');
+  const armBody = javaNC.slice(iArm, javaNC.indexOf('private static android.app.PendingIntent alarmShowIntent(', iArm));
+  const iClock = armBody.indexOf('am.setAlarmClock(');
+  const iExact = armBody.indexOf('am.setExactAndAllowWhileIdle(');
+  const iPlain = armBody.indexOf('am.set(android.app.AlarmManager.RTC_WAKEUP');
+  tOk('armAlarm 找到了', iArm > 0);
+  tOk('最精确那一档是 setAlarmClock（用户可见闹钟 / Doze 也准点 / 状态栏有图标）', iClock > 0);
+  tOk('setAlarmClock 排在 setExactAndAllowWhileIdle 之前', iClock > 0 && iExact > iClock);
+  tOk('两层精确都失败后仍退回 set()（红线：一定要排出去）', iPlain > iExact && iExact > iClock);
+  tOk('三档都在 exactAllowed 守卫里（没权限就直接走 set）',
+    /if \(exactAllowed\(ctx\)\)\{/.test(armBody.slice(0, iClock)));
+  tOk('alarmShowIntent 存在（setAlarmClock 必须带 showIntent）', javaNC.indexOf('alarmShowIntent(') > 0);
+  tOk('两层精确各有 try/catch 兜底', (armBody.match(/catch \(Throwable t\)/g) || []).length >= 2,
+    (armBody.match(/catch \(Throwable t\)/g) || []).length);
+
+  tOk('对账两个键存在', /N_LAST_SCHED = "lastSched"/.test(javaNC) && /N_LAST_FIRED = "lastFired"/.test(javaNC));
+  const iFire = javaNC.indexOf('public void onReceive(android.content.Context ctx, android.content.Intent it)');
+  const fireBody = javaNC.slice(iFire, javaNC.indexOf('showNotif(ctx, id, title, ts)', iFire));
+  tOk('到点那一刻同时记下"排的时刻"与"真的响的时刻"',
+    /putLong\(N_LAST_SCHED, ts\)/.test(fireBody) && /putLong\(N_LAST_FIRED, System\.currentTimeMillis\(\)\)/.test(fireBody));
+  tOk('桥：getLastFire 返回 "排|响"', /public String getLastFire\(\)/.test(javaNC) && /s \+ "\|" \+ f/.test(javaNC));
+  tOk('桥：openBatterySettings（字符串常量，不申请新权限）',
+    /public void openBatterySettings\(\)/.test(javaNC)
+    && /"android\.settings\.IGNORE_BATTERY_OPTIMIZATION_SETTINGS"/.test(javaNC)
+    && !/REQUEST_IGNORE_BATTERY_OPTIMIZATIONS/.test(javaNC));
+
+  /* ---- 页面侧 ---- */
+  tOk('设置页有对账那一行', /id="notifyLast"/.test(htmlNC) && /class="notify-last"/.test(htmlNC));
+  tOk('对账默认收起（有桥 + 响过才露）', /<div class="notify-last" id="notifyLast" hidden><\/div>/.test(htmlNC));
+  tOk('读桥的两个纯函数在', /function notifyLastFire\(\)/.test(htmlNC) && /function notifyLastLabel\(/.test(htmlNC));
+  tOk('文案有"排…实际…"与 晚/早/准点 三档',
+    /上次提醒：排 /.test(htmlNC) && /晚了 ' \+ late/.test(htmlNC) && /准点/.test(htmlNC));
+  tOk('晚 ≥60 秒才给「去放行」（data-act=batteryopen）',
+    /late >= 60/.test(htmlNC) && /'batteryopen'/.test(htmlNC));
+  tOk('「去放行」接线到 openBatterySettings', /typeof b\.openBatterySettings === 'function'/.test(htmlNC));
+}
+
 console.log('\n通过 ' + pass + ' / 失败 ' + fail);
 process.exit(fail ? 1 : 0);

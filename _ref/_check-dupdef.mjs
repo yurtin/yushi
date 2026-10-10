@@ -136,6 +136,8 @@ const NAMES = [
   'icRowBits', 'icApplyEdit', 'imageConfirmEdit',
   /* ================= 5A 到点提醒的呈现 + 钟点/指令壳 ================= */
   'stripShell', 'notifyAlarmFull', 'setNotifyAlarmFull',
+  /* ================= 5C 提醒对账 + 电池放行入口 ================= */
+  'notifyLastFire', 'notifyLastLabel',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }
