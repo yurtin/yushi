@@ -118,6 +118,8 @@ function tOk(label, cond, detail) {
   cond ? pass++ : fail++;
   console.log((cond ? '  ok   ' : '  FAIL ') + label + (detail === undefined ? '' : '  →  ' + detail));
 }
+/* 弹层里的按钮（#zr_ok / #za_ok / #uc_yes 等）：用 e.click() 就够，
+   它们不在任何"会冒泡抢事件"的容器里（zmenu 与 zone-add 走下面的 hitClick）。 */
 const click = async sel => {
   const r = await ev(`var e=document.querySelector(${JSON.stringify(sel)}); if(!e) return 'no-el'; e.click(); return 'ok';`);
   await sleep(140); return r;
@@ -126,10 +128,38 @@ const zoneCols = async () => ev(`
   return [].slice.call(document.querySelectorAll('#view .board > .zone')).map(function(z){
     return { k: z.dataset.z, name: (z.querySelector('h3')||{}).textContent,
       ids: [].slice.call(z.querySelectorAll('.item[data-id]')).map(function(i){ return i.dataset.id; }),
-      menu: !!z.querySelector('.zmenu'), fold: z.hasAttribute('data-zfold') === false ? false : true };
+      menu: !!z.querySelector('.zmenu'), fold: z.hasAttribute('data-zfold') === false ? false : true,
+      folded: z.classList.contains('folded') };
   });
 `);
 const openList = async () => { await ev('goView("list"); ANIM=false; refresh(); return 1;'); await sleep(500); };
+/* ★★ 2026-10-11 真机修：**必须按真手指的路径点**。
+   之前这里用 `document.querySelector(sel).click()` —— 事件目标直接就是那个元素，
+   完全绕开了 CSS 层序与最外层 delegate 的 closest/分支顺序，于是
+   "⋯ 被 header 的热区伪元素盖住、点下去变成折叠"这个真机 bug 测不出来（假绿的根因）。
+   现在统一**按 elementFromPoint 的真实命中派发**：先取中心坐标、看谁在最上面
+   （顺带断言它没被别的层盖住），再派发 click 让它按真路径走完全部监听。 */
+const hitClick = async (sel) => {
+  const r = await ev(`
+    var el = document.querySelector(${JSON.stringify(sel)});
+    if (!el) return { err: 'no-el' };
+    /* ⚠️ 必须先把元素滚进视口：真用户也会先滑过去。
+       不滚的话 rect.top 可能 > window.innerHeight（实测 ⋯ 在 931 / vh=888），
+       elementFromPoint 对屏外坐标一律返回 null —— 那不是层序问题，是量错了。 */
+    el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    var b = el.getBoundingClientRect();
+    var x = Math.round(b.left + b.width / 2), y = Math.round(b.top + b.height / 2);
+    /* 坐标必须取整：headless 在 dsf=3 下若传浮点，elementFromPoint 会返回 null */
+    var top = document.elementFromPoint(Number(x.toFixed(0)), Number(y.toFixed(0)));
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+    return { hit: top ? (top.className || top.tagName) : null,
+      inSelf: !!(top && (top === el || el.contains(top))),
+      rect: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)],
+      vw: window.innerWidth, vh: window.innerHeight };
+  `);
+  await sleep(180);
+  return r;
+};
 
 /* ══════════ [1] 分栏与「⋯」/「+ 新建」的骨架 ══════════ */
 console.log('[1] 7B 分栏按 S.zones 的顺序 + 未分组固定最后');
@@ -156,8 +186,12 @@ console.log('\n[2] 7B.2「未分组」空时不渲染');
 console.log('\n[3] 7B 红线1（DOM）：改「学习」的名字 → 条目还在这一栏');
 {
   const before = await zoneCols();
-  await click('[data-zmenu="z1"]');
+  /* ★ 真机修回归：先按**真手指**点 ⋯（elementFromPoint 命中 + 派发冒泡 click）。 */
+  const h = await hitClick('[data-zmenu="z1"]');
+  tOk('⋯ 是按真路径点到的（中心命中它自己，没被别的层盖住）', h.inSelf === true, JSON.stringify(h));
   t('⋯ 面板开了', await ev('return !!document.getElementById("zmenuPop");'), true);
+  t('★ 点 ⋯ **不会**把这一栏折叠（真机 bug 的回归位）',
+    (await zoneCols())[3].folded, false);
   await ev('var b=document.querySelector(\'#zmenuPop [data-zoneopt="rename"]\'); b.click(); return 1;');
   await sleep(200);
   t('改名弹层开了（输入框里有原名）', await ev('return (document.getElementById("zr_name")||{}).value;'), '学习');
@@ -171,16 +205,65 @@ console.log('\n[3] 7B 红线1（DOM）：改「学习」的名字 → 条目还�
   t('分区表里的 k 也没变', await ev('return S.zones.map(function(z){return z.k;});'), ['z_long', 'z_short', 'z_repeat', 'z1']);
 }
 
+/* ══════════ [3b] 「⋯」与「折叠」互不干扰（真机 bug 的正面清单） ══════════ */
+console.log('\n[3b] 真机修：⋯ 不会被折叠分支抢走；标题栏照旧能折叠');
+{
+  await openList();
+  const open0 = await zoneCols();
+  t('起始四栏都是展开的', open0.map(c => c.folded), [false, false, false, false]);
+
+  /* ① 点 ⋯ → 只出面板，不折叠 */
+  await hitClick('[data-zmenu="z_short"]');
+  t('① 点 ⋯：面板开了', await ev('return !!document.getElementById("zmenuPop");'), true);
+  t('① 点 ⋯：这一栏仍然展开（没有被折叠）',
+    (await zoneCols()).filter(c => c.k === 'z_short')[0].folded, false);
+  t('① 点 ⋯：S.foldedZones 里没被写进东西',
+    await ev('return S.foldedZones.slice();'), []);
+  /* 关掉面板 */
+  await ev('closeZoneMenu(); return 1;');
+  await sleep(160);
+
+  /* ② 点标题栏本体（不是 ⋯）→ 照旧折叠 */
+  await ev(`
+    var h = document.querySelector('.zone[data-z="z_short"] > header');
+    var b = h.getBoundingClientRect();
+    var x = Math.round(b.left + 30), y = Math.round(b.top + b.height / 2);
+    h.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+    return 1;
+  `);
+  await sleep(700);
+  t('② 点标题栏本体：折叠了', (await zoneCols()).filter(c => c.k === 'z_short')[0].folded, true);
+  /* 收起来 */
+  await ev(`
+    var h = document.querySelector('.zone[data-z="z_short"] > header');
+    var b = h.getBoundingClientRect();
+    h.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true,
+      clientX: Math.round(b.left + 30), clientY: Math.round(b.top + b.height / 2) }));
+    return 1;
+  `);
+  await sleep(700);
+  t('② 再点一下：展开了', (await zoneCols()).filter(c => c.k === 'z_short')[0].folded, false);
+
+  /* ③ ⋯ 连点两次 = 开 → 关，且不折叠 */
+  await hitClick('[data-zmenu="z_short"]');
+  const open1 = await ev('return !!document.getElementById("zmenuPop");');
+  await hitClick('[data-zmenu="z_short"]');
+  const open2 = await ev('return !!document.getElementById("zmenuPop");');
+  t('③ ⋯ 连点：先开后关（不是"先开再叠一个"）', [open1, open2], [true, false]);
+  t('③ ⋯ 连点也没折叠这一栏',
+    (await zoneCols()).filter(c => c.k === 'z_short')[0].folded, false);
+}
+
 /* ══════════ [4] 上移 / 下移 ══════════ */
 console.log('\n[4] 7B「⋯」里的上移 / 下移');
 {
-  await click('[data-zmenu="z1"]');
+  await hitClick('[data-zmenu="z1"]');
   await ev('var b=document.querySelector(\'#zmenuPop [data-zoneopt="up"]\'); b.click(); return 1;');
   await sleep(400);
   t('上移一格', await ev('return S.zones.map(function(z){return z.k;});'), ['z_long', 'z_short', 'z1', 'z_repeat']);
   await openList();
   t('渲染顺序跟着变', (await zoneCols()).map(c => c.k), ['z_long', 'z_short', 'z1', 'z_repeat']);
-  await click('[data-zmenu="z1"]');
+  await hitClick('[data-zmenu="z1"]');
   await ev('var b=document.querySelector(\'#zmenuPop [data-zoneopt="down"]\'); b.click(); return 1;');
   await sleep(400);
   t('下移回去', await ev('return S.zones.map(function(z){return z.k;});'), ['z_long', 'z_short', 'z_repeat', 'z1']);
@@ -189,8 +272,9 @@ console.log('\n[4] 7B「⋯」里的上移 / 下移');
 /* ══════════ [5] 新建分区 ══════════ */
 console.log('\n[5] 7B 新建分区：建完立刻出现，能往里放条目');
 {
-  await click('#view .zone-add');
+  const hAdd = await hitClick('#view .zone-add');
   await sleep(200);
+  tOk('「+ 新建分区」也是按真路径点到的', hAdd.inSelf === true, JSON.stringify(hAdd));
   t('新建弹层开了', await ev('return !!document.getElementById("za_name");'), true);
   await ev('document.getElementById("za_name").value="工作"; return 1;');
   await click('#za_ok');
@@ -223,7 +307,10 @@ console.log('\n[6] 7B.2「未分组」有内容时排最后');
 console.log('\n[7] 7B 红线2（DOM）：删「课业」→ 里面的条目进未分组，一条都没少');
 {
   const before = await ev('return S.items.length;');
-  await click('[data-zmenu="z1"]');
+  await hitClick('[data-zmenu="z1"]');
+  t('删除前：⋯ 面板开了，且没有顺手折叠这一栏',
+    [await ev('return !!document.getElementById("zmenuPop");'),
+      (await zoneCols()).filter(c => c.k === 'z1')[0].folded], [true, false]);
   await ev('var b=document.querySelector(\'#zmenuPop [data-zoneopt="del"]\'); b.click(); return 1;');
   await sleep(250);
   const msg = await ev('return (document.querySelector(".confirm-msg")||{}).textContent || "";');
@@ -390,7 +477,7 @@ if (process.env.SHOT7B === '1'){
   };
   await ev('goView("list"); ANIM=false; refresh(); return 1;'); await sleep(600);
   await shot('list.png');
-  await click('#view .zone-add'); await sleep(300);
+  await hitClick('#view .zone-add'); await sleep(300);
   await shot('newzone.png');
   await ev('closeModal(); return 1;'); await sleep(200);
   await ev('goView("settings"); return 1;'); await sleep(600);

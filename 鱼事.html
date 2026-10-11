@@ -768,8 +768,15 @@ body.view-enter .entry-extra{animation:entryIn .62s cubic-bezier(.16,1,.3,1) .12
 .zone header .dot{background:var(--zc,var(--accent));box-shadow:0 0 10px color-mix(in srgb,var(--zc,var(--accent)) 55%,transparent)}
 /* 两个写在 data-z 上的旧点色规则（short / long）已被 --zc 取代，删掉避免"一处两真相"。 */
 
-/* 每栏标题右侧那枚「⋯」。基线对齐靠 order 排在 z-chev 之后（header 是 flex row）。 */
+/* 每栏标题右侧那枚「⋯」。基线对齐靠 order 排在 z-chev 之后（header 是 flex row）。
+   ★★ 真机修（2026-10-11）：`position:relative;z-index:1` **不是装饰，是必需的**。
+   标题栏有一条"透明热区"伪元素 `.zone>header::after`（absolute + left/right:-8px，
+   为了把行内空白也算进热区）；绝对定位伪元素画在**静态子元素之上**，于是它把整枚 ⋯ 盖住 ——
+   `document.elementFromPoint(⋯中心)` 返回的是 HEADER，手指那一下根本到不了按钮。
+   实测栈序：`[HEADER(伪元素), BUTTON.zmenu, HEADER]`。加了 z-index:1 之后 `⋯` 才浮到热区之上。
+   症状正是用户报的："⋯ 点不了，一点就把这一栏展开了"（点在最右侧 = 点到 header 热区 = 折叠）。 */
 .zmenu{
+  position:relative;z-index:1;
   order:4;flex:0 0 auto;width:26px;height:26px;margin-left:2px;padding:0;
   display:inline-flex;align-items:center;justify-content:center;
   border:0;background:transparent;color:var(--faint);border-radius:9px;
@@ -12589,6 +12596,15 @@ view.addEventListener('keydown', e => {
   }
 });
 
+/* ★ 7B 真机修留痕（2026-10-11）：这里**不要**加"捕获阶段 stopPropagation"那种双保险。
+   试过 —— `view.addEventListener('click', e => { if (e.target.closest('[data-zmenu]')) e.stopPropagation(); }, true)`
+   会把事件**掐死在捕获阶段**，`⋯` 自己的 onclick 与下面委托里的 data-zmenu 分支都收不到，
+   面板就再也不开了（实测 trace 只剩 document-capture 与 view-capture 两行，之后什么都没有）。
+   真因是 CSS：`.zone>header::after` 那条绝对定位热区伪元素画在静态子元素之上、把 `⋯` 整个盖住
+   （`elementFromPoint(⋯中心)` 返回 HEADER，手指那一下落到了标题栏 ⇒ 折叠）。
+   正解是在 `.zmenu` 上加 position+z-index（见上面 .zmenu 那段注释），
+   再靠下面委托里"更具体的分支排在前面"兜一层。判断事件能不能到，
+   用 `document.elementFromPoint(中心)` 的返回，不要靠肉眼看层序、也不要靠再加拦截。 */
 view.addEventListener('click', e => {
   const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart],[data-statpage],[data-statback],[data-statentry],[data-jump],[data-zmenu],[data-zoneadd],[data-zoneopt],[data-zpick]');
   /* ★ 7B：卡片右下那枚「在哪一栏」的 chip —— 点它换一栏（= 一次教学信号）。
@@ -12614,30 +12630,30 @@ view.addEventListener('click', e => {
   }
   if (!el) return;
 
+  /* ★ 7B 真机修（2026-10-11）：**更具体的必须排在"容器"之前**。
+     `⋯` 长在 `<header data-zfold>` 里，而上面那串选择器同时收 `[data-zfold]` 与 `[data-zmenu]`；
+     `closest()` 从 `⋯` 往上爬拿到的是**外层 header**，于是 `el.dataset.zmenu` 永远 undefined、
+     先撞上 `data-zfold` 分支 → 点「⋯」变成**把这一栏折叠**（用户真机原话：
+     "点不了，直接就展开了详细的待办"）。之前 `_7b-dom` 用 `el.click()` 直接在 `⋯` 上派发，
+     目标就是 `⋯` 本体、不走这段 closest 逻辑，所以假绿。现在把 ⋯ / 面板项 / 新建分区
+     这三样挪到最前面，与"卡片里那枚 chip 必须留在选择器之外"同一条纪律。 */
+  if (el.dataset.zmenu !== undefined){
+    const btn = el, k = el.dataset.zmenu;
+    if (document.getElementById('zmenuPop')) closeZoneMenu();
+    else openZoneMenu(btn, k);
+    return;
+  }
+  if (el.dataset.zoneadd !== undefined){ zoneAddOpen(); return; }
+  if (el.dataset.zoneopt !== undefined) return;   // 面板里的动作由它自己的监听处理（见 openZoneMenu）
+
   /* ★ 0E：清单页底部那块「已完成」折叠区整块撤掉了 —— 连它的展开 / 收起分支一起删。
      （原来这里读写的 S.doneOpen 也一并清掉了，不留"字段还在但没人读"的孤儿。） */
 
   /* 分区折叠（长期 / 短期 / 循环 / 考虑）：复用 .zone 高度过渡（foldZoneWithMotion），
      就地切换、不走 refresh()。走 refresh() 的话整页重建会闪、滚动位置也会跳，
-     跟设置页那个开关同一个道理。折叠态存进 S.foldedZones，刷新或重开仍保持收起。 */
+     跟设置页那个开关同一个道理。折叠态存进 S.foldedZones，刷新或重开仍保持收起。
+     ⚠️ 这一支必须留在 zmenu / zoneadd / zoneopt **之后**（见上面那段 7B 真机修）。 */
   if (el.dataset.zfold !== undefined){ foldZoneWithMotion(el); return; }
-
-  /* ★ 7B：分区管理（清单页每个分区标题右侧的「⋯」+ 末尾那枚「+ 新建分区」）。
-     两次 stopPropagation 都要有，理由不同：
-       · 在 ⋯ 上：它长在整条 header 热区里，不拦会把这一栏顺手折叠掉；
-       · 在 .zmenu-pop 上：面板挂在 body 上，点它不能触发"点外面就关"那条 outside-click。 */
-  if (el.dataset.zmenu !== undefined){
-    e.stopPropagation();
-    const btn = el;
-    if (document.getElementById('zmenuPop')) closeZoneMenu();
-    else openZoneMenu(btn, el.dataset.zmenu);
-    return;
-  }
-  if (el.dataset.zoneadd !== undefined){ zoneAddOpen(); return; }
-  if (el.dataset.zoneopt !== undefined){
-    e.stopPropagation();
-    return;                          // 面板里的动作由它自己的监听处理（见 openZoneMenu）
-  }
 
   /* 主题三档（浅色 / 深色 / 跟随系统）：在设置页点 .segbtn[data-theme] 切换。
      不整页刷新（否则设置页会闪），直接就地同步同组三档的 on / aria-pressed。 */
@@ -16087,7 +16103,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '6.1.0';
+const APP_VERSION = '6.1.1';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
