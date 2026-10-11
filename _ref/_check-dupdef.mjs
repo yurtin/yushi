@@ -176,6 +176,9 @@ const NAMES = [
      二级页的面板（openAiPanel）与它的掩码同步（aiPanelSync）。
      被改动的既有函数（renderSettings / setFoldInit）已在上面登记过，不重复加。 */
   'aiEntryText', 'aiEntryLabel', 'aiFieldCommit', 'openAiPanel', 'aiPanelSync',
+  /* ================= 6C 「没写时间的条目默认去哪」改底部面板 ================= */
+  /* 三个新名字：值 → 人话（capZoneLabel）、面板（openCapZoneSheet）、唯一写入口（setCaptureZone）。 */
+  'capZoneLabel', 'openCapZoneSheet', 'setCaptureZone',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }

@@ -220,7 +220,7 @@ console.log('\n[3] 搬迁清单逐项：都在、且落在新分组里');
       '锁屏时全屏响铃': ['[data-set="alarmfull"]', '常用'],
       '语音输入': ['[data-set="voice"]', '常用'],
       '主题': ['[data-theme="dark"]', '常用'],
-      '没写时间的条目默认去哪': ['[data-capzone="idea"]', '录入与理解'],
+      '没写时间的条目默认去哪': ['[data-act="capzoneopen"]', '录入与理解'],
       '常用词': ['[data-act="zonehintclear"]', '录入与理解'],
       '发多少内容': ['[data-aipriv="off"]', '录入与理解'],
       '对 AI 的规范设置': ['#zoneRulesInput', '录入与理解'],
@@ -286,9 +286,14 @@ console.log('\n[4] 逐项还能用：挑 11 个真操作一遍，断言副作用
   /* ⑦ 分段（震动） */
   await ev(`document.querySelector('[data-haptic="high"]').click(); return 1;`); await sleep(240);
   t('分段 · 震动：选一档 → S.haptic 变了', await ev('return S.haptic;'), 'high');
-  /* ⑧ 分段（没写时间的条目默认去哪） */
-  await ev(`document.querySelector('[data-capzone="idea"]').click(); return 1;`); await sleep(320);
-  t('分段 · 没写时间的条目默认去哪：选一档 → S.captureZone 变了', await ev('return S.captureZone;'), 'idea');
+  /* ⑧ 落点（没写时间的条目默认去哪）—— ★ 6C：从一排药丸改成了"当前值 + ›"的按钮 +
+     底部面板；选项住在 #modal 里，所以先点开面板再选（同一档值的语义没变）。 */
+  await ev(`document.querySelector('[data-act="capzoneopen"]').click(); return 1;`); await sleep(320);
+  t('落点面板打开了（选项在 #modal 里，抽屉态）',
+    await ev(`return [document.querySelectorAll('#modal .cap-opt').length, document.getElementById('mask').classList.contains('sheet-mode')];`),
+    [3 + (await ev('return S.zones.length;')), true]);
+  await ev(`document.querySelector('#modal [data-capzone="idea"]').click(); return 1;`); await sleep(320);
+  t('落点 · 选一档 → S.captureZone 变了、面板自动收起', await ev('return [S.captureZone, document.getElementById("mask").classList.contains("on")];'), ['idea', false]);
   /* ⑨ 圆键（想法卡时间显示） */
   const d0 = await ev(`return [S.dateShow.d, document.getElementById('datePrev').textContent];`);
   await ev(`document.querySelector('[data-datepart="d"]').click(); return 1;`); await sleep(240);

@@ -1956,13 +1956,25 @@ body[data-help="off"] .set-row .set-txt > span{
   background:var(--bg);color:var(--fg);border-color:var(--bg);
   box-shadow:0 2px 10px color-mix(in srgb,var(--glass-edge) 45%,transparent);
 }
-/* ★ v5.0：设置页的两选一（没写时间的条目默认去哪）。两颗 pill 并排，
-   选中态沿用全站 `.pill.on`，不新造一套"选中"语言。 */
-.seg-cap{display:flex;gap:6px;flex:0 0 auto;align-self:center}
-.seg-cap .pill{padding:6px 14px;font-size:13px}
+/* ★ 6C（2026-10-11，用户原话："万一它分了很多区呢？弄一个抽屉把这些按钮排成队列，
+   让它上下滑动去选"）：设置页「没写时间的条目默认去哪」原来是一排药丸（.seg-cap）。
+   分区可自建之后这一行会被撑爆 —— 真机截图里药丸横向溢出，连标题都被挤成一列单字
+   （每行只剩一个字："没 / 写 / 时 / 间 / 的…"）。改成恒定高度的一枚按钮：
+   右边显示当前值，点开底部面板去选，选项再多也是列表自己滚。 */
+.set-pick{
+  display:inline-flex;align-items:center;gap:6px;max-width:46vw;
+  border:1px solid var(--line2,var(--line));background:var(--pill);
+  color:var(--fg);border-radius:999px;padding:7px 12px;
+  font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;
+}
+/* max-width 是硬要求：值可能是用户自建的长分区名，不设上限照样把左边的标题挤竖。 */
+.set-pick .sp-v{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.set-pick .sp-arr{color:var(--muted);font-weight:800;line-height:1}
+@media (hover:hover){ .set-pick:hover{border-color:var(--fg)} }
+.set-pick:active{transform:scale(.97)}
 /* ★ v5.0：设置页里"清空示例"在没有示例时禁用 —— 灰掉比"点了弹个提示"更早说明情况。
    （pointer-events:none 是给触摸端的：disabled 在部分 WebView 里仍会收到 pointerdown） */
-.seg-cap .pill[disabled],.pill.is-off{opacity:.4;pointer-events:none}
+.pill.is-off{opacity:.4;pointer-events:none}
 /* 空态里的动作按钮：空态原本只有一段文字，加一个入口时要让它跟文字留出呼吸 */
 .empty-acts{margin-top:14px;display:flex;justify-content:center}
 .set-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 16px;
@@ -3305,6 +3317,24 @@ html.soft-render .mask.sheet-mode .modal{max-height:calc(82vh - var(--kb,0px))}
 .si-hint{margin-left:auto;font-size:12px;color:var(--faint);text-align:right}
 .sheet-foot{padding-top:10px}
 .sheet-foot .btn{width:100%}
+/* ★ 6C：「没写时间的条目默认去哪」底部面板里的选项行。
+   上限 52vh = 超过面板高度的七成就内部滚动（用户 2026-10-11 选的口径）；
+   面板本身是 82vh，52vh 的列表 + 头 + 脚刚好不出界。滚动条一律不画
+   （与 .modal 同一条纪律：滚动条会占掉右侧留白，看着像"内容贴边"）。 */
+.cap-list{max-height:52vh;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;-ms-overflow-style:none}
+.cap-list::-webkit-scrollbar{width:0;height:0}
+.cap-opt{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  border:0;background:none;padding:13px 12px;border-radius:14px;cursor:pointer;
+  color:var(--fg);font-size:15px;font-weight:600;font-family:inherit;
+  transition:background var(--mo-base) ease;
+}
+@media (hover:hover){ .cap-opt:hover{background:var(--pill-hover,var(--pill))} }
+.cap-opt:active{background:var(--pill)}
+.cap-opt .co-tx{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cap-opt .co-tick{flex:0 0 auto;color:var(--muted);opacity:0;font-weight:800}
+.cap-opt.on{font-weight:800}
+.cap-opt.on .co-tick{opacity:1;color:var(--fg)}
 /* 长按起手：给一点"按住了"的反馈。**只缩不放**，不做位移 —— 卡片在滚动区里，
    任何位移都会和"按住想上下滑一点"打架。 */
 .idea-card.pressing{transform:scale(.985)}
@@ -3906,6 +3936,15 @@ function zoneNameOf(k){
   if (k === '') return '未分组';
   const z = zlist().find(x => x.k === k);
   return z ? String(z.name) : '未分组';
+}
+/* ★ 6C：「没写时间的条目默认去哪」的当前值 → 设置行右边那枚按钮上的文字。
+   'auto' / 'idea' 是设置自己的两个特殊值；'' 与"分区已被删掉"都说「不进任何分区」
+   （后者与 sanitizeItemZones 的兜底一致 —— 认不出的 k 最终就是未分组）。 */
+function capZoneLabel(k){
+  if (k === 'auto') return '自动';
+  if (k === 'idea') return '想法';
+  const z = k ? zlist().find(x => x.k === k) : null;
+  return z ? String(z.name) : '不进任何分区';
 }
 /* 「长期」这一类默认分区在表里的那个 k（老数据的默认落点）。表被改名不影响它，被删掉才返回 ''。 */
 function zoneLongKey(){
@@ -5197,7 +5236,8 @@ const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', t
        lastScanAt     上次 AI 关联扫描的时间戳（距今 > 24h 才再扫）
        ideaReview     「想法回顾」总开关（设置页），默认开
        ideaReviewDone 今天已经把回顾抽屉处理完了（存日期）—— 当天不再推，次日自动失效
-       captureZone    「没写时间的条目默认去哪」：'auto'（默认，让模型判长期还是想法）| 'long' | 'idea'
+       captureZone    「没写时间的条目默认去哪」：'auto'（默认，让模型判）| 'idea' | ''（不进任何分区）
+                      | 分区表里任意一个 k（7B 起落点是分区键；6C 起显式选定会真的生效）
        ideaGestureSeen 想法页的手势说明是否已经自动弹过一次
        ideaLayout     想法页主视图：'list'（默认，卡片流）| 'tree'（树状图） */
   ideaUsedAt: null, lastOpenedSeed: null, lastScanAt: 0, ideaReview: true, ideaReviewDone: null,
@@ -5442,8 +5482,10 @@ function load(){
       S.lastScanAt = Number.isFinite(o.lastScanAt) ? o.lastScanAt : 0;
       S.ideaReview = o.ideaReview !== false;
       S.ideaReviewDone = typeof o.ideaReviewDone === 'string' ? o.ideaReviewDone : null;
-      /* ★ 7B：可选值现在是 auto / idea / 任意分区的 k（老存档里的 'long' 认不出 → auto）。 */
-      S.captureZone = (o.captureZone === 'idea' || o.captureZone === 'auto' || validZoneKey(o.captureZone))
+      /* ★ 7B：可选值现在是 auto / idea / 任意分区的 k（老存档里的 'long' 认不出 → auto）。
+         ★ 6C：'' 也是合法值（不进任何分区 / 未分组）—— 漏掉它的话用户选完
+             "不进任何分区"，下次冷启动会被 load() 悄悄改回 auto。 */
+      S.captureZone = (o.captureZone === 'idea' || o.captureZone === 'auto' || o.captureZone === '' || validZoneKey(o.captureZone))
         ? o.captureZone : 'auto';
       S.ideaGestureSeen = o.ideaGestureSeen === true;
       S.ideaLayout = o.ideaLayout === 'tree' ? 'tree' : 'list';
@@ -8141,6 +8183,52 @@ function openSeedSheet(it){
      <div class="sheet-foot"><button type="button" class="btn" data-act="sheetclose">取消</button></div>`;
   openMask(true);
 }
+/* ★ 6C（用户 2026-10-11）：设置页「没写时间的条目默认去哪」的底部面板。
+   形态完全复用 openSeedSheet 那一套（同一个 .sheet-head / .sheet-list / .sheet-foot +
+   openMask(true) 的抽屉态），**不新造浮层**。
+   为什么是"点一下即生效并关闭"：与原来那一排药丸的行为一致（少一次确认）；
+   取消出口 = 面板底部的「取消」/ 点遮罩 / 返回键 / Esc，四条路都只 closeModal，一个字不写。
+   ⚠️ 面板住在 #modal 里，**拿不到 #view 的事件委托**（委托挂在 view 上），
+      所以每个选项要自己挂 onclick —— 照 6B 的 openAiPanel 用同一条办法。 */
+function openCapZoneSheet(){
+  /* 选项行的样子：整行可点、右边一枚勾。名称可能很长（用户自建分区名），
+     .co-tx 负责省略号，行高不变。
+     前三条**手写、不走生成器** —— `data-capzone="auto"` 这类字面量是
+     _ref/_2b-regress.mjs 的源码级契约（它钉的是"设置里一定能选到 auto / 分区 / idea"），
+     用模板拼出来会让那条断言看不见它们。 */
+  const rowCls = k => 'cap-opt' + (S.captureZone === k ? ' on' : '');
+  const rowAria = k => S.captureZone === k ? 'true' : 'false';
+  modal.innerHTML =
+    `<div class="sheet-head"><b>没写时间的条目默认去哪</b></div>
+     <div class="sheet-list cap-list" role="radiogroup" aria-label="没写时间的条目默认去哪">
+       <button type="button" class="${rowCls('auto')}" role="radio" aria-checked="${rowAria('auto')}" data-capzone="auto">
+         <span class="co-tx">自动</span><span class="co-tick" aria-hidden="true">✓</span></button>
+       <button type="button" class="${rowCls('idea')}" role="radio" aria-checked="${rowAria('idea')}" data-capzone="idea">
+         <span class="co-tx">想法</span><span class="co-tick" aria-hidden="true">✓</span></button>
+       <button type="button" class="${rowCls('')}" role="radio" aria-checked="${rowAria('')}" data-capzone="">
+         <span class="co-tx">不进任何分区</span><span class="co-tick" aria-hidden="true">✓</span></button>
+       ${S.zones.map(z => `<button type="button" class="cap-opt${S.captureZone === z.k ? ' on' : ''}"
+               role="radio" aria-checked="${S.captureZone === z.k ? 'true' : 'false'}" data-capzone="${esc(z.k)}">
+             <span class="co-tx">${esc(String(z.name))}</span><span class="co-tick" aria-hidden="true">✓</span></button>`).join('')}
+     </div>
+     <div class="sheet-foot"><button type="button" class="btn" data-act="sheetclose">取消</button></div>`;
+  openMask(true);
+  modal.querySelectorAll('.cap-opt').forEach(b => { b.onclick = () => setCaptureZone(b.dataset.capzone); });
+}
+/* ★ 6C：「没写时间的条目默认去哪」的**唯一写入口**（设置行的面板走它；
+   老的 #view 委托分支也留着走它，防止还有别处渲染 data-capzone）。
+   取值范围：'auto'（让 AI 判）/ 'idea'（直接长成想法）/ ''（不进任何分区）/ 分区表里的 k。
+   认不出的一律退回 'auto'（与 load() 的处置一致）。 */
+function setCaptureZone(cz){
+  const v = String(cz == null ? '' : cz);
+  S.captureZone = (v === 'idea' || v === 'auto' || v === '' || validZoneKey(v)) ? v : 'auto';
+  if (mask.classList.contains('on')) closeModal();
+  save(); refresh();
+  toast(S.captureZone === 'idea' ? '以后没写时间的条目直接长成想法'
+    : S.captureZone === 'auto' ? '以后没写时间的条目交给 AI 判：念头进想法，正经事进长期'
+    : S.captureZone === '' ? '以后没写时间的条目都进「未分组」'
+    : '以后没写时间的条目默认进「' + zoneNameOf(S.captureZone) + '」');
+}
 /* ★ 5I：第 5 参 initial 是给「改这一步」预填原文用的（省略时行为与改动前逐字一致）。
    预填时全选 —— 直接打字就是替换，不用先手动清空。 */
 function openSeedPrompt(title, label, placeholder, onOk, initial){
@@ -10421,21 +10509,21 @@ function renderSettings(){
         <div class="set-row">
           <div class="set-txt">
             <b>没写时间的条目默认去哪</b>
-            <span>新建时如果一句话里没解析出任何日期，它算「长期待办」还是直接算「想法」。
-              选「想法」的话，随手记下的半截念头不用再点一次「存入想法」。
+            <span>新建时如果一句话里没解析出任何日期，它算哪一栏。
+              选「想法」的话，随手记下的半截念头不用再点一次「存入想法」；
+              也可以直接指名某一个分区，或让它先不进任何分区。
               <b>「自动」＝让 AI 读那句话替你判</b>：它觉得是个念头就进想法，觉得是件正经事就进长期；
               判不了就照旧算长期。</span>
           </div>
-          <div class="seg-cap" role="group" aria-label="没写时间的条目默认去哪">
-            <button type="button" class="pill${S.captureZone === 'auto' ? ' on' : ''}"
-                    data-capzone="auto" aria-pressed="${S.captureZone === 'auto' ? 'true' : 'false'}">自动</button>
-            <!-- ★ 7B：原来这里是写死的「长期」。分区可配置之后，"默认去哪"也得能选到
-                 用户自己建的那些分区（否则他建了「学习」却指不进去）。 -->
-            ${S.zones.map(z => `<button type="button" class="pill${S.captureZone === z.k ? ' on' : ''}"
-                    data-capzone="${esc(z.k)}" aria-pressed="${S.captureZone === z.k ? 'true' : 'false'}">${esc(z.name)}</button>`).join('')}
-            <button type="button" class="pill${S.captureZone === 'idea' ? ' on' : ''}"
-                    data-capzone="idea" aria-pressed="${S.captureZone === 'idea' ? 'true' : 'false'}">想法</button>
-          </div>
+          <!-- ★ 6C：原来这里是一排药丸（auto + 每个分区 + idea）。分区可自建之后
+               药丸会横向溢出、把左边标题挤成一列单字（真机截图）。
+               改成"当前值 + ›"的按钮，点开底部面板选 —— 选项再多也只是列表滚动。 -->
+          <button type="button" class="set-pick" data-act="capzoneopen"
+                  aria-haspopup="dialog"
+                  aria-label="没写时间的条目默认去哪：${esc(capZoneLabel(S.captureZone))}">
+            <span class="sp-v">${esc(capZoneLabel(S.captureZone))}</span>
+            <span class="sp-arr" aria-hidden="true">›</span>
+          </button>
         </div>
         <!-- 常用词：AI 只拿它纠同音错字。（6B：原来并排的「试连接 / 现在找一次」按渐进披露
              搬进二级页「AI 连接」—— 那两个是"配一次"的动作，不是天天看的数字。） -->
@@ -12385,6 +12473,20 @@ async function commitEntry(opts){
     made = aiCommitPlan(plan, v);
   }
   const it = made[0] || null;
+  /* ★ 6C（用户 2026-10-11）：「没写时间的条目默认去哪」里**除 auto / idea 外的第三个档**接上。
+     7B 把可选值从 long/idea 扩成了"分区表里的任意一个 k"，但只有 idea（长成想法）与
+     auto（问 AI 落点）这两条真被消费过 —— 用户选「短期」时，条目仍然按 parseSmart 的默认
+     落「长期」，随后还可能被 AI 落点改走。用户视角就是"我明明选了这一档，它根本没理我"。
+     口径：**显式选定的落点优先于解析默认，也优先于 AI 落点**；''（不进任何分区）同此。
+     只在"没写日期也没有钟点"时生效 —— 写了时间的条目自己有明确落点，不该被这条覆盖。 */
+  const czNow = S.captureZone;
+  const czExplicit = (czNow === '') ? ''
+    : (czNow && czNow !== 'auto' && czNow !== 'idea' && validZoneKey(czNow)) ? czNow : null;
+  if (it && czExplicit !== null && !it.date && !it.time && it.zone !== 'idea'){
+    it.zone = czExplicit;
+    it.zoneBy = 'capture';
+    if (typeof save === 'function') save();
+  }
   /* ★ 2B（用户 2026-10-08）：把 AI **纠错后的整句**也留下来。
      为什么：用户真机录「我大后天要去图书馆还从图书馆借的书」，本地识别吐的是
      "我大要去图书馆还长图书馆借的书"，AI 其实能纠回来，但这个字段一直没人接，
@@ -12424,7 +12526,9 @@ async function commitEntry(opts){
        这条老口径打红。判的是条目自己的 date / time（本地解析出来的就是它们），
        不是再解析一遍原文。
        转发口用 typeof 守卫 —— 纯 Node 回归把 commitEntry 切进隔离环境时没有这一层。 */
-    if (!it.date && !it.time && it.zone !== 'idea' && typeof zoneAdvisorAsk === 'function'){
+    /* ★ 6C：显式选定的落点（某个分区 / 不进任何分区）已经在上一步定死，这里不再问 AI ——
+       否则模型会把用户亲手选的栏目再改走，等于设置没生效。 */
+    if (!it.date && !it.time && it.zone !== 'idea' && czExplicit === null && typeof zoneAdvisorAsk === 'function'){
       /* preset 一并交过去：带 dayParts（早中晚）或 path 的条目是**结构型**的，
          它的"归哪一栏"由结构本身决定，再问一次模型既白花钱也会把父条目的归属改掉
          （实测 _5e-dom：'早中晚吃药' 的父条目没有 date/time，于是凭空多发了一次请求）。
@@ -13048,17 +13152,13 @@ view.addEventListener('click', e => {
     }
     return;
   }
-  /* ★ v5.0：「没写时间的条目默认去哪」—— 只改默认落点，不改录入流程本身。
-     ★ 7B：可选值从写死的 long / idea 扩成"分区表里的任意一个 k"（外加 auto / idea）。 */
-  if (el.dataset.capzone){
-    const cz = el.dataset.capzone;
-    S.captureZone = (cz === 'idea' || cz === 'auto') ? cz : (validZoneKey(cz) ? cz : 'auto');
-    save(); refresh();
-    toast(S.captureZone === 'idea' ? '以后没写时间的条目直接长成想法'
-      : S.captureZone === 'auto' ? '以后没写时间的条目交给 AI 判：念头进想法，正经事进长期'
-      : '以后没写时间的条目默认进「' + zoneNameOf(S.captureZone) + '」');
-    return;
-  }
+  /* ★ 6C：「没写时间的条目默认去哪」——设置行现在只是一枚"当前值 + ›"的按钮。
+     真正的选项在 openCapZoneSheet() 的底部面板里，而面板住在 #modal，
+     **走不到这里的委托**（委托挂在 #view 上）→ 面板内的选项自己挂 onclick。
+     这里保留一条兜底分支：任何还带 [data-capzone] 的元素照样能用，
+     两处共用 setCaptureZone() 这一个写入口。 */
+  if (act === 'capzoneopen'){ openCapZoneSheet(); return; }
+  if (el.dataset.capzone !== undefined){ setCaptureZone(el.dataset.capzone); return; }
   /* ---- ★ v5.0 回顾抽屉 ---- */
   if (act === 'reviewtoggle'){
     const cur = ideaUI.reviewOpen === null ? (reviewDaysSinceUse() > 7) : !!ideaUI.reviewOpen;
@@ -15816,7 +15916,8 @@ window.addEventListener('drop', e => {
           if (Number.isFinite(o.lastScanAt)) S.lastScanAt = o.lastScanAt;
           if (typeof o.ideaReview === 'boolean') S.ideaReview = o.ideaReview;
           if (typeof o.ideaReviewDone === 'string') S.ideaReviewDone = o.ideaReviewDone;
-          if (o.captureZone === 'idea' || o.captureZone === 'auto' || validZoneKey(o.captureZone)) S.captureZone = o.captureZone;
+          /* ★ 6C：''（不进任何分区）同样是合法落点，恢复备份时要能带回来。 */
+          if (o.captureZone === 'idea' || o.captureZone === 'auto' || o.captureZone === '' || validZoneKey(o.captureZone)) S.captureZone = o.captureZone;
           if (typeof o.ideaGestureSeen === 'boolean') S.ideaGestureSeen = o.ideaGestureSeen;
           if (o.ideaLayout === 'tree' || o.ideaLayout === 'list') S.ideaLayout = o.ideaLayout;
           /* ★ 审查修复（2026-10-04）：snapshot() 里写了 setOpen / aiMode / aiBase / aiModel /

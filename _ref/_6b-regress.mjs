@@ -108,12 +108,20 @@ tOk('设置页那一段切得出来（renderSettings → setFoldInit）', region
 /* ==================================================================== */
 console.log('[1] 搬迁清单逐项：新结构里找得到（集合相等，不许抽检）');
 {
-  const attrs = new Set(regionCode.match(/data-[a-z]+="[^"]*"/g) || []);
+  /* ★ 6C：设置页的落点选项（data-capzone 三条）从那一行搬进了底部面板 openCapZoneSheet()，
+     面板函数住在 renderSettings **之前**，因此"搬掉了"不等于"没了" ——
+     属性集合的取样范围加上这个函数体，断言仍然问的是"这些控件还在不在"。 */
+  const panelCode = stripComments(extractFn(html, 'openCapZoneSheet'));
+  const attrs = new Set((regionCode + panelCode).match(/data-[a-z]+="[^"]*"/g) || []);
   const oldAttrs = new Set(base.attrPairs);
   const missed = base.attrPairs.filter(a => !attrs.has(a));
   t('改动前的 ' + base.attrPairs.length + ' 个 data-* 组合一个不少', missed, []);
   const added = [...attrs].filter(a => !oldAttrs.has(a)).sort();
-  t('data-* 只多了二级页入口那一处', added, ['data-act="aipanel"']);
+  /* ★ 6C 起多的一处是设置行那枚"当前值 + ›"的按钮（data-act="capzoneopen"）；
+     新增的还有面板自己的取消键（data-act="sheetclose"）与"不进任何分区"那一项的
+     空值属性（data-capzone=""）—— 面板本身住在 openCapZoneSheet() 里，不在本段内。 */
+  t('data-* 只多了面板入口 + 面板取消键 + 空值那一项',
+    added, ['data-act="aipanel"', 'data-act="capzoneopen"', 'data-act="sheetclose"', 'data-capzone=""']);
 
   const ids = new Set((regionCode.match(/\bid="[A-Za-z0-9_]+"/g) || []).map(s => s.slice(4, -1)));
   const missedIds = base.ids.filter(a => !ids.has(a));
@@ -144,7 +152,8 @@ console.log('[1] 搬迁清单逐项：新结构里找得到（集合相等，不
 /* ==================================================================== */
 console.log('\n[2] 逐项处理逻辑：与改动前逐字符一致');
 {
-  const SKIP = { 'change.aiFields': '内容搬进 aiFieldCommit（见 [2b]）' };
+  const SKIP = { 'change.aiFields': '内容搬进 aiFieldCommit（见 [2b]）',
+    'data.capzone': '6C 起收口到 setCaptureZone()（见 [2d]）' };
   for (const [k, anchor] of Object.entries(base.handlerAnchors)){
     if (SKIP[k]) continue;
     const kind = base.handlerKinds[k];
@@ -176,12 +185,37 @@ console.log('\n[2c] setFoldInit 只多了一行"跳过常用卡"的守卫，其�
   tOk('去掉守卫行之后与改动前一致', stripped === base.fn.setFoldInit);
   tOk('守卫行确实在（常用卡不参与折叠）', /if \(card\.classList\.contains\('set-keep'\)\) return;/.test(now));
 }
+console.log('\n[2d] 落点设置的写入口（6C：一排药丸 → 一行"当前值 + ›" + 底部面板）');
+{
+  /* 6C 把"写 S.captureZone"收进了 setCaptureZone() 一处：设置行的面板与 #view 的兜底分支都走它。
+     这一节代替原来那条逐字符比对的分支（旧文本编码的是"药丸各自的 onclick 内联写值"）。 */
+  const setter = extractFn(html, 'setCaptureZone');
+  tOk('唯一写入口存在，且认全四类值（auto / idea / 空串 / 分区 k）',
+    /S\.captureZone = \(v === 'idea' \|\| v === 'auto' \|\| v === '' \|\| validZoneKey\(v\)\)/.test(setter));
+  tOk('写入口自己关弹层 + 落库 + 重画 + 提示（不给调用点留分支）',
+    /closeModal\(\)/.test(setter) && /save\(\); refresh\(\);/.test(setter) && /toast\(/.test(setter));
+  tOk('#view 的兜底分支与面板共用这一个入口（不再各写一份赋值）',
+    /if \(act === 'capzoneopen'\)\{ openCapZoneSheet\(\); return; \}/.test(html)
+    && /if \(el\.dataset\.capzone !== undefined\)\{ setCaptureZone\(el\.dataset\.capzone\); return; \}/.test(html));
+  const cAll = (html.match(/S\.captureZone = /g) || []).length;
+  tOk('全文件写 S.captureZone 的地方只有 3 处：load / 恢复备份 / setCaptureZone（不在别处各写一份）',
+    cAll === 3, String(cAll));
+  tOk('面板里的选项行由面板自己挂 onclick（#modal 拿不到 #view 的委托）',
+    /modal\.querySelectorAll\('\.cap-opt'\)\.forEach\(b => \{ b\.onclick = \(\) => setCaptureZone\(b\.dataset\.capzone\); \}\)/.test(extractFn(html, 'openCapZoneSheet')));
+}
 
 /* ==================================================================== */
 console.log('\n[3] 红线 · 数据一个字节没动');
 {
   for (const fn of ['save', 'snapshot', 'load', 'refreshNotifyPerm', 'refreshNotifyExact']){
-    tOk(fn + '() 逐字符一致', extractFn(html, fn) === base.fn[fn]);
+    /* ★ 6C：'' 成了「没写时间的条目默认去哪」的合法取值（不进任何分区），
+       load() 的校验因此多认一档空串（注释里也写了这条）。除这一处外 load() 仍与基线逐字符一致 ——
+       比的是去注释后的正文，因为这段改动自带一句说明注释。 */
+    const now = extractFn(html, fn);
+    const same = (fn === 'load')
+      ? stripComments(now).replace("o.captureZone === '' || ", '') === stripComments(base.fn[fn])
+      : now === base.fn[fn];
+    tOk(fn + '() 逐字符一致' + (fn === 'load' ? '（6C 起多认一档空串）' : ''), same);
   }
   tOk('S 的 setOpen 默认值仍是空数组（没为了"常用默认展开"去改数据）',
     /setOpen:\s*\[\]/.test(code));
