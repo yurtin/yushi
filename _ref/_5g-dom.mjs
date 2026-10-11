@@ -176,29 +176,34 @@ console.log('\n[3] 设置页：页脚灰字删除 / 展开→关闭布局稳定 
   t('[3] 没有任何 data-keephelp 元素', s0.keephelp, false);
   tOk('[3] 「关于」栏里那段版本介绍不在（"装在这台手机上的独立 App"）',
     s0.aboutTxt.indexOf('装在这台手机上的独立 App') < 0);
-  /* ★ 6B 改断言（脚本漂移）：原来这条写的是"收起态装得下（不需要滑动）"—— 那是 5 张卡
-     **全收起**时的口径。6B 按用户要求把「常用」改成默认展开（改动 3：频率优先），
-     这一页必然比一屏高（实测溢出 ~550px），所以判据换成新口径：
-     ①「常用」栏是展开的；②因此页面可滑。**"首屏够不够用"的新断言在 _ref/_6b-dom.mjs [7]**
-     （用户点名的那三样底边不越基准线）。 */
-  const keep = await ev(`var c = document.querySelector('.set-card.set-keep');
-    return c ? { open: c.classList.contains('open'), rows: c.querySelectorAll('.set-row').length,
-      head: !!c.querySelector('.set-head') } : null;`);
-  tOk('[3] 「常用」栏默认展开、且没有折叠头（6B：常驻展开）',
-    keep && keep.open === true && keep.head === false && keep.rows >= 3, JSON.stringify(keep));
-  tOk('[3] 收起态页面可滑（常用默认展开的预期结果，不是布局破）',
-    s0.scrollable === true, 'scrollH=' + s0.scrollH + ' clientH=' + s0.clientH);
+  /* ★ 7D 改断言（脚本漂移，0F/5F 惯例）：6B 那版把「常用」做成常驻展开，所以这里守着
+     "页面可滑"；7D 把「常用」整条撤了、**四栏一律默认收起** → 这一页回到"一屏装得下"，
+     断言换回来：①四栏都在、都收起；②收起态装得下（不需要滑动）。
+     "展开后能不能滑 / 底栏挡不挡内容"的新断言在 _ref/_6b-dom.mjs [7]。 */
+  const folds = await ev(`var cards = [].slice.call(document.querySelectorAll('.set-wrap .set-card'));
+    return { n: cards.length, open: cards.filter(function(c){ return c.classList.contains('open'); }).length,
+      keep: !!document.querySelector('.set-card.set-keep'),
+      heads: cards.map(function(c){ var h = c.querySelector('h3'); return h ? h.textContent.trim() : '?'; }) };`);
+  tOk('[3] 四栏都在、都带折叠头、默认全部收起（「常用」那张卡已撤）',
+    folds.n === 4 && folds.open === 0 && folds.keep === false,
+    JSON.stringify(folds));
+  tOk('[3] 四栏全收起后这一页装得下（不需要滑动）',
+    s0.scrollable === false, 'scrollH=' + s0.scrollH + ' clientH=' + s0.clientH);
 
-  /* 展开「录入与理解」（6B 之后原来那张「功能」卡拆成了常用 / 录入与理解两栏）→ 再关闭 */
+  /* 展开「AI」→ 再关闭 */
   await ev(`
-    var h = [].slice.call(document.querySelectorAll('.set-head')).filter(function(x){ return /录入与理解/.test(x.textContent); })[0];
+    var h = [].slice.call(document.querySelectorAll('.set-head')).filter(function(x){ return x.textContent.trim().indexOf('AI') === 0; })[0];
     h.click(); return 1;`);
   await sleep(500);
   const opened = await ev(shot);
-  tOk('[3] 展开「录入与理解」后页面更长（scrollHeight 变大）',
-    opened.scrollH > s0.scrollH + 50, 'scrollH ' + s0.scrollH + ' → ' + opened.scrollH);
+  /* ★ 7D：四栏全收起之后这一页就短了 —— 展开「AI」后它自己的内容体撑开就好，
+     不再要求"整页 scrollHeight 一定变大"（内容变多了但仍在首屏内，scrollHeight 不变）。 */
+  const aiBodyH = await ev(`var c = [].slice.call(document.querySelectorAll('.set-wrap .set-card')).filter(function(x){ return x.querySelector('h3').textContent.trim()==='AI'; })[0];
+    return +c.querySelector('.set-body').getBoundingClientRect().height.toFixed(1);`);
+  tOk('[3] 展开「AI」后它自己的内容体撑开了（高度 > 50）',
+    aiBodyH > 50, 'AI 内容体高=' + aiBodyH + '；scrollH ' + s0.scrollH + ' → ' + opened.scrollH);
   await ev(`
-    var h = [].slice.call(document.querySelectorAll('.set-head')).filter(function(x){ return /录入与理解/.test(x.textContent); })[0];
+    var h = [].slice.call(document.querySelectorAll('.set-head')).filter(function(x){ return x.textContent.trim().indexOf('AI') === 0; })[0];
     h.click(); return 1;`);
   await sleep(700);
   const s1 = await ev(shot);

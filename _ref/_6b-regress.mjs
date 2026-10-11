@@ -119,9 +119,11 @@ console.log('[1] 搬迁清单逐项：新结构里找得到（集合相等，不
   const added = [...attrs].filter(a => !oldAttrs.has(a)).sort();
   /* ★ 6C 起多的一处是设置行那枚"当前值 + ›"的按钮（data-act="capzoneopen"）；
      新增的还有面板自己的取消键（data-act="sheetclose"）与"不进任何分区"那一项的
-     空值属性（data-capzone=""）—— 面板本身住在 openCapZoneSheet() 里，不在本段内。 */
-  t('data-* 只多了面板入口 + 面板取消键 + 空值那一项',
-    added, ['data-act="aipanel"', 'data-act="capzoneopen"', 'data-act="sheetclose"', 'data-capzone=""']);
+     空值属性（data-capzone=""）—— 面板本身住在 openCapZoneSheet() 里，不在本段内。
+     ★ 7D：「数据」栏最底下那行版本号多了一枚可点入口（data-act="changelogopen"）。 */
+  t('data-* 只多了面板入口 + 面板取消键 + 空值那一项 + 更新日志入口',
+    added, ['data-act="aipanel"', 'data-act="capzoneopen"', 'data-act="changelogopen"',
+      'data-act="sheetclose"', 'data-capzone=""']);
 
   const ids = new Set((regionCode.match(/\bid="[A-Za-z0-9_]+"/g) || []).map(s => s.slice(4, -1)));
   const missedIds = base.ids.filter(a => !ids.has(a));
@@ -178,12 +180,15 @@ console.log('\n[2b] AI 三格输入的副作用语句（原来在 #view 的 chan
   tOk('#view 的 change 代理仍留着（同一处落库口，两条路共用）',
     /view\.addEventListener\('change', e => \{\s*if \(aiFieldCommit\(e\.target\)\) return;\s*\}\);/.test(html));
 }
-console.log('\n[2c] setFoldInit 只多了一行"跳过常用卡"的守卫，其余逐字符一致');
+console.log('\n[2c] setFoldInit：7D 删掉"跳过常用卡"的守卫，其余逐字符一致');
 {
+  /* ★ 7D：「常用」那一栏整条撤了 → 6B 为它造的 `.set-keep`（常驻展开、不折叠）机制一起删。
+     这是"改断言不改代码"里的"断言跟着设计的撤销走"：比的是"去掉基线里那一行守卫之后"，
+     不是"必须还留着守卫"。 */
+  const guard = /\n?\s*if \(card\.classList\.contains\('set-keep'\)\) return;/;
   const now = extractFn(html, 'setFoldInit');
-  const stripped = now.replace(/\r?\n\s*if \(card\.classList\.contains\('set-keep'\)\) return;/, '');
-  tOk('去掉守卫行之后与改动前一致', stripped === base.fn.setFoldInit);
-  tOk('守卫行确实在（常用卡不参与折叠）', /if \(card\.classList\.contains\('set-keep'\)\) return;/.test(now));
+  tOk('守卫行已删（四栏一律走折叠、默认全收起）', !guard.test(now));
+  tOk('去掉基线里那一行守卫之后与改动前一致', now === base.fn.setFoldInit.replace(guard, ''));
 }
 console.log('\n[2d] 落点设置的写入口（6C：一排药丸 → 一行"当前值 + ›" + 底部面板）');
 {
@@ -255,17 +260,41 @@ console.log('\n[4] 红线 · 不新增浮层机制（二级页住在现有 #mask
 }
 
 /* ==================================================================== */
-console.log('\n[5] 新结构本身（四栏 + 一行 AI 状态；常用常驻展开；动作与状态分开）');
+console.log('\n[5] 新结构本身（7D：功能 / AI / 外观与体感 / 数据；四栏都默认收起；动作与状态分开）');
 {
   const heads = [...regionCode.matchAll(/<h3>([^<]*?)<\/h3>/g)].map(m => m[1]);
-  t('主列表四栏，顺序 = 常用 / 录入与理解 / 外观与体感 / 数据',
-    heads, ['常用', '录入与理解', '外观与体感', '数据']);
-  tOk('「功能」「AI」「关于」不再单独成卡（只剩这四栏）',
-    !/<h3>功能<\/h3>/.test(regionCode) && !/<h3>AI<\/h3>/.test(regionCode) && !/<h3>关于<\/h3>/.test(regionCode));
-  tOk('「常用」常驻展开：带 set-keep + open 两个标记',
-    /class="glass set-card set-keep open\$\{rv\(\)\}"/.test(region));
-  tOk('那一行 AI 状态不是 .set-card（不进折叠清单、不占"栏目"语义）',
-    /class="glass ai-entry\$\{rv\(\)\}"/.test(region) && /data-act="aipanel"/.test(region));
+  t('主列表四栏，顺序 = 功能 / AI / 外观与体感 / 数据',
+    heads, ['功能', 'AI', '外观与体感', '数据']);
+  tOk('「常用」「录入与理解」「关于」都不再是栏目名',
+    !/<h3>常用<\/h3>/.test(regionCode) && !/<h3>录入与理解<\/h3>/.test(regionCode)
+    && !/<h3>关于<\/h3>/.test(regionCode));
+  /* ★ 7D：「常用」那张卡的常驻展开机制（.set-keep）连 CSS 带守卫一起清掉 ——
+     留一句注释说明"为什么删"是允许的，但去注释后不许再出现这个选择器。 */
+  tOk('「常用」的常驻展开机制（.set-keep）整条清净（去注释后 0 处）',
+    !/set-keep/.test(code));
+  const aiAt = regionCode.indexOf('<h3>AI</h3>');
+  const lookAt = regionCode.indexOf('<h3>外观与体感</h3>');
+  const dataAt = regionCode.indexOf('<h3>数据</h3>');
+  const fnCard = regionCode.slice(0, aiAt);
+  const aiCard = regionCode.slice(aiAt, lookAt);
+  const lookCard = regionCode.slice(lookAt, dataAt);
+  const dataCard = regionCode.slice(dataAt);
+  tOk('「功能」栏收了提醒 / 锁屏响铃 / 语音输入 / 想法回顾 / 子任务联动 五样',
+    ['data-set="notify"', 'data-set="alarmfull"', 'data-set="voice"',
+      'data-set="ideaReview"', 'data-set="autoDoneParent"'].every(x => fnCard.indexOf(x) >= 0));
+  tOk('「功能」栏里没有主题（它搬回外观了）', fnCard.indexOf('data-theme=') < 0);
+  tOk('那一行 AI 状态住在「AI」卡里（.ai-entry 仍是按钮，data-act="aipanel" 没变）',
+    /class="glass ai-entry"[^>]*data-act="aipanel"/.test(aiCard));
+  tOk('AI 栏里还有 发多少内容 / 常用词 / 规范设置 / 默认落点 / AI 写过的话',
+    ['发多少内容', '常用词', '对 AI 的规范设置', '没写时间的条目默认去哪', 'AI 写过的话']
+      .every(x => aiCard.indexOf(x) >= 0));
+  tOk('主题搬回「外观与体感」（data-theme 三档在里面）',
+    lookCard.indexOf('data-theme="light"') >= 0 && lookCard.indexOf('data-theme="dark"') >= 0);
+  tOk('「数据」栏只剩 备份 / 示例数据 / 版本号（AI 写过的话已搬走）',
+    dataCard.indexOf('AI 写过的话') < 0 && dataCard.indexOf('id="exportBtn"') >= 0
+    && dataCard.indexOf('id="setVer"') >= 0);
+  tOk('版本号那行成了更新日志的一级入口（data-act="changelogopen"）',
+    /id="setVer"[^>]*data-act="changelogopen"|data-act="changelogopen"[^>]*id="setVer"/.test(dataCard));
   tOk('状态行的文案由 aiEntryText() 生成（没 key = 未连接）',
     /AI · 已连接 · /.test(extractFn(html, 'aiEntryText')) && /AI · 未连接/.test(extractFn(html, 'aiEntryText')));
   /* 动作按钮：卡面点名的六件 + 清空学到的，一共 7 枚，全部 .set-act，无一复用状态类的类名 */

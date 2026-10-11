@@ -41,7 +41,8 @@ const r = await ev(`
     const nm = c.querySelector('h3') ? c.querySelector('h3').textContent.trim() : c.className;
     out.push([i + ':' + nm, H(c), T(c), B(c)]);
   });
-  const rows = [...document.querySelectorAll('.set-card.set-keep .set-row')];
+  /* ★ 7D：「常用」那张卡整条撤了 —— 这里改成量设置页全部行（原来的 .set-keep 不存在了）。 */
+  const rows = [...document.querySelectorAll('.set-card .set-row')];
   const rowH = rows.map(x => [ (x.querySelector('b')||{}).textContent, H(x), (x.querySelector('.set-txt > span') ? H(x.querySelector('.set-txt > span')) : null) ]);
   return { out, rowH, doc: document.documentElement.scrollHeight, shellPad: getComputedStyle(document.querySelector('.page-shell')).paddingBottom,
     bodyPadTop: getComputedStyle(document.querySelector('.page-shell')).paddingTop };`);

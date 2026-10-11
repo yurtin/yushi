@@ -158,56 +158,55 @@ const tOk = (label, cond, detail) => {
 const gotoSettings = async () => { await ev(`goView('settings'); ANIM=false; return 1;`); await sleep(520); };
 
 /* ==================================================================== */
-console.log('[1] 四栏 + 那一行 AI 状态');
+console.log('[1] 四栏 + 那一行 AI 状态（7D：功能 / AI / 外观与体感 / 数据）');
 await gotoSettings();
 {
   const r = await ev(`
     const heads = [...document.querySelectorAll('.set-wrap .set-card h3')].map(h => h.textContent.trim());
     const entry = document.querySelector('.set-wrap .ai-entry');
+    const card = entry ? entry.closest('.set-card') : null;
     return { heads, entry: entry ? entry.textContent.replace(/\\s+/g, '') : null,
-      entryTag: entry ? entry.tagName : null, entryInCard: entry ? !!entry.closest('.set-card') : null,
+      entryTag: entry ? entry.tagName : null,
+      entryCard: card ? card.querySelector('h3').textContent.trim() : null,
       keep: !!document.querySelector('.set-card.set-keep'),
-      keepHead: !!document.querySelector('.set-card.set-keep .set-head') };`);
-  t('主列表四栏，顺序 = 常用 / 录入与理解 / 外观与体感 / 数据',
-    r.heads, ['常用', '录入与理解', '外观与体感', '数据']);
-  tOk('原来那张「AI」卡的位置是一行状态（AI · 未连接 ›）',
-    r.entryTag === 'BUTTON' && /^AI·(已连接|未连接)/.test(r.entry), r.entry);
-  tOk('它不是 .set-card（不占"栏目"语义、不进折叠清单）', r.entryInCard === false, String(r.entryInCard));
-  tOk('「常用」带 set-keep 且**没有**折叠头（常驻展开）', r.keep && !r.keepHead);
+      keepCss: [...document.styleSheets].some(ss => {
+        try { return [...ss.cssRules].some(x => /\\.set-keep/.test(x.cssText)); } catch(e){ return false; } }) };`);
+  t('主列表四栏，顺序 = 功能 / AI / 外观与体感 / 数据',
+    r.heads, ['功能', 'AI', '外观与体感', '数据']);
+  tOk('那一行 AI 状态是一个按钮，且住在「AI」卡里（AI · 未连接 ›）',
+    r.entryTag === 'BUTTON' && /^AI·(已连接|未连接)/.test(r.entry) && r.entryCard === 'AI',
+    JSON.stringify({ entry: r.entry, card: r.entryCard }));
+  /* ★ 7D：「常用」那一栏整条撤了 → 为它造的 `.set-keep`（常驻展开 / 不折叠）机制跟着删。
+     DOM 与 CSS 两处都要干净。 */
+  tOk('「常用」的常驻展开机制整条清掉（DOM 与 CSS 都没有 .set-keep）',
+    r.keep === false && r.keepCss === false, JSON.stringify({ dom: r.keep, css: r.keepCss }));
 }
 
 /* ==================================================================== */
-console.log('\n[2] 默认折叠态：常用展开，其余收起（量高度，不看类名）');
+console.log('\n[2] 默认折叠态：**四栏全部收起**（量高度，不看类名）');
 {
   const r = await ev(`
     const cards = [...document.querySelectorAll('.set-wrap .set-card')];
-    const rows = [...document.querySelectorAll('.set-card.set-keep .set-row')];
-    const vis = rows.filter(x => x.getBoundingClientRect().height > 0 && getComputedStyle(x).visibility !== 'hidden').length;
     const out = [];
     cards.forEach(c => {
       const h = c.querySelector('h3');
       const b = c.querySelector('.set-body');
-      out.push({ name: h ? h.textContent.trim() : '?', keep: c.classList.contains('set-keep'),
-        open: c.classList.contains('open'),
-        bodyH: b ? +b.getBoundingClientRect().height.toFixed(1) : null });
+      out.push({ name: h ? h.textContent.trim() : '?', open: c.classList.contains('open'),
+        bodyH: b ? +b.getBoundingClientRect().height.toFixed(1) : null,
+        hasHead: !!c.querySelector('.set-head') });
     });
-    return { out, keepRows: rows.length, keepRowsVisible: vis,
-      shownBodies: [...document.querySelectorAll('.set-body')].filter(x => x.getBoundingClientRect().height > 0).length };`);
-  const by = Object.fromEntries(r.out.map(x => [x.name, x]));
-  tOk('「常用」带 set-keep（常驻展开）', by['常用'].keep === true && by['常用'].open === true);
-  tOk('「常用」的 ' + r.keepRows + ' 个说明行全都看得见（高度 > 0）',
-    r.keepRows > 0 && r.keepRowsVisible === r.keepRows, '可见 ' + r.keepRowsVisible + ' / 共 ' + r.keepRows);
-  t('其余三栏的 .set-body 高度', [by['录入与理解'].bodyH, by['外观与体感'].bodyH, by['数据'].bodyH], [0, 0, 0]);
-  t('默认只展开那一栏（.set-body 高度 > 0 的个数）', r.shownBodies, 0);
-  tOk('三栏都带 .set-head（可点开）',
-    ['录入与理解', '外观与体感', '数据'].every(n => by[n].open === false));
+    return { out, shownBodies: [...document.querySelectorAll('.set-body')].filter(x => x.getBoundingClientRect().height > 0).length };`);
+  t('四张卡都带折叠头（.set-head）', r.out.filter(x => x.hasHead).length, 4);
+  t('四栏的 .set-body 高度（默认全收起 = 0）', r.out.map(x => x.bodyH), [0, 0, 0, 0]);
+  tOk('四栏都没有 .open', r.out.every(x => x.open === false), r.out.map(x => x.name).join('/'));
+  t('默认一个内容体都不展开（.set-body 高度 > 0 的个数）', r.shownBodies, 0);
 }
 
 /* ==================================================================== */
-console.log('\n[3] 搬迁清单逐项：都在、且落在新分组里');
+console.log('\n[3] 搬迁清单逐项：都在、且落在新分组里（7D 的最终结构）');
 {
   /* 先全部展开，再逐项量"看得见" */
-  await ev(`S.setOpen = ['录入与理解','外观与体感','数据']; save(); refresh(); return 1;`);
+  await ev(`S.setOpen = ['功能','AI','外观与体感','数据']; save(); refresh(); return 1;`);
   await sleep(600);
   const check = await ev(`
     const inCard = el => { const c = el.closest('.set-card'); if(!c) return null;
@@ -216,16 +215,17 @@ console.log('\n[3] 搬迁清单逐项：都在、且落在新分组里');
       return cs.display !== 'none' && cs.visibility !== 'hidden' && el.getBoundingClientRect().height > 0.5; };
     const one = sel => { const el = document.querySelector(sel); return { has: !!el, vis: seen(el), card: el ? inCard(el) : null }; };
     const items = {
-      '提醒': ['[data-set="notify"]', '常用'],
-      '锁屏时全屏响铃': ['[data-set="alarmfull"]', '常用'],
-      '语音输入': ['[data-set="voice"]', '常用'],
-      '主题': ['[data-theme="dark"]', '常用'],
-      '没写时间的条目默认去哪': ['[data-act="capzoneopen"]', '录入与理解'],
-      '常用词': ['[data-act="zonehintclear"]', '录入与理解'],
-      '发多少内容': ['[data-aipriv="off"]', '录入与理解'],
-      '对 AI 的规范设置': ['#zoneRulesInput', '录入与理解'],
-      '想法回顾': ['[data-set="ideaReview"]', '录入与理解'],
-      '子任务做完就完成父任务': ['[data-set="autoDoneParent"]', '录入与理解'],
+      '提醒': ['[data-set="notify"]', '功能'],
+      '锁屏时全屏响铃': ['[data-set="alarmfull"]', '功能'],
+      '语音输入': ['[data-set="voice"]', '功能'],
+      '想法回顾': ['[data-set="ideaReview"]', '功能'],
+      '子任务做完就完成父任务': ['[data-set="autoDoneParent"]', '功能'],
+      '主题': ['[data-theme="dark"]', '外观与体感'],
+      '没写时间的条目默认去哪': ['[data-act="capzoneopen"]', 'AI'],
+      '常用词': ['[data-act="zonehintclear"]', 'AI'],
+      '发多少内容': ['[data-aipriv="off"]', 'AI'],
+      '对 AI 的规范设置': ['#zoneRulesInput', 'AI'],
+      'AI 写过的话': ['[data-act="aiprune"]', 'AI'],
       '页面说明文字': ['[data-set="help"]', '外观与体感'],
       '流畅模式': ['[data-set="lite"]', '外观与体感'],
       '想法卡片时间显示': ['[data-datepart="y"]', '外观与体感'],
@@ -233,9 +233,8 @@ console.log('\n[3] 搬迁清单逐项：都在、且落在新分组里');
       '备份': ['#exportBtn', '数据'],
       '示例数据 · 放一批进来': ['[data-act="demofill"]', '数据'],
       '示例数据 · 清空示例': ['[data-act="democlear"]', '数据'],
-      'AI 写过的话': ['[data-act="aiprune"]', '数据'],
-      '版本号': ['#setVer', '数据'],
-      'AI 连接那一行': ['.ai-entry', null]
+      '版本号 / 更新日志入口': ['#setVer', '数据'],
+      'AI 连接那一行': ['.ai-entry', 'AI']
     };
     const out = {};
     for (const k in items){
@@ -423,36 +422,34 @@ await gotoSettings();
 }
 
 /* ==================================================================== */
-console.log('\n[7] 布局不破：首屏够用 + 展开态照旧能滑（0D 那套 --bar-keep 基准）');
+console.log('\n[7] 布局不破：四栏全收起时这一页很短；展开后照旧能滑（0D 那套 --bar-keep 基准）');
 {
-  /* ★ 6B 口径更新（原 0D.3 那条"收起态装得下"在这里**不可能成立**，原因是改动 3 本身）：
-     原来设置页是 5 张**全收起**的卡，一屏装得下；现在「常用」按用户要求**默认展开**，
-     一栏里就有 4 行带说明文字的设置项 —— 这页必然比一屏高。
-     真正该守的是**首屏够不够用**：用户点名的那三样（提醒 / 语音输入 / 主题）必须不用翻
-     就能拨到，判据就是"它们的底边不越基准线（底栏上沿）"。
-     `_0d-geom.mjs` 里那条旧断言同步按新口径改了（0F/5F 的惯例：改断言不改代码）。 */
+  /* ★ 7D 口径更新（0F/5F 惯例：改断言不改代码）：
+     6B 那版是「常用」默认展开（一栏 4 行带说明文字 = 必然超一屏），所以守的是"首屏够用"；
+     7D 把「常用」整条撤了、**四栏一律默认收起** → 这一页回到"一屏装得下"，
+     于是断言换回来：①四个标题都在基准线以上；②装得下；③展开全部之后照旧能滑、底栏不挡内容。 */
   await ev(`S.showHelp = true; applyHelp(); S.setOpen = []; save(); goView('settings'); ANIM=false; refresh(); return 1;`);
   await sleep(700);
   const c = await ev(`window.scrollTo(0,0);
-    const rowBottom = sel => { const el = document.querySelector(sel); if(!el) return null;
-      const r = el.closest('.set-row'); return r ? +r.getBoundingClientRect().bottom.toFixed(2) : null; };
+    const cards = [...document.querySelectorAll('.set-wrap .set-card')];
+    const last = cards[cards.length-1];
     const i = window.__G.scrollInfo();
     return { info:i, baseline: window.__G.baseline().y, contentBottom: window.__G.contentBottom(),
-      bNotify: rowBottom('[data-set="notify"]'), bVoice: rowBottom('[data-set="voice"]'),
-      bTheme: rowBottom('[data-theme="light"]'),
-      cardBottom: +(document.querySelector('.set-card.set-keep').getBoundingClientRect().bottom).toFixed(2) };`);
+      cardCount: cards.length, lastBottom: +(last.getBoundingClientRect().bottom).toFixed(2),
+      openCount: document.querySelectorAll('.set-card.open').length,
+      headNames: cards.map(x => x.querySelector('h3').textContent.trim()) };`);
   console.log('     ── 收起态：scrollHeight=' + c.info.scrollHeight + ' / clientHeight=' + c.info.clientHeight
-    + '   基准线=' + c.baseline + '   常用卡底=' + c.cardBottom
-    + '   三样底边=' + [c.bNotify, c.bVoice, c.bTheme].join('/'));
-  tOk('首屏够用：用户点名的三样（提醒 / 语音输入 / 主题）底边都不越基准线',
-    Math.max(c.bNotify, c.bVoice, c.bTheme) <= c.baseline + 0.5,
-    '最靠下的 ' + Math.max(c.bNotify, c.bVoice, c.bTheme) + ' / 基准线 ' + c.baseline);
-  tOk('「常用」默认展开（不是在收起态看不到）', c.bNotify > 0 && c.cardBottom > c.bVoice);
-  tOk('收起态页面确实比一屏高（这是"常用默认展开"的预期结果，不是布局破）',
-    c.info.scrollHeight > c.info.clientHeight + 0.5,
-    '溢出 ' + (c.info.scrollHeight - c.info.clientHeight) + 'px');
+    + '   基准线=' + c.baseline + '   末栏底=' + c.lastBottom
+    + '   标题=' + c.headNames.join('/'));
+  t('收起态四栏标题都在', c.headNames, ['功能', 'AI', '外观与体感', '数据']);
+  t('收起态没有展开的卡', c.openCount, 0);
+  tOk('首屏够用：末栏底边不越基准线',
+    c.lastBottom <= c.baseline + 0.5, c.lastBottom + ' / ' + c.baseline);
+  tOk('四栏全收起后这一页装得下（不再必然超一屏）',
+    c.info.scrollHeight <= c.info.clientHeight + 0.5,
+    c.info.scrollHeight + ' vs ' + c.info.clientHeight);
   /* 展开态 */
-  await ev(`S.setOpen = ['录入与理解','外观与体感','数据']; save(); refresh(); return 1;`);
+  await ev(`S.setOpen = ['功能','AI','外观与体感','数据']; save(); refresh(); return 1;`);
   await sleep(700);
   const o = await ev(`window.scrollTo(0, 999999);
     const i = window.__G.scrollInfo();

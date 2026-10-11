@@ -27,7 +27,7 @@ const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
 const seed = {
   items: [],
   lastBackup: Date.now(),   /* ★ 刚备份过 → 不弹那条"建议留个底"的提醒（它带按钮，会把落点提示顶掉） */
-  tags: [], statLayout: 'card', hintOpen: false, showHelp: true, setOpen: ['录入与理解'],
+  tags: [], statLayout: 'card', hintOpen: false, showHelp: true, setOpen: ['AI'],   /* ★ 7D：落点那一行现在住在「AI」栏里 */
   theme: 'light', haptic: 'std', dateShow: { y: true, m: true, d: true },
   voice: false, voiceVersion: 2, ideaReview: true, autoDoneParent: false, notify: false, captureZone: 'auto',
   aiMode: 'off', aiBase: 'https://api.deepseek.com', aiModel: 'deepseek-flash',

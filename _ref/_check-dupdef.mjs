@@ -179,6 +179,15 @@ const NAMES = [
   /* ================= 6C 「没写时间的条目默认去哪」改底部面板 ================= */
   /* 三个新名字：值 → 人话（capZoneLabel）、面板（openCapZoneSheet）、唯一写入口（setCaptureZone）。 */
   'capZoneLabel', 'openCapZoneSheet', 'setCaptureZone',
+  /* ================= 7D 分组修正 + 「关于 → 更新日志」 ================= */
+  /* 六个新名字：面板（openChangelogPanel）、重画 + 焦点回位（logPanelSync）、
+     两屏内容（logCurrentHTML / logHistoryHTML / logPanelHTML）、
+     数据源读取与分组（logEntries / logCurrentMajor / logMajorOf / logMajorList）。
+     ⚠️ 模块级的 `logView`（let）/ `logOpenMaj`（let）/ `logOpenVer`（Set）不是函数声明，不进清单。
+     被改动的既有函数（renderSettings / setFoldInit）已在上面登记过，不重复加。 */
+  'openChangelogPanel', 'logPanelSync', 'logPanelHTML',
+  'logCurrentHTML', 'logHistoryHTML', 'logEntries',
+  'logCurrentMajor', 'logMajorOf', 'logMajorList',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }
