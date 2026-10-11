@@ -118,6 +118,10 @@ const ev = async expr => {
 };
 await send('Runtime.enable'); await send('Page.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 400, height: 888, deviceScaleFactor: 3, mobile: true });
+/* ★ 7D 追加（0G 的老坑，这次又踩了一遍）：headless Chrome 默认 `prefers-reduced-motion: reduce`，
+   CSS 里那条全局 `*{animation:none!important}` 会把入场动画全掐掉、revealAnim 也会直接早退 ——
+   不仿真 no-preference，这一整个"有没有动画"的断言组全是假红。 */
+await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
 await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/a.html` });
 for (let i = 0; i < 120; i++){ if (await ev('return document.readyState;') === 'complete') break; await sleep(120); }
 await sleep(1400);
@@ -242,6 +246,8 @@ console.log('\n[2] A3 那张表逐项：都在、而且都在新分组那一栏'
 /* ==================================================================== */
 console.log('\n[3] 二级「更新日志」：当前版本的条目一眼看到');
 {
+  /* 入场动画跑完再量几何：rvIn 会把子块 translateY(54px)，动画期间量出来的底边是虚的。 */
+  await sleep(900);
   const r = await ev(`
     var p = document.getElementById('log_panel');
     var cs = p ? getComputedStyle(p) : null;
@@ -262,6 +268,26 @@ console.log('\n[3] 二级「更新日志」：当前版本的条目一眼看到'
   t('当前版本 ' + APP_VERSION + ' 的 ' + CURRENT.items.length + ' 条一条不少',
     CURRENT.items.filter(x => r.items.indexOf(x) < 0), []);
   tOk('底部有「历史版本」入口', r.hasHistory);
+  /* ★ 7D 追加：多了一层 `.pane` 壳之后，「关掉」还得靠 `margin-top:auto` 压到底 ——
+     壳必须是 flex 纵列且 flex:1，否则它会缩到内容高、按钮跑到内容下面去（实测量一遍）。 */
+  const foot = await ev(`
+    var p = document.getElementById('log_panel');
+    var pg = p.querySelector('.pane'), fo = p.querySelector('.foot');
+    if (!pg || !fo) return null;
+    var cs = getComputedStyle(p);
+    var inner = p.getBoundingClientRect().bottom - parseFloat(cs.paddingBottom || 0);
+    return { gap: +(inner - fo.getBoundingClientRect().bottom).toFixed(1),
+      flexGrow: getComputedStyle(pg).flexGrow,
+      pgH: +pg.getBoundingClientRect().height.toFixed(1), pH: +p.getBoundingClientRect().height.toFixed(1) };`);
+  tOk('壳没有把「关掉」带跑：它仍压在面板底部（距面板内容盒底 ≤ 24px）',
+    foot && foot.gap <= 24 && foot.gap >= -1 && foot.flexGrow === '1', JSON.stringify(foot));
+  /* ★ 7D 追加：首次打开是"逐块淡入"（复用外面那套 rvIn），不是瞬现。 */
+  t('首次打开：内容是 .pane.stagger（逐块 rvIn 淡入）', await ev(`
+    var pg = document.querySelector('#log_panel .pane');
+    if (!pg) return null;
+    var cs = getComputedStyle(pg.firstElementChild);
+    return [pg.className, cs.animationName !== 'none' && cs.animationName !== ''];`),
+    ['pane stagger', true]);
   await shot('log-current.png');
 }
 
@@ -269,6 +295,13 @@ console.log('\n[3] 二级「更新日志」：当前版本的条目一眼看到'
 console.log('\n[4] 三级「历史版本」：按大版本分组、默认只展开当前大版本');
 {
   await hitClick('[data-log="history"]'); await sleep(260);
+  /* ★ 7D 追加：换页是整块横向滑入（前进从右），不是瞬跳。 */
+  t('切到三级：整块横向滑入（.pane.from-right + 有动画），不是直接跳', await ev(`
+    var pg = document.querySelector('#log_panel .pane');
+    if (!pg) return null;
+    var cs = getComputedStyle(pg);
+    return [pg.className, cs.animationName, cs.animationDuration];`),
+    ['pane from-right', 'logInRight', '0.34s']);
   const r = await ev(`
     var p = document.getElementById('log_panel');
     var majs = [].slice.call(p.querySelectorAll('.log-maj'));
@@ -286,24 +319,48 @@ console.log('\n[4] 三级「历史版本」：按大版本分组、默认只展�
   t('默认一个小版本的条目都不铺开（点一下才展开）', r.visibleVBody, 0);
   tOk('当前大版本下的小版本都在', r.verHeads.length >= 3, r.verHeads.slice(0, 5).join(','));
   await shot('log-history.png');
-  /* 点另一个大版本 → 它展开、当前那个收起；再点 → 收起 */
+  /* ★ 7D 追加：展开一个折叠是**就地补间**（revealAnim），点下去那一刻应能看到 inline max-height
+     正被逐帧写着 —— 这是"有动画"最直接的证据；而不是 `display` 一开一关。 */
   const other = MAJORS.filter(m => m !== MAJOR)[0];
-  await hitClick(`[data-logmaj="${other}"]`); await sleep(220);
-  t('点「' + other + '.x」→ 换成它展开（当前大版本收起）', await ev(`
+  await hitClick(`[data-logmaj="${other}"]`);
+  await sleep(90);
+  const mid = await ev(`
+    var box = document.querySelector('[data-logmaj=${JSON.stringify(other)}]').closest('.log-maj');
+    var body = box.querySelector(':scope > .log-mbody');
+    return { mid: body.style.maxHeight, h: +body.getBoundingClientRect().height.toFixed(1),
+      anim: !!body.style.maxHeight && /px$/.test(body.style.maxHeight) };`);
+  tOk('点大版本那一刻：展开是补间（有正在写的 inline max-height 且高度在中间态）',
+    mid.anim === true && mid.h > 0, JSON.stringify(mid));
+  await sleep(360);
+  /* 7D 起每个大版本**各自开合**（就地补间不再重画整块），所以开 5.x 不会再联动收起 6.x。 */
+  t('点「' + other + '.x」→ 它也展开（各自开合，不联动收起别人）', await ev(`
     var p = document.getElementById('log_panel');
-    return [].slice.call(p.querySelectorAll('.log-maj.open')).map(function(m){ return m.querySelector('.log-mhead').dataset.logmaj; });`), [other]);
-  await hitClick(`[data-logmaj="${other}"]`); await sleep(220);
-  t('再点一下 → 收起来（两个都折叠）', await ev(`
+    return [].slice.call(p.querySelectorAll('.log-maj.open')).map(function(m){ return m.querySelector('.log-mhead').dataset.logmaj; });`),
+    [MAJOR, other]);
+  await hitClick(`[data-logmaj="${other}"]`); await sleep(420);
+  t('再点一下 → 它自己收起来（当前大版本照旧开着）', await ev(`
+    var p = document.getElementById('log_panel');
+    return [].slice.call(p.querySelectorAll('.log-maj.open')).map(function(m){ return m.querySelector('.log-mhead').dataset.logmaj; });`),
+    [MAJOR]);
+  /* 收起态的判据也要量高度：0 高 + visibility:hidden（不能被 Tab 聚焦） */
+  t('收起态：.log-mbody 高度 0 且 visibility 是 hidden', await ev(`
+    var box = document.querySelector('[data-logmaj=${JSON.stringify(other)}]').closest('.log-maj');
+    var body = box.querySelector(':scope > .log-mbody');
+    var cs = getComputedStyle(body);
+    return [+body.getBoundingClientRect().height.toFixed(1), cs.visibility, cs.overflow];`),
+    [0, 'hidden', 'hidden']);
+  await hitClick(`[data-logmaj="${MAJOR}"]`); await sleep(420);
+  t('把当前大版本也点一下 → 两个都收起', await ev(`
     var p = document.getElementById('log_panel');
     return p.querySelectorAll('.log-maj.open').length;`), 0);
-  await hitClick(`[data-logmaj="${MAJOR}"]`); await sleep(220);
+  await hitClick(`[data-logmaj="${MAJOR}"]`); await sleep(480);
 }
 
 /* ==================================================================== */
 console.log('\n[5] 点某个历史版本 → 它的条目出来');
 {
   const target = CHANGELOG.filter(e => e.v !== APP_VERSION && /^\d/.test(e.v))[0];
-  await hitClick(`[data-logver="${target.v}"]`); await sleep(240);
+  await hitClick(`[data-logver="${target.v}"]`); await sleep(480);
   const r = await ev(`
     var p = document.getElementById('log_panel');
     var box = p.querySelector('[data-logver=${JSON.stringify(target.v)}]');
@@ -333,6 +390,13 @@ console.log('\n[6] Escape 逐层退：三级 → 二级 → 关闭');
     panel: !!document.getElementById('log_panel') };`);
   tOk('第一下 Escape：三级 → 回到二级「更新日志」，弹层还开着',
     a.title === '更新日志' && a.maskOn === true && a.panel === true, JSON.stringify(a));
+  /* ★ 7D 追加：退回二级也带动效（从左侧滑回），与点「‹ 更新日志」同一条。 */
+  t('退回来是横向滑入（.pane.from-left + 有动画），不是瞬跳', await ev(`
+    var pg = document.querySelector('#log_panel .pane');
+    if (!pg) return null;
+    var cs = getComputedStyle(pg);
+    return [pg.className, cs.animationName, cs.animationDuration];`),
+    ['pane from-left', 'logInLeft', '0.34s']);
   await esc();
   const b = await ev(`return { maskOn: document.getElementById('mask').classList.contains('on'),
     panel: !!document.getElementById('log_panel') };`);

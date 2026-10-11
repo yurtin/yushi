@@ -223,6 +223,20 @@ console.log('\n[4] B 部分：面板形态（不新增浮层 / Escape 逐层退�
     /if \(act === 'changelogopen'\)\{ openChangelogPanel\(\); return; \}/.test(html));
   tOk('面板里没有 position:fixed（不新造浮层）', !/position:\s*fixed/.test(open));
   tOk('「不要软件简介」：原来那句「鱼事 · 本地待办」已删', !/鱼事 · 本地待办/.test(code));
+  /* ★ 7D 追加（用户："所有的这些都需要有动画，并且要保持一致"）：
+     两个二级页用一种入场 —— 外壳 `.pane.stagger` 复用「外面」那条 rvIn，不各做一套。 */
+  tOk('两个二级页共用同一个入场壳（更新日志 + AI 连接都是 .pane.stagger）',
+    /class="pane stagger"/.test(extractFn(html, 'openChangelogPanel'))
+    && /class="pane stagger"/.test(extractFn(html, 'openAiPanel')));
+  tOk('换页/折叠的动效都指向站内既有实现（横向滑入两条 keyframes + revealAnim），没有第二套补间',
+    /\.pane\.from-right\{animation:logInRight/.test(html)
+    && /\.pane\.from-left\{animation:logInLeft/.test(html)
+    && /revealAnim\(body, open, h, '0px'\)/.test(extractFn(html, 'toggleLogMaj'))
+    && /revealAnim\(body, open, h, '0px'\)/.test(extractFn(html, 'toggleLogVer')));
+  tOk('折叠的收起态是"可补间的高度"而不是 display:none（否则永远补不了间）',
+    /\.log-mbody,\.log-vbody\{max-height:0/.test(html) && !/\.log-mbody,\.log-vbody\{display:none\}/.test(html));
+  tOk('流畅模式（html.soft-render）也把这套入场关掉（与「外面」的 reveal 同一条兜底）',
+    /html\.soft-render \.pane,html\.soft-render \.pane > \*\{animation:none\}/.test(html));
 }
 
 /* ==================================================================== */

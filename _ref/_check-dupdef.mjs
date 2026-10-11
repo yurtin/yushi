@@ -188,6 +188,9 @@ const NAMES = [
   'openChangelogPanel', 'logPanelSync', 'logPanelHTML',
   'logCurrentHTML', 'logHistoryHTML', 'logEntries',
   'logCurrentMajor', 'logMajorOf', 'logMajorList',
+  /* ---- 7D 追加（用户："都是直接展开，没有动画"）：折叠的就地补间 + 量高 ----
+     ⚠️ 常量 LOG_ENTER 不是函数声明，不进清单。 */
+  'toggleLogMaj', 'toggleLogVer', 'logBodyH',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }
