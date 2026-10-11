@@ -176,18 +176,29 @@ console.log('\n[3] 设置页：页脚灰字删除 / 展开→关闭布局稳定 
   t('[3] 没有任何 data-keephelp 元素', s0.keephelp, false);
   tOk('[3] 「关于」栏里那段版本介绍不在（"装在这台手机上的独立 App"）',
     s0.aboutTxt.indexOf('装在这台手机上的独立 App') < 0);
-  tOk('[3] 收起态页面装得下（不需要滑动）', s0.scrollable === false, 'scrollH=' + s0.scrollH + ' clientH=' + s0.clientH);
+  /* ★ 6B 改断言（脚本漂移）：原来这条写的是"收起态装得下（不需要滑动）"—— 那是 5 张卡
+     **全收起**时的口径。6B 按用户要求把「常用」改成默认展开（改动 3：频率优先），
+     这一页必然比一屏高（实测溢出 ~550px），所以判据换成新口径：
+     ①「常用」栏是展开的；②因此页面可滑。**"首屏够不够用"的新断言在 _ref/_6b-dom.mjs [7]**
+     （用户点名的那三样底边不越基准线）。 */
+  const keep = await ev(`var c = document.querySelector('.set-card.set-keep');
+    return c ? { open: c.classList.contains('open'), rows: c.querySelectorAll('.set-row').length,
+      head: !!c.querySelector('.set-head') } : null;`);
+  tOk('[3] 「常用」栏默认展开、且没有折叠头（6B：常驻展开）',
+    keep && keep.open === true && keep.head === false && keep.rows >= 3, JSON.stringify(keep));
+  tOk('[3] 收起态页面可滑（常用默认展开的预期结果，不是布局破）',
+    s0.scrollable === true, 'scrollH=' + s0.scrollH + ' clientH=' + s0.clientH);
 
-  /* 展开「功能」→ 再关闭 */
+  /* 展开「录入与理解」（6B 之后原来那张「功能」卡拆成了常用 / 录入与理解两栏）→ 再关闭 */
   await ev(`
-    var h = [].slice.call(document.querySelectorAll('.set-head')).filter(function(x){ return /功能/.test(x.textContent); })[0];
+    var h = [].slice.call(document.querySelectorAll('.set-head')).filter(function(x){ return /录入与理解/.test(x.textContent); })[0];
     h.click(); return 1;`);
   await sleep(500);
   const opened = await ev(shot);
-  tOk('[3] 展开「功能」后页面能滑（scrollHeight > clientHeight）',
-    opened.scrollable === true, 'scrollH=' + opened.scrollH + ' clientH=' + opened.clientH);
+  tOk('[3] 展开「录入与理解」后页面更长（scrollHeight 变大）',
+    opened.scrollH > s0.scrollH + 50, 'scrollH ' + s0.scrollH + ' → ' + opened.scrollH);
   await ev(`
-    var h = [].slice.call(document.querySelectorAll('.set-head')).filter(function(x){ return /功能/.test(x.textContent); })[0];
+    var h = [].slice.call(document.querySelectorAll('.set-head')).filter(function(x){ return /录入与理解/.test(x.textContent); })[0];
     h.click(); return 1;`);
   await sleep(700);
   const s1 = await ev(shot);
@@ -195,7 +206,8 @@ console.log('\n[3] 设置页：页脚灰字删除 / 展开→关闭布局稳定 
   const maxDeltaTop = Math.max.apply(null, s1.tops.map((b, i) => Math.abs(b - s0.tops[i])));
   tOk('[3] 展开→关闭后每张设置卡的位置都回到原处（≤1px，没有东西被顶到上面去）',
     maxDelta <= 1, '最大 bottom 位移 = ' + maxDelta.toFixed(2) + 'px，最大 top 位移 = ' + maxDeltaTop.toFixed(2) + 'px');
-  tOk('[3] 关闭后又回到"装得下"（收起态不滑动）', s1.scrollable === false, 'scrollH=' + s1.scrollH + ' clientH=' + s1.clientH);
+  tOk('[3] 关闭后又回到收起态的高度（scrollHeight 回到展开前）',
+    Math.abs(s1.scrollH - s0.scrollH) <= 1, 'scrollH ' + s0.scrollH + ' → ' + s1.scrollH);
 }
 
 /* ══════════════════════════════════════════════════════════════

@@ -170,6 +170,12 @@ const NAMES = [
   'zoneChipHTML', 'zoneTeach', 'zoneTeachPick', 'zoneTeachFromEditor',
   'openZoneMenu', 'closeZoneMenu', 'zoneRenameOpen', 'zoneDeleteConfirm', 'zoneAddOpen',
   'aiZoneAsk', 'zoneAdvisorLocal', 'zoneAdvisorAsk',
+  /* ================= 6B 设置页信息架构重做 ================= */
+  /* 新增五个：那一行 AI 状态的文案（aiEntryText / aiEntryLabel）、
+     三格输入共用的落库口（aiFieldCommit，原来只写在 #view 的 change 代理里）、
+     二级页的面板（openAiPanel）与它的掩码同步（aiPanelSync）。
+     被改动的既有函数（renderSettings / setFoldInit）已在上面登记过，不重复加。 */
+  'aiEntryText', 'aiEntryLabel', 'aiFieldCommit', 'openAiPanel', 'aiPanelSync',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }

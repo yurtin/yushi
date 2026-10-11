@@ -402,9 +402,25 @@ for (const v of views){
       + '   展开的栏目数=' + f.openCards);
     tOk('[设置页] 页脚灰字整块删除（.pdaim-footer 0 个、data-keephelp 0 个）',
       f.footerCount === 0 && f.keephelpCount === 0, 'footer=' + f.footerCount + ' keephelp=' + f.keephelpCount);
-    tOk('[设置页] 收起态装得下（不可滑 —— 0D.3 的 fit-view 判据还在）',
-      f.scrollHeight - f.clientHeight <= 0.5, 'scrollHeight=' + f.scrollHeight + ' clientHeight=' + f.clientHeight);
+    /* ★ 6B 改断言（脚本漂移）：原来这条是"收起态装得下（不可滑）" —— 那是 5 张卡**全收起**
+       时的口径。6B 按用户要求把「常用」改成默认展开（改动 3：频率优先），
+       「常用」一栏就有 4 行带说明文字的设置项，这一页必然比一屏高。
+       所以判据换成真正该守的那条：**首屏够用** —— 用户点名的那三样（提醒 / 语音输入 / 主题）
+       底边不越基准线（底栏上沿）。完整口径见 _ref/_6b-dom.mjs [7]。 */
+    const k = await ev(`
+      var rowBottom = function(sel){ var el = document.querySelector(sel); if(!el) return null;
+        var r = el.closest('.set-row'); return r ? +r.getBoundingClientRect().bottom.toFixed(2) : null; };
+      return { bNotify: rowBottom('[data-set="notify"]'), bVoice: rowBottom('[data-set="voice"]'),
+        bTheme: rowBottom('[data-theme="light"]'),
+        keepOpen: !!document.querySelector('.set-card.set-keep.open') };`);
+    const low = Math.max(k.bNotify, k.bVoice, k.bTheme);
+    console.log('        「常用」里那三样底边 = ' + k.bNotify + ' / ' + k.bVoice + ' / ' + k.bTheme
+      + '   基准线 = ' + f.baseline + '   页面可滑（溢出 ' + (f.scrollHeight - f.clientHeight) + 'px）');
+    tOk('[设置页] 「常用」栏默认展开（6B 频率优先的第一栏）', k.keepOpen === true);
+    tOk('[设置页] 首屏够用：提醒 / 语音输入 / 主题 的底边都不越基准线',
+      k.bNotify > 0 && low <= f.baseline + 0.5, '最靠下 ' + low + ' / 基准线 ' + f.baseline);
     report['设置页'].foot = f;
+    report['设置页'].keep = k;
     /* 展开一栏再量：应该变回"能滑、且滑到底不被遮" */
     await ev('var c = document.querySelector(".set-wrap .set-card .set-head"); c.click(); return 1;');
     await sleep(700);

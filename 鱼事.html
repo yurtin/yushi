@@ -1986,6 +1986,43 @@ body[data-help="off"] .set-row .set-txt > span{
 .set-row.stack .set-txt > b{grid-row:1}
 .set-row.stack .set-txt > span{grid-row:3}
 .set-row.stack > *:not(.set-txt){grid-column:1;grid-row:2;justify-self:start;margin-top:10px}
+/* ★ 6B（设置页信息架构重做）——两条新语言：
+   ①「动作 vs 设置」：开关 / 分段选择器是"拨一下就长期生效"（凹槽 / 描边药丸），
+     而 `试连接 / 现在找一次 / 筛出来删掉 / 备份 / 放一批进来 / 清空示例 / 清空学到的`
+     是"点一下执行一次"。后者统一换成 `.set-act`：**实心 + 方角** ——
+     形状与填充都跟状态类对不上，不会再被读成"选项"（用户原话：把描边药丸读成选项，
+     点下去发现它开始干活了）。
+   ② 二级页「AI 连接」那一行（原来整张 AI 卡的位置）：整行是一个按钮，右边一个 ›。 */
+.set-act{
+  border:1px solid var(--fg);background:var(--fg);color:var(--bg);
+  font:inherit;font-size:13px;font-weight:800;padding:8px 16px;border-radius:11px;
+  cursor:pointer;white-space:nowrap;
+  transition:transform var(--mo-quick) ease,opacity var(--mo-quick) ease;
+}
+/* hover 一律包在 (hover:hover) 里 —— 顶层 :hover 会在触摸端留下"粘滞态"（_2b-hover 那条红线）。 */
+@media (hover:hover){ .set-act:hover{transform:translateY(-1px)} }
+.set-act:active{transform:scale(.97)}
+.set-act[disabled],.set-act.is-off{opacity:.4;pointer-events:none}
+.set-acts{display:flex;gap:8px;flex-wrap:wrap;flex:0 0 auto;align-self:center}
+.ai-entry{
+  display:flex;align-items:center;gap:10px;width:100%;cursor:pointer;text-align:left;
+  border:0;font:inherit;color:inherit;padding:15px clamp(20px,2.4vw,30px);border-radius:16px;
+}
+.ai-entry .ae-t{flex:1 1 auto;min-width:0;font-size:14px;font-weight:800;color:var(--fg)}
+.ai-entry .ae-chev{flex:0 0 auto;font-size:17px;line-height:1;color:var(--faint)}
+.ai-entry:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* 「常用」那张卡常驻展开、不参与折叠（理由见 renderSettings 里那段：S.setOpen 的
+   字段名 / 默认值 / 读写路径一个都不许动 ⇒ "默认展开 + 可收起"要多存一个状态）。
+   它没有 .set-head，标题用同一套字，看着仍是一张卡的头。
+   行距也比别栏再紧一档：这一栏的职责是"一屏之内把提醒 / 语音输入 / 主题一次拨到"，
+   而它默认展开、下面还有 3 栏收起的卡 —— 收紧 12px×4 换来的是一屏能看全。 */
+.set-card.set-keep > h3{
+  margin:0;padding:14px 0 12px;font-size:13px;font-weight:900;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--fg);
+}
+.set-card.set-keep .set-row{padding-top:14px;margin-top:12px}
+/* 二级页「AI 连接」的面板需要 modal 里有个流内容把高度撑开（面板是 inset:0 的 absolute）。 */
+.ai-holder{height:min(560px,74vh)}
 /* 开关：和顶栏那个主题开关同一套观感（凹槽 + 白色球），但语义是 role="switch"，
    位置状态由 aria-checked 驱动 —— 这样键盘可达，屏幕阅读器也能读出开/关。
    关态用 --pill-hover 而不是 --pill：4.5% 的黑在白卡上几乎看不出"槽"，只剩一个白球漂着，
@@ -10245,117 +10282,42 @@ function revealAnim(el, open, h, mt){
    每个区各一张 .glass.set-card —— .set-wrap 本来就是 flex 纵列 + gap，天然支持多卡片。
    开关一律用 role="switch" + aria-checked 表达状态（键盘可达、读屏能读出开/关），
    位置状态由 aria-checked 驱动，不在 CSS 里另存一套类名。 */
+/* 设置页：**按频率分区**（6B 信息架构重做）。
+
+   用户 2026-10-10 的诊断（见《方案-设置页信息架构》第二节）：
+   ①「功能」是个"其他"抽屉 —— 叫"功能/其他"的分类一定会变成垃圾桶；
+   ②按**模块**分（外观/功能/AI/数据），但人找东西是按**"我要干什么"**找，分组维度不统一；
+   ③`API key / 接口地址 / 模型名` 一年配一次，`语音输入 / 提醒` 一天拨好几次，却挤在同一可视层
+     （没做渐进披露）；
+   ④`试连接 / 现在找一次 / 备份` 这类"点一下执行一次"的动作，和开关那种"长期生效"的设置长得一样。
+
+   这一版按**频率**重排成四栏 + 一行状态（同一层只允许一个分组维度）：
+     常用（常驻展开）· 录入与理解 · 外观与体感 · 数据 · AI 连接（一行状态，点进二级页）
+
+   ⚠️ 这是一次**搬家**：每一项的 `data-set` / `data-*` 标识、处理逻辑、`S` 字段、
+   读写路径一个字节都没改（逐项证据见 _ref/_6b-regress.mjs 与 _ref/_6b-dom.mjs）。
+   每个区各一张 .glass.set-card —— .set-wrap 本来就是 flex 纵列 + gap，天然支持多卡片。
+   开关一律用 role="switch" + aria-checked 表达状态（键盘可达、读屏能读出开/关），
+   位置状态由 aria-checked 驱动，不在 CSS 里另存一套类名。 */
 function renderSettings(){
   view.innerHTML = `<div class="section-intro${rv()}">
       <p class="section-kicker">Settings</p>
       <h2>设置</h2>
-      <!-- ★ v5.0：设置页改成默认收起的栏目列表，得有一句话告诉你怎么打开 ——
-           折叠本身没有别的视觉提示（就一个 ▸）。这段字归「页面说明文字」开关管。 -->
-      <p class="intro-note">每一栏都能点开：点<b>栏目名</b>展开，再点一下收起。
+      <!-- ★ 6B：分组换成"频率优先"之后，这段引导也要跟着改 ——
+           最上面那栏常驻、不用点；其余才要展开。它归「页面说明文字」开关管。 -->
+      <p class="intro-note">最上面「常用」那一栏常驻，不用点；其余栏目点<b>栏目名</b>展开，再点一下收起。
         嫌每项下面那行解释碍事，就去「外观与体感」里把<b>页面说明文字</b>关掉。</p>
     </div>
     <div class="set-wrap">
-      <section class="glass set-card${rv()}"${rvd(60)}>
-        <h3>外观与体感</h3>
-        <p class="set-sub">只改"看到什么、摸起来什么感觉"，不碰你的数据。改完立刻生效，存在这台手机上。</p>
-        <!-- 主题开关从顶栏那颗圆点搬来，并新增第三档「跟随系统」：
-             选 auto 时由系统深浅色决定，且实时监听变化（见 applyTheme 与 mqDark 的 change 监听）。
-             三档互斥、结果持久化进 S.theme。 -->
-        <div class="set-row">
-          <div class="set-txt">
-            <b>主题</b>
-            <span>浅色 / 深色，或跟着系统走。选「跟随系统」后，系统切浅色深色时这里即时同步。</span>
-          </div>
-          <span class="seg" role="group" aria-label="主题">
-            <button class="segbtn${S.theme === 'light' ? ' on' : ''}" data-theme="light" aria-pressed="${S.theme === 'light'}">浅色</button>
-            <button class="segbtn${S.theme === 'dark' ? ' on' : ''}" data-theme="dark" aria-pressed="${S.theme === 'dark'}">深色</button>
-            <button class="segbtn${S.theme === 'auto' ? ' on' : ''}" data-theme="auto" aria-pressed="${S.theme === 'auto'}">跟随系统</button>
-          </span>
-        </div>
-        <div class="set-row">
-          <div class="set-txt">
-            <b>页面说明文字</b>
-            <span>清单 / 时间轴 / 统计页标题下面那段解释文案（分区规则、色阶含义这类），
-              以及设置页里每一项下面那行灰字。关掉只收掉这些字：条数、逾期这类数字照旧显示，
-              设置项本身也一个不少，列表空着时的引导提示也不会消失。</span>
-          </div>
-          <button class="switch" data-set="help" role="switch" aria-label="显示页面说明文字"
-                  aria-checked="${S.showHelp ? 'true' : 'false'}"></button>
-        </div>
-        <!-- ★ v5.2（用户："把性能里的流畅模式归入到外观里边"）：整张「性能」卡随之撤掉 ——
-             它本来就只有这一项，而它改的正是"屏幕上看到什么"，跟外观同栏最顺。
-             流畅模式原来在顶栏（一颗 ⚡）。撤掉是因为手机上它和主题滑块一起挤掉了标题。
-             aria-checked 直接读 html.soft-render —— 那是唯一真相：
-             它由"软件渲染自动检测"或"用户手动选择"共同决定，这里不另存一份状态。 -->
-        <div class="set-row">
-          <div class="set-txt">
-            <b>流畅模式</b>
-            <span>关掉玻璃模糊、背景点阵和入场动画，老机型滚动明显更顺。
-              检测到设备在用软件渲染时会自动打开；这里的开关可以手动覆盖它。</span>
-          </div>
-          <button class="switch" data-set="lite" role="switch" aria-label="流畅模式"
-                  aria-checked="${document.documentElement.classList.contains('soft-render') ? 'true' : 'false'}"></button>
-        </div>
-        <!-- ★ v5.1.2（用户："在设置里自己调节要不要显示时间，以及具体怎么显示。就给他 3 个按钮：
-             要不要显示年 / 要不要显示月 / 要不要显示日" + "在标题后面放 3 个圆形的按钮…
-             如果用户选择开启，UI 就变白；如果不按（关闭），就是灰色的"）：
-             只作用于**想法卡左侧时间轴上的日期**（清单页/时间轴页的日期不动，用户口径）。
-             三颗圆键各自独立开关，开＝白底浮起（.segbtn.on 那套语言），关＝灰字无底。
-             全部关掉 = 不显示日期（标题会往左顶上来），这是允许的、也是多出来的一种用法。
-             下面那行灰字里带一个**实时预览**：拨一下就能看到结果，不用切回想法页看。 -->
-        <div class="set-row">
-          <div class="set-txt">
-            <b>想法卡片时间显示</b>
-            <span>想法卡左侧时间轴上那个日期，显示哪几段：三颗圆键分别是<b>年 / 月 / 日</b>，
-              亮着＝显示、灰着＝不显示；三个都关掉就不显示日期。现在显示的是
-              <b class="mono" id="datePrev">${dateText('2026-10-04') || '（不显示）'}</b>。</span>
-          </div>
-          <div class="rbtns" role="group" aria-label="想法卡时间显示哪几段">
-            <button type="button" class="rbtn${S.dateShow.y ? ' on' : ''}" data-datepart="y"
-                    aria-pressed="${S.dateShow.y ? 'true' : 'false'}" title="显示年份">年</button>
-            <button type="button" class="rbtn${S.dateShow.m ? ' on' : ''}" data-datepart="m"
-                    aria-pressed="${S.dateShow.m ? 'true' : 'false'}" title="显示月份">月</button>
-            <button type="button" class="rbtn${S.dateShow.d ? ' on' : ''}" data-datepart="d"
-                    aria-pressed="${S.dateShow.d ? 'true' : 'false'}" title="显示日">日</button>
-          </div>
-        </div>
-        <!-- ★ v5.1.2（用户："这个长按的拖动，感觉震感不太明显呀" + "加一个震动档位"）：
-             档位只改"震多久"，不改"哪些动作会震"（那些是固定的反馈语言）。
-             选完立刻震一下当前档位，手能直接比较强弱。 -->
-        <div class="set-row">
-          <div class="set-txt">
-            <b>震动</b>
-            <span>长按卡片进入手势、拖到目标上挂靠、拖到边界外的越界提示 —— 这些动作会震一下。
-              「关」就完全不振；「弱 / 标准 / 强」只改每一下的长短，不改哪些动作会震。</span>
-          </div>
-          <span class="seg" role="group" aria-label="震动档位">
-            <button class="segbtn${S.haptic === 'off' ? ' on' : ''}" data-haptic="off"
-                    aria-pressed="${S.haptic === 'off'}">关</button>
-            <button class="segbtn${S.haptic === 'low' ? ' on' : ''}" data-haptic="low"
-                    aria-pressed="${S.haptic === 'low'}">弱</button>
-            <button class="segbtn${S.haptic === 'std' ? ' on' : ''}" data-haptic="std"
-                    aria-pressed="${S.haptic === 'std'}">标准</button>
-            <button class="segbtn${S.haptic === 'high' ? ' on' : ''}" data-haptic="high"
-                    aria-pressed="${S.haptic === 'high'}">强</button>
-          </span>
-        </div>
-      </section>
-
-      <section class="glass set-card${rv()}"${rvd(120)}>
-        <h3>功能</h3>
-        <p class="set-sub">跟界面长什么样无关的那几件：录进来的方式、想法页的行为。</p>
-        <!-- 语音输入：默认关。开了才在安卓上走设备端离线识别（零联网）；关着时长按圆钮直接弹键盘。
-             不支持离线识别 / 没给权限 → 页面自己降级为"弹键盘 + 提示"，见 startVoiceIfAllowed。 -->
-        <div class="set-row">
-          <div class="set-txt">
-            <b>语音输入</b>
-            <span>长按底部圆钮说话，直接录入或进入编辑。只在安卓上走设备端离线识别，不上传任何内容。
-              关着时（或 iPhone / 不支持的设备）长按仍是打字。</span>
-          </div>
-          <button class="switch" data-set="voice" role="switch" aria-label="语音输入"
-                  aria-checked="${S.voice ? 'true' : 'false'}"></button>
-        </div>
-        <!-- ★ 阶段1 提醒：到点弹系统通知。总开关放在这里（决策 8：与语音输入同一张卡）。
+      <!-- ★ 6B：**常用** —— 一天要拨好几次的那几样（提醒 / 语音输入 / 主题）按频率排在最上面，
+           默认展开。
+           为什么不给它折叠按钮：S.setOpen 的字段名 / 默认值 / 读写路径一个都不许动（红线 3），
+           而"默认展开 + 还能手动收起"必然要往存档里多写一个"我收起过常用"的状态 ——
+           那正是新增字段。所以落成**常驻展开**（.set-keep，setFoldInit 跳过它）。 -->
+      <section class="glass set-card set-keep open${rv()}"${rvd(60)}>
+        <h3>常用</h3>
+        <p class="set-sub">每天都会碰的那几样：提醒、语音输入、主题。</p>
+        <!-- ★ 阶段1 提醒：到点弹系统通知。（原样搬来，一个字段都没动。）
              未授权那行是**条件显示**的 —— 渲染完由 refreshNotifyPerm() 收口，不在模板里拼条件
              （拼条件会让"刚进设置页"与"刚授权回来"两条路各写一遍判断，迟早不一致）。 -->
         <div class="set-row">
@@ -10379,16 +10341,47 @@ function renderSettings(){
           </div>
         </div>
         <!-- ★ 5C：上次提醒的对账（"排 10月10日 08:36 · 实际 08:37（晚了 62 秒）"）。
-             只有真的响过一次才出现；晚了 ≥60 秒时多给一枚「去放行」（跳电池优化页）。
-             它存在的理由：用户实测"定 8:36、8:37 才响"，而页面侧算得分毫不差 —— 
-             必须有个当场能分清"我们排晚了 / 系统推迟了"的地方，别再靠猜。 -->
+              只有真的响过一次才出现；晚了 ≥60 秒时多给一枚「去放行」（跳电池优化页）。
+              它存在的理由：用户实测"定 8:36、8:37 才响"，而页面侧算得分毫不差 ——
+              必须有个当场能分清"我们排晚了 / 系统推迟了"的地方，别再靠猜。
+              6B：它跟着「提醒」走，中间不隔别的项。 -->
         <div class="notify-last" id="notifyLast" hidden></div>
+        <!-- 语音输入：默认关。开了才在安卓上走设备端离线识别（零联网）；关着时长按圆钮直接弹键盘。
+             不支持离线识别 / 没给权限 → 页面自己降级为"弹键盘 + 提示"，见 startVoiceIfAllowed。 -->
+        <div class="set-row">
+          <div class="set-txt">
+            <b>语音输入</b>
+            <span>长按底部圆钮说话，直接录入或进入编辑。只在安卓上走设备端离线识别，不上传任何内容。
+              关着时（或 iPhone / 不支持的设备）长按仍是打字。</span>
+          </div>
+          <button class="switch" data-set="voice" role="switch" aria-label="语音输入"
+                  aria-checked="${S.voice ? 'true' : 'false'}"></button>
+        </div>
+        <!-- 主题开关从顶栏那颗圆点搬来，并新增第三档「跟随系统」：
+             选 auto 时由系统深浅色决定，且实时监听变化（见 applyTheme 与 mqDark 的 change 监听）。
+             三档互斥、结果持久化进 S.theme。
+             ★ 6B：从「外观与体感」搬到常用栏 —— 切浅色深色是"经常拨"的那一类，不是"调一次"的。 -->
+        <div class="set-row">
+          <div class="set-txt">
+            <b>主题</b>
+            <span>浅色 / 深色，或跟着系统走。选「跟随系统」后，系统切浅色深色时这里即时同步。</span>
+          </div>
+          <span class="seg" role="group" aria-label="主题">
+            <button class="segbtn${S.theme === 'light' ? ' on' : ''}" data-theme="light" aria-pressed="${S.theme === 'light'}">浅色</button>
+            <button class="segbtn${S.theme === 'dark' ? ' on' : ''}" data-theme="dark" aria-pressed="${S.theme === 'dark'}">深色</button>
+            <button class="segbtn${S.theme === 'auto' ? ' on' : ''}" data-theme="auto" aria-pressed="${S.theme === 'auto'}">跟随系统</button>
+          </span>
+        </div>
         <!-- ★ 5A：锁屏全屏响铃（闹钟档）。**默认关** —— 用户 2026-10-09 定："如果我没让开闹钟的话，
-             那就不要闹钟，直接像正常微信来信息一样弹窗提示就可以了"。
-             关着：到点只发一条高优先级通知，声音/震动跟随手机静音·震动·响铃（横幅一定弹）；
-             开着：才挂全屏 Intent（还要求系统真给了「全屏通知」权限），只在锁屏/息屏时出响铃页。
-             开关状态存在**原生侧** —— 到点弹通知的是 NotifyReceiver，那一刻页面可能没起来。
-             这一行整体只在"有桥"时才露（网页版 / 老壳没有这两个方法）。 -->
+              那就不要闹钟，直接像正常微信来信息一样弹窗提示就可以了"。
+              关着：到点只发一条高优先级通知，声音/震动跟随手机静音·震动·响铃（横幅一定弹）；
+              开着：才挂全屏 Intent（还要求系统真给了「全屏通知」权限），只在锁屏/息屏时出响铃页。
+              开关状态存在**原生侧** —— 到点弹通知的是 NotifyReceiver，那一刻页面可能没起来。
+              这一行整体只在"有桥"时才露（网页版 / 老壳没有这两个方法）。
+              ★ 6B：方案的目标结构漏列了这一项。落点自定在常用栏**末尾**：
+              ①它是"到点怎么响"，语义上属于提醒，不该被塞进外观 / 数据；
+              ②它调一次就不动（频率最低），放在那三样（提醒 / 语音输入 / 主题）之后，
+                第一屏正好完整装下那三样 —— 见回报里的落点说明与实测。 -->
         <div class="set-row" id="alarmFullRow" hidden>
           <div class="set-txt">
             <b>锁屏时全屏响铃</b>
@@ -10406,24 +10399,14 @@ function renderSettings(){
               <button type="button" class="pill" data-act="fullopen">去开启</button></span>
           </div>
         </div>
-        <!-- v3.18：原来的「系统语音（可能联网）」开关已删除 —— 语音改成**内置本地模型**
-             （Vosk 中文小模型跟包走），不联网、不弹输入法。
-             ⚠️ v5.0 第 3 批的口径修正：**语音**仍然不联网，但从这一版起「AI」那一栏是可选联网的
-             （默认关闭）。所以"包不声明 INTERNET"这句不再适用于全部构建 ——
-             现在出两个包：纯净版不含 INTERNET，联网版含（见 _android/build.py 的 --ai 开关）。 -->
-        <!-- ★ v5.2（用户："把想法还有语音这两个归到一个大栏目功能里边"）：
-             「语音」和「想法」原来各占一张卡，但两者都是"能力"，跟外观 / AI / 数据不是一类。
-             现在合成这一栏：语音输入 + 想法回顾 + 录入默认落点。 -->
-        <div class="set-row">
-          <div class="set-txt">
-            <b>想法回顾</b>
-            <span>在想法页顶部放一个「回顾」抽屉，自动挑三条你最近没碰过的想法送到眼前
-              —— 免得念头扔进去就再也没打开过。你用想法用得勤，它就自己收着不打扰；
-              隔几天没看才展开。</span>
-          </div>
-          <button class="switch" data-set="ideaReview" role="switch" aria-label="想法回顾"
-                  aria-checked="${S.ideaReview ? 'true' : 'false'}"></button>
-        </div>
+      </section>
+
+      <!-- ★ 6B：**录入与理解** —— "一句话怎么被听懂、没写时间时归到哪一栏"，
+           加上想法页 / 父子任务那两个行为开关（方案的目标结构漏列了后两个，落点见回报）。
+           这是原「功能」栏里跟"理解"有关的部分 + 原「AI」栏里会调的那两样（常用词 / 发多少内容）。 -->
+      <section class="glass set-card${rv()}"${rvd(120)}>
+        <h3>录入与理解</h3>
+        <p class="set-sub">一句话怎么被听懂、没写时间时归到哪一栏；还有想法页与子任务的两个行为开关。</p>
         <!-- ★ v5.0：录入界面（中间那颗圆钮）新建条目时，**没写时间**的默认去哪。
              默认仍是「长期」—— 不改老习惯；切成「想法」之后，没写时间的一律直接长成想法。
              为什么做成设置而不是录入时的开关：录入那一刻不该逼人做决定（调研的硬结论），
@@ -10447,34 +10430,16 @@ function renderSettings(){
                     data-capzone="idea" aria-pressed="${S.captureZone === 'idea' ? 'true' : 'false'}">想法</button>
           </div>
         </div>
-        <!-- ★ 0B（决策 2）：子任务全勾完**不**自动完成父任务，默认关。
-             理由：父是"这件事"，子是"这件事的几步"，手上这一步做完不等于整件事结束。
-             打开后：勾掉最后一个未完成子任务时，把祖先里"自己下面已经全勾完"的那些逐级补上勾。 -->
+        <!-- 常用词：AI 只拿它纠同音错字。（6B：原来并排的「试连接 / 现在找一次」按渐进披露
+             搬进二级页「AI 连接」—— 那两个是"配一次"的动作，不是天天看的数字。） -->
         <div class="set-row">
           <div class="set-txt">
-            <b>子任务做完就完成父任务</b>
-            <span>开着时，一个父任务下面所有子任务都打了勾，父任务自动跟着打勾。
-              默认关 —— 父任务往往是"这件事"本身，几步做完不代表整件事结束。
-              父任务标着循环、或者这条是作业时不会自动连动。</span>
+            <b>常用词 <span class="mono">${sanitizeHotwords(S.hotwords).length}</span> / ${HOTWORDS_MAX}</b>
+            <span>你在录入框里随便说一句话，鱼事会把它整理成条目 —— 用了语法就本地秒出，
+              没用语法才交给 AI 听懂。常用词只用来纠正同音错字（「豆付」→「豆腐」），
+              <b>不会用于本地识别</b>：本地偏置错了就无从纠正。把某个词改对两次，鱼事会问一次要不要收进来。</span>
           </div>
-          <button class="switch" data-set="autoDoneParent" role="switch" aria-label="子任务做完就完成父任务"
-                  aria-checked="${S.autoDoneParent ? 'true' : 'false'}"></button>
         </div>
-      </section>
-
-      <!-- ★ v5.2：「示例数据」原来独立一张卡，已搬进下面的「数据」栏。
-           用户原话："把示例数据归入到这个数据栏目下"。 -->
-
-      <!-- ★ v5.2：「性能」整栏取消 —— 它只有"流畅模式"一项，已并进「外观」。 -->
-
-      <!-- ★ v5.0 第 3 批：AI（联网）。**默认关闭** —— 这是本页唯一会让数据离开这台手机的开关，
-           所以它单独占一张卡，文案直白说明"发什么、发到哪"，不写成免责声明。
-           三档的差别就是"发多少内容出去"：关闭一个字都不发 / 只发标题 / 标题+原文+时间轴。 -->
-      <section class="glass set-card${rv()}"${rvd(170)}>
-        <h3>AI</h3>
-        <p class="set-sub">给想法找关系、以及以某个身份问你一句。要用它就得联网，还得有一把模型服务商的 key。</p>
-        <p class="ai-quote">打开之后，鱼事会把<b>当前这一条想法的文字</b>发到模型服务商那里去。
-          关着的时候，鱼事和以前一样，一个字都不出你的手机。</p>
         <div class="set-row">
           <div class="set-txt">
             <b>发多少内容</b>
@@ -10489,49 +10454,10 @@ function renderSettings(){
                     aria-pressed="${S.aiMode === 'full'}">发全文</button>
           </span>
         </div>
-        <div class="ai-row">
-          <label for="aiKeyInput">API key（只存在这台手机上，不进备份文件）${aiKey() ? '  · 现在是 ' + esc(aiKeyMask()) : ''}</label>
-          <!-- ★ v5.0 真机反馈（用户："api key 怎么不能粘贴，安全键盘也不能粘贴"）：
-               原来这里是 input[type=password] —— 安卓一看到密码框就切**安全键盘**，
-               而安全键盘（还有部分输入法的密码模式）**禁用粘贴**，于是 key 根本填不进去。
-               改成 type=text + CSS 的 -webkit-text-security:disc 来遮字：
-               看起来还是圆点，但系统走的是普通键盘，长按能粘贴。
-               另外配一颗「粘贴」：优先走 native 桥（Android 剪贴板），
-               退化到 navigator.clipboard，再不行就提示长按输入框。
-               还有「显示」：贴完想核对一下后四位、或者确认没贴错时用。 -->
-          <div class="ai-keyline">
-            <input class="ai-input" id="aiKeyInput" type="text" autocomplete="off" spellcheck="false"
-                   autocapitalize="off" autocorrect="off" data-mask="1"
-                   placeholder="粘贴 DeepSeek 的 key（sk-…）" value="">
-            <button type="button" class="btn" data-act="aipaste" title="从剪贴板粘贴">粘贴</button>
-            <button type="button" class="btn" data-act="aishowkey" aria-pressed="false" title="显示 / 隐藏">显示</button>
-          </div>
-        </div>
-        <div class="ai-row">
-          <label for="aiBaseInput">接口地址（任意 OpenAI 兼容端点）</label>
-          <input class="ai-input" id="aiBaseInput" type="text" autocomplete="off" spellcheck="false"
-                 value="${esc(S.aiBase)}">
-        </div>
-        <div class="ai-row">
-          <label for="aiModelInput">模型名</label>
-          <input class="ai-input" id="aiModelInput" type="text" autocomplete="off" spellcheck="false"
-                 value="${esc(S.aiModel)}">
-        </div>
-        <div class="set-row stack" style="margin-top:14px">
-          <div class="set-txt">
-            <b>常用词 <span class="mono">${sanitizeHotwords(S.hotwords).length}</span> / ${HOTWORDS_MAX}</b>
-            <span>你在录入框里随便说一句话，鱼事会把它整理成条目 —— 用了语法就本地秒出，
-              没用语法才交给 AI 听懂。常用词只用来纠正同音错字（「豆付」→「豆腐」），
-              <b>不会用于本地识别</b>：本地偏置错了就无从纠正。把某个词改对两次，鱼事会问一次要不要收进来。</span>
-          </div>
-          <div class="seg-cap">
-            <button type="button" class="pill" data-act="aitest">试连接</button>
-            <button type="button" class="pill" data-act="aiscan">现在找一次</button>
-          </div>
-        </div>
-        <!-- ★ 7B：「对 AI 的规范设置」——和「常用词」并列（那两个是同一类东西：
-             都是"用户教 AI 的"：常用词管"听对"，规范设置管"分对"）。
-             ⚠️ 本卡只把它放进现有 AI 卡；6B 重做设置页时会挪进新结构。
+        <!-- ★ 7B：「对 AI 的规范设置」——和「常用词」同一类东西（都是"用户教 AI 的"：
+             常用词管"听对"，规范设置管"分对"），所以 6B 把它们留在同一栏。
+             ★ 6B：它原来在 AI 卡里紧挨着常用词；AI 卡拆成"主列表 + 二级页"之后，
+             按"跟着 AI 那一组走"留在这里（二级页只放 key / 接口地址 / 模型名 / 试连接 / 现在找一次）。
              内容可选：**空着也能用**（空着就走行为学习 + 模型自己判）。 -->
         <div class="set-row stack">
           <div class="set-txt">
@@ -10547,42 +10473,151 @@ function renderSettings(){
             <b>它学到的（分区）<span class="mono">${zoneHintList().length}</span></b>
             <span>${zoneHintText()}</span>
           </div>
-          <div class="seg-cap">
-            <button type="button" class="pill${zoneHintList().length ? '' : ' is-off'}" data-act="zonehintclear"
+          <div class="set-acts">
+            <button type="button" class="set-act${zoneHintList().length ? '' : ' is-off'}" data-act="zonehintclear"
               ${zoneHintList().length ? '' : 'disabled aria-disabled="true"'}>清空学到的</button>
           </div>
         </div>
+        <!-- ★ v5.0 想法回顾总开关。关掉后想法页顶部**不出现**抽屉 ——
+             调研 02 §6 的结论是"只在页内手动翻的回顾一定不会被用"，所以默认开；
+             但给一个关的出口，免得不想被推的人只能忍着。
+             ★ 6B：方案的目标结构漏列了它，跟着「录入与理解」（想法相关的行为开关）落在这里。 -->
         <div class="set-row">
           <div class="set-txt">
-            <b>AI 写过的话</b>
-            <span>时间轴上带 ✦ 的那几步是它写的。想清掉就一键筛出来删（会先弹撤销）。</span>
+            <b>想法回顾</b>
+            <span>在想法页顶部放一个「回顾」抽屉，自动挑三条你最近没碰过的想法送到眼前
+              —— 免得念头扔进去就再也没打开过。你用想法用得勤，它就自己收着不打扰；
+              隔几天没看才展开。</span>
           </div>
-          <div class="seg-cap">
-            <button type="button" class="pill" data-act="aiprune">筛出来删掉</button>
+          <button class="switch" data-set="ideaReview" role="switch" aria-label="想法回顾"
+                  aria-checked="${S.ideaReview ? 'true' : 'false'}"></button>
+        </div>
+        <!-- ★ 0B（决策 2）：子任务全勾完**不**自动完成父任务，默认关。
+              理由：父是"这件事"，子是"这件事的几步"，手上这一步做完不等于整件事结束。
+              打开后：勾掉最后一个未完成子任务时，把祖先里"自己下面已经全勾完"的那些逐级补上勾。
+              ★ 6B：方案的目标结构漏列了它，跟着「录入与理解」（行为规则）落在这里。 -->
+        <div class="set-row">
+          <div class="set-txt">
+            <b>子任务做完就完成父任务</b>
+            <span>开着时，一个父任务下面所有子任务都打了勾，父任务自动跟着打勾。
+              默认关 —— 父任务往往是"这件事"本身，几步做完不代表整件事结束。
+              父任务标着循环、或者这条是作业时不会自动连动。</span>
           </div>
+          <button class="switch" data-set="autoDoneParent" role="switch" aria-label="子任务做完就完成父任务"
+                  aria-checked="${S.autoDoneParent ? 'true' : 'false'}"></button>
         </div>
       </section>
 
-      <section class="glass set-card${rv()}"${rvd(200)}>
+      <!-- ★ 6B：原来那张「AI」卡的位置，现在只有**一行状态**：「AI · 已连接 · deepseek-flash ›」，
+           点它进二级页「AI 连接」（key / 接口地址 / 模型名 / 试连接 / 现在找一次）。
+           它不折叠 —— AI 是产品主线（用户 2026-10-04 定），入口不该藏在折叠里。
+           没配 key 时整行写「AI · 未连接」（不带模型名：没连上时报一个模型名没有意义）。
+           ⚠️ 它**不是** .set-card：不进 setFoldInit 的卡片清单，也不占"栏目"的语义。 -->
+      <button type="button" class="glass ai-entry${rv()}"${rvd(150)} data-act="aipanel"
+              aria-label="${esc(aiEntryLabel())}">
+        <span class="ae-t">${esc(aiEntryText())}</span>
+        <span class="ae-chev" aria-hidden="true">›</span>
+      </button>
+
+      <!-- ★ v5.2（用户："把性能里的流畅模式归入到外观里边"）：整张「性能」卡随之撤掉 ——
+           它本来就只有这一项，而它改的正是"屏幕上看到什么"，跟外观同栏最顺。
+           流畅模式原来在顶栏（一颗 ⚡）。撤掉是因为手机上它和主题滑块一起挤掉了标题。
+           ★ 6B：主题搬去「常用」，这一栏剩四样 —— 都是"调一次就不动"的。
+           主题三档的点击逻辑在 data-theme 分支（#view 的点击代理里），搬栏不影响。 -->
+      <section class="glass set-card${rv()}"${rvd(180)}>
+        <h3>外观与体感</h3>
+        <p class="set-sub">只改"看到什么、摸起来什么感觉"，不碰你的数据。改完立刻生效，存在这台手机上。</p>
+        <div class="set-row">
+          <div class="set-txt">
+            <b>页面说明文字</b>
+            <span>清单 / 时间轴 / 统计页标题下面那段解释文案（分区规则、色阶含义这类），
+              以及设置页里每一项下面那行灰字。关掉只收掉这些字：条数、逾期这类数字照旧显示，
+              设置项本身也一个不少，列表空着时的引导提示也不会消失。</span>
+          </div>
+          <button class="switch" data-set="help" role="switch" aria-label="显示页面说明文字"
+                  aria-checked="${S.showHelp ? 'true' : 'false'}"></button>
+        </div>
+        <!-- 流畅模式原来在顶栏（一颗 ⚡）。aria-checked 直接读 html.soft-render —— 那是唯一真相：
+             它由"软件渲染自动检测"或"用户手动选择"共同决定，这里不另存一份状态。 -->
+        <div class="set-row">
+          <div class="set-txt">
+            <b>流畅模式</b>
+            <span>关掉玻璃模糊、背景点阵和入场动画，老机型滚动明显更顺。
+              检测到设备在用软件渲染时会自动打开；这里的开关可以手动覆盖它。</span>
+          </div>
+          <button class="switch" data-set="lite" role="switch" aria-label="流畅模式"
+                  aria-checked="${document.documentElement.classList.contains('soft-render') ? 'true' : 'false'}"></button>
+        </div>
+        <!-- ★ v5.1.2（用户："在设置里自己调节要不要显示时间，以及具体怎么显示。就给他 3 个按钮：
+              要不要显示年 / 要不要显示月 / 要不要显示日" + "在标题后面放 3 个圆形的按钮…
+              如果用户选择开启，UI 就变白；如果不按（关闭），就是灰色的"）：
+              只作用于**想法卡左侧时间轴上的日期**（清单页/时间轴页的日期不动，用户口径）。
+              三颗圆键各自独立开关，开＝白底浮起（.segbtn.on 那套语言），关＝灰字无底。
+              全部关掉 = 不显示日期（标题会往左顶上来），这是允许的、也是多出来的一种用法。
+              下面那行灰字里带一个**实时预览**：拨一下就能看到结果，不用切回想法页看。 -->
+        <div class="set-row">
+          <div class="set-txt">
+            <b>想法卡片时间显示</b>
+            <span>想法卡左侧时间轴上那个日期，显示哪几段：三颗圆键分别是<b>年 / 月 / 日</b>，
+              亮着＝显示、灰着＝不显示；三个都关掉就不显示日期。现在显示的是
+              <b class="mono" id="datePrev">${dateText('2026-10-04') || '（不显示）'}</b>。</span>
+          </div>
+          <div class="rbtns" role="group" aria-label="想法卡时间显示哪几段">
+            <button type="button" class="rbtn${S.dateShow.y ? ' on' : ''}" data-datepart="y"
+                    aria-pressed="${S.dateShow.y ? 'true' : 'false'}" title="显示年份">年</button>
+            <button type="button" class="rbtn${S.dateShow.m ? ' on' : ''}" data-datepart="m"
+                    aria-pressed="${S.dateShow.m ? 'true' : 'false'}" title="显示月份">月</button>
+            <button type="button" class="rbtn${S.dateShow.d ? ' on' : ''}" data-datepart="d"
+                    aria-pressed="${S.dateShow.d ? 'true' : 'false'}" title="显示日">日</button>
+          </div>
+        </div>
+        <!-- ★ v5.1.2（用户："这个长按的拖动，感觉震感不太明显呀" + "加一个震动档位"）：
+              档位只改"震多久"，不改"哪些动作会震"（那些是固定的反馈语言）。
+              选完立刻震一下当前档位，手能直接比较强弱。 -->
+        <div class="set-row">
+          <div class="set-txt">
+            <b>震动</b>
+            <span>长按卡片进入手势、拖到目标上挂靠、拖到边界外的越界提示 —— 这些动作会震一下。
+              「关」就完全不振；「弱 / 标准 / 强」只改每一下的长短，不改哪些动作会震。</span>
+          </div>
+          <span class="seg" role="group" aria-label="震动档位">
+            <button class="segbtn${S.haptic === 'off' ? ' on' : ''}" data-haptic="off"
+                    aria-pressed="${S.haptic === 'off'}">关</button>
+            <button class="segbtn${S.haptic === 'low' ? ' on' : ''}" data-haptic="low"
+                    aria-pressed="${S.haptic === 'low'}">弱</button>
+            <button class="segbtn${S.haptic === 'std' ? ' on' : ''}" data-haptic="std"
+                    aria-pressed="${S.haptic === 'std'}">标准</button>
+            <button class="segbtn${S.haptic === 'high' ? ' on' : ''}" data-haptic="high"
+                    aria-pressed="${S.haptic === 'high'}">强</button>
+          </span>
+        </div>
+      </section>
+
+      <!-- ★ 6B：**数据** —— 备份 / 示例数据 / AI 写过的话 / 版本号（「关于」并到这张卡底部）。
+           原来「关于」只装一行版本号却占一整张可折卡的体量，一张 9 行的卡和一张 1 行的卡并排，
+           是这次最直观的失衡。 -->
+      <section class="glass set-card${rv()}"${rvd(210)}>
         <h3>数据</h3>
-        <p class="set-sub">数据只存在这台手机上、不上云。这里做"导出留底"，以及只给试功能用的示例数据。</p>
+        <p class="set-sub">数据只存在这台手机上、不上云。这里做"导出留底"、清掉 AI 写过的句子，
+          以及只给试功能用的示例数据。</p>
         <!-- 备份导出从清单页工具行搬来（原来和粘贴导入并排）。#exportBtn 的点击在脚本里统一处理，
-             #backup 角标由 refresh 每帧同步（未备份 / 几天前备份）。 -->
+             #backup 角标由 refresh 每帧同步（未备份 / 几天前备份）。
+             ★ 6B：动作按钮换成实心（.set-act）—— 它"点一下执行一次"，和上面那排开关不是一类东西。 -->
         <div class="set-row">
           <div class="set-txt">
             <b>备份</b>
             <span>把数据导成一份 json 文件存到别处。数据只存在这台手机里，记得偶尔留个底。</span>
           </div>
           <div style="display:flex;align-items:center;gap:12px">
-            <button class="btn" id="exportBtn">备份</button>
+            <button class="set-act" id="exportBtn">备份</button>
             <span class="backup" id="backup"></span>
           </div>
         </div>
         <!-- ★ v5.0 示例数据：给"想试功能但还没攒够数据"的人用。
-             三条硬规则写在 demoFill 上方：只加不盖 / 每条带 demo 标记 / 设置页显示条数。
-             清空按钮在没有示例时是禁用的 —— 免得用户点一下以为删掉了自己的东西。
-             ★ v5.2（用户："把示例数据归入到这个数据栏目下"）：从独立一张卡降级成这栏里的第二行，
-             原来的 set-sub（"只为试功能用…"）并进这一行的说明里。 -->
+              三条硬规则写在 demoFill 上方：只加不盖 / 每条带 demo 标记 / 设置页显示条数。
+              清空按钮在没有示例时是禁用的 —— 免得用户点一下以为删掉了自己的东西。
+              ★ v5.2（用户："把示例数据归入到这个数据栏目下"）：从独立一张卡降级成这栏里的第二行。
+              ★ 6B：两枚动作换成实心。 -->
         <div class="set-row stack">
           <div class="set-txt">
             <b>现在有 <span class="mono">${demoCount()}</span> 条示例</b>
@@ -10591,33 +10626,32 @@ function renderSettings(){
               以及带三层父子、续写时间轴、合并血缘、沉睡、已收起的想法 —— 这一版新加的东西都能立刻看到形状。
               日期按"今天"算，过几天再放也不会变成一堆过期条目。</span>
           </div>
-          <div class="seg-cap">
-            <button type="button" class="pill" data-act="demofill">放一批进来</button>
-            <button type="button" class="pill${demoCount() ? '' : ' is-off'}" data-act="democlear"
+          <div class="set-acts">
+            <button type="button" class="set-act" data-act="demofill">放一批进来</button>
+            <button type="button" class="set-act${demoCount() ? '' : ' is-off'}" data-act="democlear"
                     ${demoCount() ? '' : 'disabled'} aria-disabled="${demoCount() ? 'false' : 'true'}">清空示例</button>
           </div>
         </div>
-      </section>
-
-      <!-- v3.8（用户要求）：设置页最下面的版本说明。
-           版本号的**唯一真相源**仍是 _android/app/AndroidManifest.xml 的 versionName；
-           打包时 _android/build.py 会把 APP_VERSION 常量替换成同一个值，
-           所以包里显示的不会和包本身对不上。
-           ★ v3.37（用户："我看设置里边的这个关于版本说明，它怎么就是一份 HTML 了？
-           HTML 不是只有在浏览器上才能打开吗？我要的不是 HTML 啊，我要的是一个完完整整的 APP"）：
-           这里原来写的是「整个应用就是一份 鱼事.html」—— 那是**实现细节**，不该出现在用户看的
-           「关于」里；它把一个装好的独立 App 说成了网页，用户当然要问。改成人话：
-           装在这台手机上的独立 App、不需要联网、数据只在本机。 -->
-      <section class="glass set-card${rv()}"${rvd(240)}>
-        <h3>关于</h3>
-        <p class="set-sub">鱼事 · 本地待办</p>
+        <!-- ★ 6B：从「AI」栏搬到「数据」栏（方案改动 2：主列表那栏只留"会调的"，
+              这种"清东西"的动作归数据）。data-act 与处理逻辑一字未改。 -->
         <div class="set-row">
           <div class="set-txt">
-            <b>版本 v${APP_VERSION}</b>
-            <!-- ★ 5G（用户："还有这个版本的介绍，感觉也是多余了"）：版本号下面那段
-                 「装在手机上的独立 App，没有账号…」整段删除 —— 连同它的 data-keephelp 机制
-                 （那套"把它从页面说明文字开关里摘出去"的例外已经没有使用者了，
-                 见 HELP_SEL 与 body[data-help="off"] 那条规则）。 -->
+            <b>AI 写过的话</b>
+            <span>时间轴上带 ✦ 的那几步是它写的。想清掉就一键筛出来删（会先弹撤销）。</span>
+          </div>
+          <div class="set-acts">
+            <button type="button" class="set-act" data-act="aiprune">筛出来删掉</button>
+          </div>
+        </div>
+        <!-- v3.8（用户要求）：设置页最下面的版本说明。
+             版本号的**唯一真相源**仍是 _android/app/AndroidManifest.xml 的 versionName；
+             打包时 _android/build.py 会把 APP_VERSION 常量替换成同一个值，
+             所以包里显示的不会和包本身对不上。
+             ★ 6B：「关于」不再单独成卡，这一行并到「数据」卡底部（内容一字未改）。 -->
+        <div class="set-row">
+          <div class="set-txt">
+            <b id="setVer">版本 v${APP_VERSION}</b>
+            <span>鱼事 · 本地待办</span>
           </div>
         </div>
       </section>
@@ -10630,14 +10664,139 @@ function renderSettings(){
   refreshNotifyExact();
 }
 
+/* ★ 6B：主列表上那行 AI 状态的文案。
+   **没有 key = 未连接**（不报模型名 —— 没连上时报一个模型名没有意义）；有 key 就把模型名带出来。
+   注意它只说"配没配 key"，不代表真的连通 —— 连通性由二级页的「试连接」回答（别把两件事混成一个）。 */
+function aiEntryText(){
+  return aiKey() ? ('AI · 已连接 · ' + (S.aiModel || 'deepseek-flash')) : 'AI · 未连接';
+}
+function aiEntryLabel(){ return 'AI 连接设置 · ' + aiEntryText() + ' · 点开填 key / 接口地址 / 模型名'; }
+
+/* ★ 6B：AI 那三格输入（key / 接口地址 / 模型名）与「对 AI 的规范设置」的落库逻辑。
+   原来只写在 #view 的 change 代理里；这三格搬进二级面板之后，面板**不在 #view 里**，
+   所以抽成一处共用 —— 两条路（#view 的老代理 / 面板自己的监听）落库行为一字不变。
+   返回 true = 这个 id 归它管（调用方就别再往下走了）。 */
+function aiFieldCommit(el){
+  if (!el || !el.id) return false;
+  const id = el.id;
+  if (id === 'aiKeyInput'){
+    const had = !!aiKey();
+    aiSetKey(el.value);
+    el.value = '';                               // 不回显明文；掩码由重渲染后的 label 显示
+    toast(aiKey() ? 'key 存好了（只在设置页显示后四位）' : (had ? 'key 已清空' : '还没填 key'));
+    if (typeof refresh === 'function') refresh();
+    return true;
+  }
+  if (id === 'aiBaseInput'){
+    const v = String(el.value || '').trim();
+    S.aiBase = v || 'https://api.deepseek.com';
+    save(); refresh(); toast('接口地址已更新');
+    return true;
+  }
+  if (id === 'aiModelInput'){
+    const v = String(el.value || '').trim();
+    S.aiModel = v || 'deepseek-flash';
+    save(); refresh(); toast('模型名已更新');
+    return true;
+  }
+  /* ★ 7B：「对 AI 的规范设置」——存的是自然语言，原样留着（只限长），空串合法（= 不写规则）。 */
+  if (id === 'zoneRulesInput'){
+    S.zoneRules = String(el.value || '').slice(0, 1000);
+    save();
+    toast(S.zoneRules.trim() ? '规则存好了 · 以后 AI 按它分区' : '规则清空了 · 改用学到的词 + 模型自己判');
+    return true;
+  }
+  return false;
+}
+
+/* ★ 6B：AI 的二级页面「AI 连接」—— key / 接口地址 / 模型名 / 试连接 / 现在找一次。
+   形态**照 openParentPicker**：在现有 `.modal` 里 appendChild 一个绝对定位铺满的面板，
+   共用同一套 openMask / closeModal，**不新造浮层**（0E 那条红线的正解）。
+   为什么要一个占位壳：面板是 `inset:0` 的 absolute，模态里没有别的流内容时父盒高度塌成 0、
+   面板就看不见（3B 的「改挂到…」踩过同一个坑）。壳只负责撑高，`aria-hidden` 不进无障碍树。 */
+function openAiPanel(){
+  if (document.getElementById('ai_panel')) return;
+  const holder = document.createElement('div');
+  holder.className = 'ai-holder';
+  holder.setAttribute('aria-hidden', 'true');
+  modal.appendChild(holder);
+  const panel = document.createElement('div');
+  panel.id = 'ai_panel';
+  panel.tabIndex = -1;
+  panel.style.cssText = 'position:absolute;inset:0;z-index:2;background:var(--bg);overflow:auto;' +
+    'overscroll-behavior:contain;padding:clamp(22px,3vw,34px);display:flex;flex-direction:column;';
+  panel.innerHTML =
+    `<h3 id="aiPanelTitle">AI 连接</h3>
+     <p class="ai-note">鱼事把你说的一句话整理成条目、给想法找关系，都靠这一把 key。填一次就行。</p>
+     <p class="ai-quote">打开之后，鱼事会把<b>当前这一条想法的文字</b>发到模型服务商那里去。
+       关着的时候，鱼事和以前一样，一个字都不出你的手机。</p>
+     <div class="ai-row">
+       <label for="aiKeyInput" id="aiKeyLabel">API key（只存在这台手机上，不进备份文件）${aiKey() ? '  · 现在是 ' + esc(aiKeyMask()) : ''}</label>
+       <div class="ai-keyline">
+         <input class="ai-input" id="aiKeyInput" type="text" autocomplete="off" spellcheck="false"
+                autocapitalize="off" autocorrect="off" data-mask="1"
+                placeholder="粘贴 DeepSeek 的 key（sk-…）" value="">
+         <button type="button" class="btn" data-act="aipaste" title="从剪贴板粘贴">粘贴</button>
+         <button type="button" class="btn" data-act="aishowkey" aria-pressed="false" title="显示 / 隐藏">显示</button>
+       </div>
+     </div>
+     <div class="ai-row">
+       <label for="aiBaseInput">接口地址（任意 OpenAI 兼容端点）</label>
+       <input class="ai-input" id="aiBaseInput" type="text" autocomplete="off" spellcheck="false"
+              value="${esc(S.aiBase)}">
+     </div>
+     <div class="ai-row">
+       <label for="aiModelInput">模型名</label>
+       <input class="ai-input" id="aiModelInput" type="text" autocomplete="off" spellcheck="false"
+              value="${esc(S.aiModel)}">
+     </div>
+     <div class="set-acts" style="margin-top:16px">
+       <button type="button" class="set-act" data-act="aitest">试连接</button>
+       <button type="button" class="set-act" data-act="aiscan">现在找一次</button>
+     </div>
+     <div class="foot" style="margin-top:auto;padding-top:20px">
+       <div class="spacer"></div>
+       <button class="btn" id="aiPanelClose">关掉</button>
+     </div>`;
+  modal.appendChild(panel);
+  /* 面板不在 #view 里，#view 的点击 / change 代理都到不了它 —— 这里自己接线。
+     ⚠️ 调用的仍是原来那几个函数（aiPasteKey / aiToggleKeyShow / aiTestSelf / aiScanLinks），
+     一项处理逻辑都没有重写。按钮上的 data-act 只为探针可读，delegation 不会二次触发
+     （#view 那条只认自己子树里的元素）。 */
+  panel.querySelector('[data-act="aipaste"]').onclick = () => { aiPasteKey(); aiPanelSync(); setTimeout(aiPanelSync, 400); };
+  panel.querySelector('[data-act="aishowkey"]').onclick = () => aiToggleKeyShow();
+  panel.querySelector('[data-act="aitest"]').onclick = () => aiTestSelf();
+  panel.querySelector('[data-act="aiscan"]').onclick = () => aiScanLinks(true);
+  panel.querySelector('#aiPanelClose').onclick = closeModal;
+  panel.addEventListener('change', e => { if (aiFieldCommit(e.target)) aiPanelSync(); });
+  /* Escape 拦在**捕获阶段**、只关这一层（同 openParentPicker）。本页没有下一层，
+     所以"关这一层"就等于关弹层 —— 语义与全局那条 Escape 一致，只是不绕一圈。 */
+  panel.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    closeModal();
+  }, true);
+  panel.focus({ preventScroll: true });
+  openMask();
+}
+/* 面板里那行 key 掩码的显隐 —— 存了 / 清了 key 之后就地问更新，不整块重画（重画会丢输入焦点）。 */
+function aiPanelSync(){
+  const lbl = document.getElementById('aiKeyLabel');
+  if (lbl) lbl.textContent = 'API key（只存在这台手机上，不进备份文件）'
+    + (aiKey() ? '  · 现在是 ' + aiKeyMask() : '');
+}
+
 /* ★ v5.0：设置页的折叠 —— 在上面那份 markup 渲染完之后**原地加工**，不改各栏自己的写法。
-   为什么不在模板里逐栏包壳：这里 5 栏（v5.2 从 8 栏并到 5 栏），以后还会加；包壳写法要求
-   每加一栏都记得再包一次，漏了就成一个"点了没反应"的标题。在这里统一加工，新加的栏自动带上折叠。
+   为什么不在模板里逐栏包壳：这里 4 栏（v5.2 从 8 栏并到 5 栏；6B 按频率重排成 4 栏），
+   以后还会加；包壳写法要求每加一栏都记得再包一次，漏了就成一个"点了没反应"的标题。
+   在这里统一加工，新加的栏自动带上折叠。
    加工后每张卡的形状：button.set-head（里面是 h3 + ▸）→ div.set-body（原来的其余内容）。
-   展开态读 S.setOpen（默认空数组 = 全收起）；收起时卡片只剩一行标题。 */
+   展开态读 S.setOpen（默认空数组 = 全收起）；收起时卡片只剩一行标题。
+   ★ 6B：`.set-keep`（「常用」）**跳过** —— 它常驻展开（理由见 renderSettings 里那段）。 */
 function setFoldInit(){
   const cards = view.querySelectorAll('.set-card');
   cards.forEach((card, i) => {
+    if (card.classList.contains('set-keep')) return;
     const h3 = card.querySelector(':scope > h3');
     if (!h3) return;
     const key = h3.textContent.trim() || ('c' + i);
@@ -12387,36 +12546,11 @@ view.addEventListener('input', e => {
 /* ★ v5.0 第 3 批：设置页 AI 三格输入（key / 接口地址 / 模型名）。
    用 change 而不是 input —— 这三个都是"填完就走"的值，边打字边存会把半截 key 写进
    localStorage；change 在失焦或回车时触发，正好。key 单独存（不进 S、不进备份），
-   另外两个进 S 跟着存档走。 */
+   另外两个进 S 跟着存档走。
+   ★ 6B：三格搬进二级页「AI 连接」之后，落库逻辑抽成 aiFieldCommit；
+   这里只留一句转发 —— 主列表里若还有同 id 的元素，行为与改动前逐字段一致。 */
 view.addEventListener('change', e => {
-  const id = e.target.id;
-  if (id === 'aiKeyInput'){
-    const had = !!aiKey();
-    aiSetKey(e.target.value);
-    e.target.value = '';                         // 不回显明文；掩码由重渲染后的 label 显示
-    toast(aiKey() ? 'key 存好了（只在设置页显示后四位）' : (had ? 'key 已清空' : '还没填 key'));
-    refresh();
-    return;
-  }
-  if (id === 'aiBaseInput'){
-    const v = String(e.target.value || '').trim();
-    S.aiBase = v || 'https://api.deepseek.com';
-    save(); refresh(); toast('接口地址已更新');
-    return;
-  }
-  if (id === 'aiModelInput'){
-    const v = String(e.target.value || '').trim();
-    S.aiModel = v || 'deepseek-flash';
-    save(); refresh(); toast('模型名已更新');
-    return;
-  }
-  /* ★ 7B：「对 AI 的规范设置」——存的是自然语言，原样留着（只限长），空串合法（= 不写规则）。 */
-  if (id === 'zoneRulesInput'){
-    S.zoneRules = String(e.target.value || '').slice(0, 1000);
-    save();
-    toast(S.zoneRules.trim() ? '规则存好了 · 以后 AI 按它分区' : '规则清空了 · 改用学到的词 + 模型自己判');
-    return;
-  }
+  if (aiFieldCommit(e.target)) return;
 });
 view.addEventListener('keydown', e => {
   /* 清空要立刻生效（还带一个清空搜索的挂起定时器，否则它稍后会把刚清掉的词又填回去） */
@@ -12859,6 +12993,10 @@ view.addEventListener('click', e => {
     refresh(); return;
   }
   if (act === 'ideatagclear'){ ideaUI.tags = []; refresh(); return; }
+  /* ★ 6B：主列表那行 AI 状态 → 二级页「AI 连接」。
+     它**不新增浮层**：openAiPanel 在现有 #mask/.modal 里铺一层 absolute 面板
+     （照 openParentPicker 的形态）。 */
+  if (act === 'aipanel'){ openAiPanel(); return; }
   /* ★ v5.0：设置页每栏的折叠开关。**就地切换、不整页重渲染** —— 展开会改变页面高度，
      走 refresh 之后滚动位置会跳一下，用户刚点开的那一栏可能已经不在指尖下了。
      ★ v5.2：展开/收起改成"高度撑开"（和「页面说明文字」共用 revealAnim）。
@@ -15949,7 +16087,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '6.0.0';
+const APP_VERSION = '6.1.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
