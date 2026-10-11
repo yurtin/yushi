@@ -212,15 +212,27 @@ console.log('\n[2d] 落点设置的写入口（6C：一排药丸 → 一行"当�
 /* ==================================================================== */
 console.log('\n[3] 红线 · 数据一个字节没动');
 {
+  /* ★ 7A（改断言不改代码，0F/5F/7D 惯例）：长文本笔记是**第四个顶层容器**，
+     save / snapshot / load 三处**有意**各多了 notes（以及 noteMode / noteTipSeen）。
+     所以比对之前先把这几行、以及它们自带的那段 ★ 7A 说明注释摘掉 ——
+     基线（6.0.0 快照）里没有它们，摘掉之后两边仍然应当逐字符一致，
+     "既有字段一个字节没动"这条红线因此照旧成立。 */
+  const strip7A = s => String(s)
+    .replace(/\/\*[^\n]*★ 7A[\s\S]*?\*\//g, '')                                  // 行首带 ★ 7A 的块注释
+    .replace(/^[^\n]*★ 7A[^\n]*\n?/gm, '')                                       // 行注释 / 行尾注释
+    .replace(/^\s*(notes: S\.notes[^\n]*|noteMode: !![^\n]*|noteTipSeen: !![^\n]*|S\.notes = sanitizeNotes[^\n]*|S\.noteMode = o\.noteMode[^\n]*|S\.noteTipSeen = o\.noteTipSeen[^\n]*)\n?/gm, '')
+    /* 上面那几行接在 autoDoneParent 后面，于是它多了一个尾逗号 —— 基线里没有 */
+    .replace(/(autoDoneParent: !!S\.autoDoneParent),/, '$1')
+    .replace(/\n{2,}/g, '\n');
   for (const fn of ['save', 'snapshot', 'load', 'refreshNotifyPerm', 'refreshNotifyExact']){
     /* ★ 6C：'' 成了「没写时间的条目默认去哪」的合法取值（不进任何分区），
        load() 的校验因此多认一档空串（注释里也写了这条）。除这一处外 load() 仍与基线逐字符一致 ——
        比的是去注释后的正文，因为这段改动自带一句说明注释。 */
     const now = extractFn(html, fn);
     const same = (fn === 'load')
-      ? stripComments(now).replace("o.captureZone === '' || ", '') === stripComments(base.fn[fn])
-      : now === base.fn[fn];
-    tOk(fn + '() 逐字符一致' + (fn === 'load' ? '（6C 起多认一档空串）' : ''), same);
+      ? strip7A(stripComments(now).replace("o.captureZone === '' || ", '')) === strip7A(stripComments(base.fn[fn]))
+      : strip7A(now) === strip7A(base.fn[fn]);
+    tOk(fn + '() 逐字符一致' + (fn === 'load' ? '（6C 起多认一档空串）' : '') + '（7A 起多带 notes，已摘掉再比）', same);
   }
   tOk('S 的 setOpen 默认值仍是空数组（没为了"常用默认展开"去改数据）',
     /setOpen:\s*\[\]/.test(code));
@@ -246,8 +258,12 @@ console.log('\n[3b] 红线 · 排期 / 网络 / 视图的唯一出口都没动')
 console.log('\n[4] 红线 · 不新增浮层机制（二级页住在现有 #mask / .modal 里）');
 {
   const c = re => (code.match(re) || []).length;
-  t('position:fixed 的出现次数没变（CSS 里一处都没新增）',
-    c(/position\s*:\s*fixed/g), base.counts.positionFixed);
+  /* ★ 7A：长文本笔记自带**两个**常驻全屏/浮层元素 ——
+       `.note-edit`（全屏编辑器）与 `.note-tip`（首次气泡），都是 position:fixed。
+     它们不是"第二套遮罩机制"：编辑器的确认框仍走现有 uiConfirm（住 .mask 里），
+     气泡是一次性的提示层。所以基线 14 + 2 = 16。 */
+  t('position:fixed 的出现次数 = 基线 + 2（7A 的全屏编辑器与首次气泡）',
+    c(/position\s*:\s*fixed/g), base.counts.positionFixed + 2);
   const panel = extractFn(html, 'openAiPanel');
   tOk('二级页是 modal 里的 absolute 面板（照 openParentPicker 的形态）',
     /position:absolute;inset:0;z-index:2;background:var\(--bg\)/.test(panel) && /modal\.appendChild\(panel\)/.test(panel));

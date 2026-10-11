@@ -191,6 +191,21 @@ const NAMES = [
   /* ---- 7D 追加（用户："都是直接展开，没有动画"）：折叠的就地补间 + 量高 ----
      ⚠️ 常量 LOG_ENTER 不是函数声明，不进清单。 */
   'toggleLogMaj', 'toggleLogVer', 'logBodyH',
+  /* ================= 7A 长文本笔记（草稿纸） ================= */
+  /* 六个新名字一组：形状校验（sanitizeNotes）；
+     纯函数（noteById / noteTitle / noteSummary / noteCharCount / noteDateLabel / noteTimeText）；
+     渲染（noteCardHTML / notesToolbarHTML / notesListHTML / noteDetailHTML / renderNotes）；
+     列表动作（noteOpen / noteClose / noteSetMode / noteBatchDel / noteAct）；
+     全屏编辑器（noteEditOpen / noteEditDirty / noteEditExit / noteEditSave / noteEditBack）；
+     首次气泡（maybeNoteTip / hideNoteTip / noteTipClose）。
+     ⚠️ 模块级的 `notePage`（let）/ `noteEditId`（let）/ `noteTabAt`（let）/
+        `noteUI`（const 对象）不是函数声明，不进清单；编辑器接线那个 IIFE 同理。 */
+  'sanitizeNotes',
+  'noteById', 'noteTitle', 'noteSummary', 'noteCharCount', 'noteDateLabel', 'noteTimeText',
+  'noteCardHTML', 'notesToolbarHTML', 'notesListHTML', 'noteDetailHTML', 'renderNotes',
+  'noteOpen', 'noteClose', 'noteSetMode', 'noteBatchDel', 'noteAct',
+  'noteEditOpen', 'noteEditDirty', 'noteEditExit', 'noteEditSave', 'noteEditBack',
+  'maybeNoteTip', 'hideNoteTip', 'noteTipClose',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }

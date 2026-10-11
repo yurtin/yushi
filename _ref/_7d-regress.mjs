@@ -213,7 +213,8 @@ console.log('\n[4] B 部分：面板形态（不新增浮层 / Escape 逐层退�
     /data-log="back"/.test(html) && /function logPanelSync\(/.test(html) && c(/log_panel/g) >= 2,
     'log_panel 出现 ' + c(/log_panel/g) + ' 处');
   tOk('不新增浮层机制（没有 .mask2 / #mask2 / newMask）', !/\.mask2|#mask2|newMask/.test(code));
-  tOk('CSS 里 position:fixed 的数量没变（14 处，与 6B 基线一致）', c(/position:\s*fixed/g) === 14,
+  /* ★ 7A：新增两个常驻浮层（.note-edit 全屏编辑器 / .note-tip 首次气泡）→ 14 + 2 = 16 */
+  tOk('CSS 里 position:fixed 的数量 = 基线 14 + 7A 的 2（共 16）', c(/position:\s*fixed/g) === 16,
     String(c(/position:\s*fixed/g)));
   tOk('打开态是会话级（logView / logOpenMaj / logOpenVer）**不进 S**',
     !/S\.logView|S\.logOpenMaj|S\.logOpenVer/.test(code));
@@ -250,12 +251,28 @@ console.log('\n[5] 红线：唯一出口与 AI 提示词');
   /* AI_UNDERSTAND_SYS / schema 逐字符不动：与 git HEAD 的那份比（拿不到 git 就跳过） */
   try {
     const head = lf(execSync('git show HEAD:鱼事.html', { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
-    /* 取「const NAME = …」到下一个顶层 `const ` 之前的那一整段（提示词是多行字符串拼接）。 */
+    /* 取「const NAME = …」这**一条声明**（多行字符串拼接，所以要带引号/反引号扫描）。
+       ★ 7A 修正切片：原来切到"下一个顶层 const"，那条规则会被**新插进来的任何顶层 const**
+       提前截断 —— 7A 加了一个 `const noteUI`，AI_IMAGE_SYS 的切片长度就从 23939 掉到 11576，
+       于是"逐字符未动"假红。改成"扫到这条声明自己的分号为止"，与文件后文加了什么无关。 */
     const grab = (s, name) => {
       const i = s.indexOf('const ' + name + ' =');
       if (i < 0) return '';
-      const j = s.indexOf('\nconst ', i + 10);
-      return s.slice(i, j < 0 ? i + 4000 : j);
+      let j = i, q = '', esc = false, depth = 0;
+      for (; j < s.length; j++){
+        const ch = s[j];
+        if (q){
+          if (esc){ esc = false; continue; }
+          if (ch === '\\'){ esc = true; continue; }
+          if (ch === q) q = '';
+          continue;
+        }
+        if (ch === "'" || ch === '"' || ch === '`'){ q = ch; continue; }
+        if (ch === '[' || ch === '(' || ch === '{') depth++;
+        else if (ch === ']' || ch === ')' || ch === '}') depth--;
+        else if (ch === ';' && depth <= 0){ j++; break; }
+      }
+      return s.slice(i, j);
     };
     for (const name of ['AI_UNDERSTAND_SYS', 'AI_UNDERSTAND_SCHEMA', 'AI_IMAGE_SYS']){
       const a = grab(head, name), b2 = grab(html, name);
