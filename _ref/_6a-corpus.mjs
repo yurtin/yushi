@@ -65,12 +65,18 @@ const MODEL = [
   { t: '九一三 做作业', src: 'model', dim: '汉字数字', freq: 2 },
   { t: '十二 交材料', src: 'model', dim: '汉字数字', freq: 4 },
 
-  /* ── D5 全角数字（★ 卡面明令**不在本卡范围**，单独立项） ── */
-  { t: '９１５ 交作业', src: 'model', dim: '全角数字·不在本卡范围', freq: 3, note: '卡面不在范围' },
-  { t: '３号交材料', src: 'model', dim: '全角数字·不在本卡范围', freq: 3, note: '卡面不在范围' },
-  { t: '１７号开会', src: 'model', dim: '全角数字·不在本卡范围', freq: 3, note: '卡面不在范围' },
-  { t: '９.２ 交材料', src: 'model', dim: '全角数字·不在本卡范围', freq: 4, note: '卡面不在范围' },
-  { t: '９：３０ 开会', src: 'model', dim: '全角数字·不在本卡范围', freq: 4, note: '卡面不在范围' },
+  /* ── D5 全角数字（★ 7C 起**在范围内**：入口归一化 ０-９ → 0-9） ── */
+  { t: '９１５ 交作业', src: 'model', dim: '全角数字', freq: 3, note: '7C 必认：同 915' },
+  { t: '３号交材料', src: 'model', dim: '全角数字', freq: 3, note: '7C 必认：同 3号交材料' },
+  { t: '１７号开会', src: 'model', dim: '全角数字', freq: 3, note: '7C 必认：同 17号开会' },
+  { t: '９.２ 交材料', src: 'model', dim: '全角数字', freq: 4, note: '7C 必认：同 9.2' },
+  { t: '９：３０ 开会', src: 'model', dim: '全角数字', freq: 4, note: '7C 必认：全角数字 + 全角冒号' },
+  { t: '下午３点 开会', src: 'model', dim: '全角数字', freq: 3, note: '7C 必认：同 下午3点' },
+  { t: '１６：９ 视频', src: 'model', dim: '全角数字·反例', freq: 4, note: '7C 必不认：比例不是钟点' },
+  { t: '３：１', src: 'model', dim: '全角数字·反例', freq: 4, note: '7C 必不认：比例' },
+  { t: '买３~５个苹果', src: 'model', dim: '全角数字·反例', freq: 4, note: '7C 必不认：不是区间' },
+  { t: '５＞３ 比较', src: 'model', dim: '全角数字·反例', freq: 4, note: '7C 必不认：0C 路径闸（＞ 两侧都是数字）' },
+  { t: '３D打印', src: 'model', dim: '全角数字·反例', freq: 4, note: '7C 必不认：不当日期' },
 
   /* ── D6 日期锚点 · 相对词 ── */
   { t: '今天 交作业', src: 'model', dim: '日期锚点·相对词', freq: 1 },
@@ -95,17 +101,19 @@ const MODEL = [
   { t: '周四之前 交材料', src: 'model', dim: '日期锚点·星期', freq: 2 },
   { t: '下下周三 开会', src: 'model', dim: '日期锚点·星期', freq: 4 },
 
-  /* ── D8 日期锚点 · 月/旬/时段（多半要靠 AI 兜底，本地只有一半能定） ── */
-  { t: '下个月 交房租', src: 'model', dim: '日期锚点·月旬', freq: 2, note: '锚点不唯一' },
-  { t: '月底 对账', src: 'model', dim: '日期锚点·月旬', freq: 3, note: '锚点不唯一' },
-  { t: '月初 交报告', src: 'model', dim: '日期锚点·月旬', freq: 3, note: '锚点不唯一' },
-  { t: '年底 总结', src: 'model', dim: '日期锚点·月旬', freq: 4, note: '锚点不唯一' },
-  { t: '下个月这个时候 开会', src: 'model', dim: '日期锚点·月旬', freq: 4, note: '锚点不唯一' },
-  { t: '这个月 交表', src: 'model', dim: '日期锚点·月旬', freq: 3, note: '锚点不唯一' },
+  /* ── D8 日期锚点 · 月/旬（★ 7C 起有精确口径，不再是 pending） ── */
+  { t: '月底交房租', src: 'model', dim: '日期锚点·月旬', freq: 2, note: '7C：当月最后一天' },
+  { t: '下个月 交房租', src: 'model', dim: '日期锚点·月旬', freq: 2, note: '7C：下个月同一天' },
+  { t: '月底 对账', src: 'model', dim: '日期锚点·月旬', freq: 3, note: '7C：当月最后一天' },
+  { t: '月初 交报告', src: 'model', dim: '日期锚点·月旬', freq: 3, note: '7C：当月 1 号' },
+  { t: '年底 总结', src: 'model', dim: '日期锚点·月旬', freq: 4, note: '7C：12月31日' },
+  { t: '下个月这个时候 开会', src: 'model', dim: '日期锚点·月旬', freq: 4, note: '7C：下个月同一天' },
+  { t: '这个月 交表', src: 'model', dim: '日期锚点·月旬', freq: 3, note: '7C 拍板：不认（太模糊）' },
 
   /* ── D9 钟点 · 阿拉伯 ── */
   { t: '下午3点 开会', src: 'model', dim: '钟点·阿拉伯', freq: 1 },
   { t: '15:00 开会', src: 'model', dim: '钟点·阿拉伯', freq: 1 },
+  { t: '15:00 交材料', src: 'model', dim: '钟点·阿拉伯', freq: 2, note: '7C：只有钟点（落点见 _5e-regress）' },
   { t: '3点半 开会', src: 'model', dim: '钟点·阿拉伯', freq: 2 },
   { t: '9:30 开会', src: 'model', dim: '钟点·阿拉伯', freq: 1 },
   { t: '9点30 开会', src: 'model', dim: '钟点·阿拉伯', freq: 3 },
@@ -220,6 +228,10 @@ const MODEL = [
   { t: '3　号交材料', src: 'model', dim: 'X号', freq: 4, note: '全角空格；5H 修' },
   { t: '17号码头', src: 'model', dim: 'X号·反例', freq: 4, note: '名词后缀黑名单' },
   { t: '17号线', src: 'model', dim: 'X号·反例', freq: 4, note: '名词后缀黑名单' },
+  { t: '17号楼', src: 'model', dim: 'X号·反例', freq: 4, note: '7C：名词后缀黑名单' },
+  { t: '17号院', src: 'model', dim: 'X号·反例', freq: 4, note: '7C：名词后缀黑名单' },
+  { t: '17号店', src: 'model', dim: 'X号·反例', freq: 4, note: '7C：名词后缀黑名单' },
+  { t: '17号交材料', src: 'model', dim: 'X号', freq: 2, note: '7C：无空格 + 白名单动词' },
   { t: '17号打球', src: 'model', dim: 'X号·反例', freq: 4, note: '动词不在白名单' },
   { t: '17号准备材料', src: 'model', dim: 'X号', freq: 3 },
   { t: '看书 17号', src: 'model', dim: 'X号', freq: 2 },

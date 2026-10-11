@@ -255,6 +255,74 @@ console.log(' —— 落点（本地也要能分"还没定要不要做"）');
 }
 
 /* ══════════════════════════════════════════════════════════════
+   [1c] ★ 7C：只有钟点落短期 / 月旬口径 / 全角数字 / 无空格 X号
+   ══════════════════════════════════════════════════════════════ */
+console.log('\n[1c] 7C 遗留收尾：落点 + 月旬 + 全角 + 无空格 X号');
+{
+  /* 只有钟点、没有日期 → 短期。断言比的是**分区表里的 k**（z_short），
+     不是字面量 'short' —— 7B 红线 1：k 与 name 解耦，写死老值会被 sanitizeItemZones 清成未分组。 */
+  t('下午3点 开会 → 只有钟点 → zone=z_short（★ 7C 修：5E 登记时沉 z_long）',
+    local('下午3点 开会').p.zone, 'z_short');
+  t('15:00 交材料 → 同样落 z_short', local('15:00 交材料').p.zone, 'z_short');
+  t('晚上九点五十一 看书 → 同样落 z_short', local('晚上九点五十一 看书').p.zone, 'z_short');
+  t('落点是分区的 k，绝不是字面量 short', local('下午3点 开会').p.zone === 'short', false);
+  t('有日期的照旧：三周后（21 天）→ z_long', local('交报告 三周后').p.zone, 'z_long');
+  t('有日期的照旧：两天后（2 天）→ z_short', local('交报告 两天后').p.zone, 'z_short');
+  t('循环条目的归属不动：每天早上8点 吃药 → z_repeat', local('每天早上8点 吃药').p.zone, 'z_repeat');
+  t('什么都没写 → z_long', local('读AIagent入门书').p.zone, 'z_long');
+
+  /* 月旬（现算日期，不钉魔法日期） */
+  const d0 = today0();
+  const Y = d0.getFullYear(), M = d0.getMonth(), D = d0.getDate();
+  const lastOfThis = ymd(new Date(Y, M + 1, 0));
+  const firstOfThis = ymd(new Date(Y, M, 1));
+  const lastOfNext = new Date(Y, M + 2, 0).getDate();
+  const nextSame = ymd(new Date(Y, M + 1, Math.min(D, lastOfNext)));
+  t('月底交房租 → 当月最后一天', [local('月底交房租').p.title, local('月底交房租').p.date], ['交房租', lastOfThis]);
+  t('月初 交报告 → 当月 1 号', [local('月初 交报告').p.title, local('月初 交报告').p.date], ['交报告', firstOfThis]);
+  t('年底 总结 → 当年 12月31日', [local('年底 总结').p.title, local('年底 总结').p.date], ['总结', Y + '-12-31']);
+  t('下个月 交房租 → 下个月同一天（月末自动夹）',
+    [local('下个月 交房租').p.title, local('下个月 交房租').p.date], ['交房租', nextSame]);
+  t('下个月这个时候 开会 → 同一天', [local('下个月这个时候 开会').p.title, local('下个月这个时候 开会').p.date], ['开会', nextSame]);
+  t('这个月 总结 → 不认（一个字不动）',
+    [local('这个月 总结').p.title, local('这个月 总结').p.date], ['这个月 总结', null]);
+  t('9月 交报告 → 只认年月：该月 1 号 + monthOnly',
+    [local('9月 交报告').p.title, local('9月 交报告').p.date, local('9月 交报告').p.monthOnly],
+    ['交报告', Y + '-09-01', true]);
+  t('2026年10月 对账 → 只认年月：2026-10-01 + monthOnly',
+    [local('2026年10月 对账').p.title, local('2026年10月 对账').p.date, local('2026年10月 对账').p.monthOnly],
+    ['对账', '2026-10-01', true]);
+  /* monthOnly 是**活字段**（dateLabel 渲染成「N月内」），不是 2A 说的废弃字段 */
+  tOk('monthOnly 有消费者：dateLabel 里渲染成「N月内」',
+    /if \(it\.monthOnly\) return \(d\.getMonth\(\) \+ 1\) \+ '月内';/.test(html));
+
+  /* 全角数字：5 条必认（与半角逐字段等同）+ 5 条必不认（归一化之后照样被闸住） */
+  const FW = [
+    ['３号交材料', '3号交材料'], ['１７号开会', '17号开会'], ['９１５ 交作业', '915 交作业'],
+    ['９.２ 看书', '9.2 看书'], ['下午３点 开会', '下午3点 开会'],
+  ];
+  for (const [fw, hw] of FW){
+    const A = local(fw).p, B = local(hw).p;
+    t('全角『' + fw + '』与半角『' + hw + '』逐字段等同（title/date/dateEnd/time/zone）',
+      [A.title, A.date, A.dateEnd, A.time, A.zone], [B.title, B.date, B.dateEnd, B.time, B.zone]);
+  }
+  for (const bad of ['１６：９ 视频', '３：１', '买３~５个苹果', '５＞３ 比较', '３D打印']){
+    const r = local(bad).p;
+    t('全角反例『' + bad + '』不产出时间/日期/循环',
+      [r.date, r.dateEnd, r.time, r.repeat], [null, null, null, null]);
+  }
+  tOk('全角反例『买３~５个苹果』标题被归一化成半角（0C 同款副作用）',
+    local('买３~５个苹果').p.title === '买3~5个苹果', local('买３~５个苹果').p.title);
+
+  /* 无空格 X号：7C 探针确认 5G 的双闸已经收下它 —— 这里当回归钉住 */
+  t('17号开会（无空格 + 白名单动词）→ 收下', [local('17号开会').p.title, local('17号开会').p.date], ['开会', dayOfMonth(17)]);
+  t('17号交材料（无空格）→ 收下', [local('17号交材料').p.title, local('17号交材料').p.date], ['交材料', dayOfMonth(17)]);
+  for (const bad of ['17号码头', '17号线', '17号楼', '17号院', '17号店']){
+    t('黑名单『' + bad + '』继续不收', [local(bad).p.title, local(bad).p.date], [bad, null]);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
    [2] 反例表 —— 红线：每一条都不许动，逐条断言
    ══════════════════════════════════════════════════════════════ */
 console.log('\n[2] 反例表（红线：标题一个字都不许动，不许凭空长出时间/日期/循环）');
@@ -311,6 +379,12 @@ console.log('\n[4] 源码级红线');
   tOk('5E 的压力测试注释挨着 smartHintCount 那条老规矩',
     /★ 5E：加任何本地口语规则时，必须问一句/.test(html) && /_ref\/_5e-regress\.mjs/.test(html));
   tOk('探针文件在（_ref/_5e-probe.mjs）', fs.existsSync(path.join(ROOT, '_ref', '_5e-probe.mjs')));
+  /* ★ 7C：落点必须写**分区的 k**（7B 红线 1：k 与 name 解耦）—— 绝不能写死 'short'/'long'。 */
+  const zi = htmlNC.indexOf('const zone = explicit');
+  const zoneLine = zi < 0 ? '' : htmlNC.slice(zi, zi + 560);
+  tOk('parseSmart 的落点推导走 zoneShortKey()/zoneRepeatKey()，没有字面量 short/long',
+    /zoneShortKey\(\)/.test(zoneLine) && /zoneRepeatKey\(\)/.test(zoneLine)
+    && !/'short'/.test(zoneLine) && !/'long'/.test(zoneLine), zoneLine.replace(/\s+/g, ' ').slice(0, 140));
 }
 
 console.log('\n通过 ' + pass + ' / 失败 ' + fail);
