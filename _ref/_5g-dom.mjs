@@ -32,7 +32,7 @@ const ymd = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.g
 const plus = n => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return ymd(d); };
 
 const base = {
-  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'short', tags: [],
+  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'z_short', tags: [],
   done: false, doneAt: null, hw: null, repeat: null, parent: null, goal: false, pri: 0,
   createdAt: 1700000000000,
 };
@@ -206,7 +206,7 @@ await ev('goView("list"); S.listMode = "zone"; ANIM = false; refresh(); return 1
 await sleep(700);
 {
   const m = await ev(`
-    var sec = document.querySelector('.zone[data-z="short"]');
+    var sec = document.querySelector('.zone[data-z="z_short"]');
     if (!sec) return 'NO-ZONE';
     sec.scrollIntoView({ block: 'center' });
     var cs = getComputedStyle(sec);
@@ -220,7 +220,7 @@ await sleep(700);
       headBorder: hcs ? (hcs.borderTopWidth + ' / ' + hcs.borderBottomWidth) : null,
       afterContent: after.content, afterBottom: after.bottom, afterPosition: after.position,
       fullH: sec.offsetHeight };`);
-  if (m === 'NO-ZONE'){ fail++; console.log('  FAIL 找不到 .zone[data-z="short"]'); }
+  if (m === 'NO-ZONE'){ fail++; console.log('  FAIL 找不到 .zone[data-z="z_short"]'); }
   else {
     console.log('     box-sizing=' + m.boxSizing + ' · border(T/B)=' + m.borderTop + '/' + m.borderBottom
       + ' · padding(T/B)=' + m.paddingTop + '/' + m.paddingBottom);
@@ -234,12 +234,12 @@ await sleep(700);
 
   /* 折叠：逐帧采样 260ms（transition 是 240ms），末尾立刻量"动画终点"与底边命中 */
   await ev(`
-    var sec = document.querySelector('.zone[data-z="short"]');
+    var sec = document.querySelector('.zone[data-z="z_short"]');
     if (sec.classList.contains('folded')) sec.querySelector('header[data-zfold]').click();
     return 1;`);
   await sleep(600);
   const col = await ev(`
-    var sec = document.querySelector('.zone[data-z="short"]');
+    var sec = document.querySelector('.zone[data-z="z_short"]');
     var chip = sec.querySelector('header[data-zfold]');
     var seq = [], endH = null, plateHits = null, prevH = null, tail = [];
     var tl = { click: null, clear: null, fold: null };
@@ -287,7 +287,7 @@ await sleep(700);
 
   await sleep(500);   // 等 280ms 的收尾（挂 .folded、清 inline）
   const real = await ev(`
-    var sec = document.querySelector('.zone[data-z="short"]');
+    var sec = document.querySelector('.zone[data-z="z_short"]');
     return { h: Math.round(sec.offsetHeight), folded: sec.classList.contains('folded'), inline: sec.style.height };`);
   tOk('[4] 走完动画后条目真的 display:none（.folded 挂上、inline 高度交还）',
     real.folded === true && real.inline === '', 'folded=' + real.folded + ' inline=' + JSON.stringify(real.inline));
@@ -298,7 +298,7 @@ await sleep(700);
   /* 展开方向：同样逐帧量（单调不减），并一直采到收尾之后 300ms —— 收尾那一帧
      content-visibility 的还原如果没推迟，会出现"到顶后又掉一帧"的 16px 抖动。 */
   const exp = await ev(`
-    var sec = document.querySelector('.zone[data-z="short"]');
+    var sec = document.querySelector('.zone[data-z="z_short"]');
     sec.scrollIntoView({ block: 'center' });
     var chip = sec.querySelector('header[data-zfold]');
     var seq = [], cleared = null;
@@ -323,7 +323,7 @@ await sleep(700);
     monoUp, monoUp ? '' : ('第 ' + worst2 + ' 帧回落'));
   await sleep(500);
   const full = await ev(`
-    var sec = document.querySelector('.zone[data-z="short"]');
+    var sec = document.querySelector('.zone[data-z="z_short"]');
     return { h: Math.round(sec.offsetHeight), folded: sec.classList.contains('folded'), inline: sec.style.height };`);
   tOk('[4] 展开后回到自然全高、inline 也清了',
     full.folded === false && full.inline === '' && near(eseq[eseq.length - 1], full.h, 1),
@@ -338,7 +338,7 @@ console.log('\n[5] prefers-reduced-motion: reduce → 瞬时切换（老行为�
   await send('Emulation.setEmulatedMedia', { media: '', features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
   await sleep(120);
   const r = await ev(`
-    var sec = document.querySelector('.zone[data-z="short"]');
+    var sec = document.querySelector('.zone[data-z="z_short"]');
     var before = sec.classList.contains('folded');
     sec.querySelector('header[data-zfold]').click();
     var after = sec.classList.contains('folded');
@@ -346,11 +346,11 @@ console.log('\n[5] prefers-reduced-motion: reduce → 瞬时切换（老行为�
   tOk('[5] 点击后同一帧就切到 .folded（没有 280ms 高度动画）',
     r.before !== r.after && r.inline === '', JSON.stringify(r));
   t('[5] reduce 下收起的末态 == 真实折叠高度',
-    Math.round(await ev('return document.querySelector(\'.zone[data-z="short"]\').offsetHeight;')),
-    Math.round(await ev(`var s=document.querySelector('.zone[data-z="short"]'); s.style.contentVisibility='visible'; return s.offsetHeight;`)));
+    Math.round(await ev('return document.querySelector(\'.zone[data-z="z_short"]\').offsetHeight;')),
+    Math.round(await ev(`var s=document.querySelector('.zone[data-z="z_short"]'); s.style.contentVisibility='visible'; return s.offsetHeight;`)));
   await send('Emulation.setEmulatedMedia', { media: '', features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
   await sleep(100);
-  await ev(`var sec=document.querySelector('.zone[data-z="short"]'); if(sec.classList.contains('folded')) sec.querySelector('header[data-zfold]').click(); return 1;`);
+  await ev(`var sec=document.querySelector('.zone[data-z="z_short"]'); if(sec.classList.contains('folded')) sec.querySelector('header[data-zfold]').click(); return 1;`);
   await sleep(400);
 }
 

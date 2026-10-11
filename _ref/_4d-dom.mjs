@@ -21,7 +21,7 @@ const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
 
 const items = [
   { id: 'keep', raw: '原有的一条', title: '原有的一条', date: null, dateEnd: null, monthOnly: false,
-    time: null, zone: 'short', tags: [], done: false, doneAt: null, createdAt: 1700000000000,
+    time: null, zone: 'z_short', tags: [], done: false, doneAt: null, createdAt: 1700000000000,
     hw: null, repeat: null, parent: null, goal: false, pri: 0 }
 ];
 const seed = { items, lastBackup: Date.now(), tags: [], statLayout: 'card', hintOpen: false,

@@ -33,7 +33,7 @@ const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
 /* 种子数据：用户截图里的那个父任务 + 两条子任务（都未完成，对应卡片上的 ▾ 0/2），
    外加一条逾期作业、一条今日已完成、一条长期条目 —— 让统计页五张卡都有数。 */
 const base = {
-  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'short', tags: [],
+  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'z_short', tags: [],
   done: false, doneAt: null, hw: null, repeat: null, parent: null, goal: false, pri: 0,
 };
 const items = [
@@ -49,7 +49,7 @@ const items = [
   Object.assign({}, base, { id: 'd1', raw: '已经做完的一件事', title: '已经做完的一件事',
     done: true, doneAt: Date.now(), createdAt: 1700000000400 }),
   Object.assign({}, base, { id: 'l1', raw: '读aiagent入门书', title: '读aiagent入门书',
-    zone: 'long', createdAt: 1700000000500 }),
+    zone: 'z_long', createdAt: 1700000000500 }),
 ];
 const seed = { items, lastBackup: Date.now(), tags: [], statLayout: 'card',
   hintOpen: false, showHelp: true, setOpen: [] };

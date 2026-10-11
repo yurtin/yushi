@@ -30,7 +30,7 @@ const D1 = ymd(plus(5)), D2 = ymd(plus(6));
 
 const mk = o => Object.assign({
   id: 'x', raw: '', title: 'x', date: null, dateEnd: null, monthOnly: false, time: null,
-  zone: 'short', tags: [], done: false, doneAt: null, createdAt: 1700000000000,
+  zone: 'z_short', tags: [], done: false, doneAt: null, createdAt: 1700000000000,
   hw: null, repeat: null, parent: null, goal: false, pri: 0, timeMode: 'once'
 }, o);
 const seed = {

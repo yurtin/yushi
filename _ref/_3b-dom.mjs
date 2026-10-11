@@ -27,14 +27,14 @@ const PORT = 8898, CDP = 9438;
 const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
 
 const base = {
-  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'short', tags: [],
+  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'z_short', tags: [],
   done: false, doneAt: null, hw: null, repeat: null, parent: null, goal: false, pri: 0,
   timeMode: 'once', createdAt: 1700000000000,
 };
 const items = [
-  Object.assign({}, base, { id: 'x1', raw: '交实验报告', title: '交实验报告', zone: 'long' }),
-  Object.assign({}, base, { id: 'x2', raw: '取快递', title: '取快递', zone: 'short' }),
-  Object.assign({}, base, { id: 'x3', raw: '写周报', title: '写周报', zone: 'short' }),
+  Object.assign({}, base, { id: 'x1', raw: '交实验报告', title: '交实验报告', zone: 'z_long' }),
+  Object.assign({}, base, { id: 'x2', raw: '取快递', title: '取快递', zone: 'z_short' }),
+  Object.assign({}, base, { id: 'x3', raw: '写周报', title: '写周报', zone: 'z_short' }),
 ];
 const seed = { items, lastBackup: Date.now(), tags: [], statLayout: 'card',
   hintOpen: false, showHelp: true, setOpen: [] };

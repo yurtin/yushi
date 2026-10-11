@@ -139,6 +139,12 @@ const realClearTimeout = globalThis.clearTimeout;
 const fastSetTimeout = (fn, ms) => realSetTimeout(fn, (Number(ms) || 0) > 500 ? 40 : (Number(ms) || 0));
 
 const S = { items: [], tags: [], aiMode: 'off', aiBase: 'https://api.deepseek.com',
+  /* ★ 7B：落点写的是分区的 k，沙箱要有一份分区表。 */
+  zones: [
+    { k: 'z_long', name: '长期', color: '#2f6fed' },
+    { k: 'z_short', name: '短期', color: '#2f8f5b' },
+    { k: 'z_repeat', name: '循环', color: '#d98a1f' }
+  ],
   aiModel: 'deepseek-flash', hotwords: [], hotwordSeen: {}, aiAnchor: null };
 let justAdded = null;
 const saveStub = () => {};
@@ -212,16 +218,16 @@ console.log('[1] 校验器单测：zone 判定那几个分支');
   t('原话里没有这些词 → 照旧认 idea',
     V([{ title: '学做菜', zone: 'idea' }], '我想学做菜')[0].zone, 'idea');
 
-  /* ---- 1e. 护栏只改 idea：long / 空串不受影响 ---- */
-  t('模型说 long → 原样保留', V([{ title: '开会', zone: 'long' }], '什么时候开会')[0].zone, 'long');
+  /* ---- 1e. 护栏只改 idea：long / 空串不受影响（★ 7B：long 会被翻成 z_long） ---- */
+  t('模型说 long → 翻成 z_long', V([{ title: '开会', zone: 'long' }], '什么时候开会')[0].zone, 'z_long');
   t('模型没表态 → 仍然是空串', V([{ title: '开会' }], '什么时候开会')[0].zone, '');
-  t('自创值照旧不认', V([{ title: '开会', zone: 'short' }], '什么时候开会')[0].zone, '');
+  t('模型给自创值 → 认不出，落空串', V([{ title: '开会', zone: '自创' }], '什么时候开会')[0].zone, '');
 
   /* ---- 1f. 落点：护栏把 idea 抹掉之后，aiPlanPreset 要把它当待办 ---- */
   const stripped = V([{ title: '开会给他们说什么', zone: 'idea' }],
     '想一想什么时候开个会，开会给他们说什么。')[0];
   t('护栏把 zone 抹成空串', stripped.zone, '');
-  t('空串 + 没日期 → aiPlanPreset 落到 long（待办那边）', aiPlanPreset(stripped).zone, 'long');
+  t('空串 + 没日期 → aiPlanPreset 落到 z_long（待办那边）', aiPlanPreset(stripped).zone, 'z_long');
 }
 
 /* ==================================================================== */
@@ -306,8 +312,12 @@ console.log('\n[3] 源码级不变量：机制没动，只有措辞 + 一条窄�
     val.indexOf("if (x.zone === 'idea' && (x.date || x.time)) x.zone = '';") >= 0, '');
   tOk('★ 红线：steps 少于 2 当没有，判据没动',
     val.indexOf('x.steps = st.length >= 2 ? st : [];') >= 0, '');
-  tOk('candidate 两值白名单没动（只收 long / idea）',
-    val.indexOf("if (r.zone === 'long' || r.zone === 'idea') x.zone = r.zone;") >= 0, '');
+  /* ★ 7B：白名单从"写死两值"改成"idea / 老值 long·short（翻成 k）/ 分区表里的 k"。
+     这一条钉的是**老值仍然认、仍然翻**（模型看 schema 学的就是这两个词），
+     以及"自创值照旧不认"（上面 1e 已经从行为上验过）。 */
+  tOk('candidate 白名单仍认 long / short 并翻成 k',
+    val.indexOf("r.zone === 'long'") >= 0 && val.indexOf("r.zone === 'short'") >= 0
+    && val.indexOf('validZoneKey(r.zone)') >= 0, '');
 
   /* ---- 3e. 新护栏是"白名单式列举"，不是"带疑问词就否掉" ---- */
   /* ★ 判据必须用**去注释后**的源码：注释里正写着"⚠️ 千万不要把要不要/该不该也这么做"，

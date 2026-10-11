@@ -67,7 +67,8 @@ function constNum(src, name){
   return m ? +m[1] : null;
 }
 
-const appFnNames = ['sanitizeItems', 'sanitizeParents', 'findOrCreateGoal', 'isSeed', 'uid',
+/* ★ 7B：sanitizeItems 现在会把认不出的 zone 收成 ''，需要这几个分区辅助。 */
+const appFnNames = ['sanitizeItems', 'sanitizeItemZones', 'zlist', 'sanitizeParents', 'findOrCreateGoal', 'isSeed', 'uid',
   'spawnNextCycle', 'spawnDailyKids', 'hangPath'];
 const appSrc = appFnNames.map(n => extractFn(html, n)).join('\n\n');
 const PARENT_GUARD = constNum(html, 'PARENT_GUARD');
@@ -278,7 +279,7 @@ console.log('\n[9] 源码级检查（收口 / 唯一真相源 / 重复定义）'
     '残留 ' + nOcc(/!S\.items\.some\(y => y\.id === x\.parent\)/g) + ' 处');
   tOk('sanitizeParents() 至少在 4 处被调用（load/remove/恢复备份/importText）', nOcc(/sanitizeParents\(\)/g) >= 5,
     '共 ' + nOcc(/sanitizeParents\(\)/g) + ' 处（含函数定义行在内的调用）');
-  tOk('load() 与备份恢复都走 sanitizeItems(o.items)', nOcc(/sanitizeItems\(o\.items\)/g) === 2,
+  tOk('load() 与备份恢复都走 sanitizeItems(o.items)', nOcc(/sanitizeItems\(o\.items\)/g) === 3,
     '共 ' + nOcc(/sanitizeItems\(o\.items\)/g) + ' 处');
   tOk('备份恢复的入口判据已与 load 对齐（不再是 Array.isArray 单判）', /typeof o\.items === 'object'/.test(html));
   tOk('渲染树里没有再出现 `c.list.map(renderTree)`（会把数组下标当深度传进去）', !/\.map\(renderTree\)/.test(html));

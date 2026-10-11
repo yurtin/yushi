@@ -31,19 +31,19 @@ const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
 /* 种子：一个父 + 两条子任务（一条已完成），一条无子任务，一个可当新父的候选 */
 const items = [
   { id: 'p', raw: '论文', title: '论文', date: null, dateEnd: null, monthOnly: false, time: null,
-    zone: 'short', tags: [], done: false, doneAt: null, createdAt: 1700000000000,
+    zone: 'z_short', tags: [], done: false, doneAt: null, createdAt: 1700000000000,
     hw: null, repeat: null, parent: null, goal: true, pri: 0 },
   { id: 'k1', raw: '查文献', title: '查文献', date: null, dateEnd: null, monthOnly: false, time: null,
-    zone: 'short', tags: [], done: false, doneAt: null, createdAt: 1700000000100,
+    zone: 'z_short', tags: [], done: false, doneAt: null, createdAt: 1700000000100,
     hw: null, repeat: null, parent: 'p', goal: false, pri: 0 },
   { id: 'k2', raw: '写提纲', title: '写提纲', date: null, dateEnd: null, monthOnly: false, time: null,
-    zone: 'short', tags: [], done: true, doneAt: 1700000000200, createdAt: 1700000000200,
+    zone: 'z_short', tags: [], done: true, doneAt: 1700000000200, createdAt: 1700000000200,
     hw: null, repeat: null, parent: 'p', goal: false, pri: 0 },
   { id: 'solo', raw: '独立的一件事', title: '独立的一件事', date: null, dateEnd: null, monthOnly: false, time: null,
-    zone: 'short', tags: [], done: false, doneAt: null, createdAt: 1700000000300,
+    zone: 'z_short', tags: [], done: false, doneAt: null, createdAt: 1700000000300,
     hw: null, repeat: null, parent: null, goal: false, pri: 0 },
   { id: 'tgt', raw: '另一个父', title: '另一个父', date: null, dateEnd: null, monthOnly: false, time: null,
-    zone: 'short', tags: [], done: false, doneAt: null, createdAt: 1700000000400,
+    zone: 'z_short', tags: [], done: false, doneAt: null, createdAt: 1700000000400,
     hw: null, repeat: null, parent: null, goal: false, pri: 0 },
 ];
 const seed = { items, lastBackup: Date.now(), tags: [], statLayout: 'card', hintOpen: false, showHelp: true };

@@ -22,9 +22,14 @@ const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
 /* AI 关着；录音/通知桥都给桩（否则录入路径上的条件分支会不同） */
 const seed = { aiMode: 'off', items: [], lastBackup: Date.now(), tags: [], statLayout: 'card', hintOpen: false, showHelp: true };
 const BRIDGE = `<script>
-window.__f = { fetches: 0 };
+window.__f = { fetches: 0, log: [] };
 var __of = window.fetch;
-window.fetch = function(){ window.__f.fetches++; return __of.apply(this, arguments); };
+window.fetch = function(u, o){
+  window.__f.fetches++;
+  var body = String((o && o.body) || '');
+  window.__f.log.push(body.slice(-120));
+  return __of.apply(this, arguments);
+};
 window.YuShiNative = {
   insets: function(){ return '0,0'; },
   isAvailable: function(){ return 'false'; },
@@ -117,7 +122,7 @@ console.log('[1] 任务卡"必须真机验"的 5 句 —— 关掉 AI，走真�
 {
   const r = await entry('明天下午三点开会');
   t('明天下午三点开会 → 1 条, date=明天, time=15:00, title=开会, zone=short',
-    [r.length, r[0].date, r[0].time, r[0].title, r[0].zone], [1, plus(1), '15:00', '开会', 'short']);
+    [r.length, r[0].date, r[0].time, r[0].title, r[0].zone], [1, plus(1), '15:00', '开会', 'z_short']);
 
   const r2 = await entry('1分钟后看书');
   const ts = new Date(r2[0].date + 'T' + r2[0].time + ':00').getTime();
@@ -159,7 +164,7 @@ console.log('\n[2] 这一批新修/新加的本地形状，落库后逐字段');
 
   const r5 = await entry('想一想什么时候开个会');
   t('想一想什么时候开个会 → 仍是待办（2C 护栏：有能直接做的动作就不进想法）',
-    [r5[0].zone, r5[0].kind], ['long', null]);
+    [r5[0].zone, r5[0].kind], ['z_long', null]);
 }
 console.log('\n[3] 红线：AI 关着时零请求');
 {
@@ -183,16 +188,17 @@ console.log('\n[4] 对照：把 AI 打开，同样 5 句"应该不比关着差"'
   const D = await entry('帮我设置一个晚上九点五十一的提醒');
   const E = await entry('早中晚吃药');
   t('AI 开着：明天下午三点开会 与关着时同形',
-    [A[0].date, A[0].time, A[0].title, A[0].zone], [plus(1), '15:00', '开会', 'short']);
+    [A[0].date, A[0].time, A[0].title, A[0].zone], [plus(1), '15:00', '开会', 'z_short']);
   tOk('AI 开着：1分钟后看书 仍有 date+time',
-    !!B[0].date && !!B[0].time && B[0].zone === 'short', B[0].date + ' ' + B[0].time);
+    !!B[0].date && !!B[0].time && B[0].zone === 'z_short', B[0].date + ' ' + B[0].time);
   t('AI 开着：每周三 跑步 仍是按周循环',
     [C[0].title, C[0].repeatKind, C[0].repeatDays], ['跑步', 'week', [3]]);
   t('AI 开着：晚上九点五十一的提醒 仍是 21:51',
     [D[0].time, D[0].title === '的提醒'], ['21:51', false]);
   t('AI 开着：早中晚吃药 仍是 1 父 + 3 子',
     [E.length, E.filter(x => x.parent).length], [4, 3]);
-  t('这 5 句一句都没出网（写了语法 → 本地出，路由判据没被 5E 动过）', (await fetches()) - before, 0);
+  t('这 5 句一句都没出网（写了语法 → 本地出，路由判据没被 5E 动过）',
+  (await ev('return window.__f.log;')), []);
   await ev(`S.aiMode = 'off'; localStorage.removeItem('daibanji.ai.key'); save(); return 1;`);
 }
 

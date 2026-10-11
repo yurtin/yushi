@@ -37,7 +37,14 @@ const tOk = (label, cond, detail) => {
 const a = html.indexOf('/* ---------------- 标签词典');
 const b = html.indexOf('/* =============================== 应用层');
 if (a < 0 || b < 0){ console.error('切片失败', a, b); process.exit(2); }
-const P = new Function(html.slice(a, b) + '\nreturn {parseSmart, stripShell};')();
+const P = new Function('S', html.slice(a, b) + '\nreturn {parseSmart, stripShell};')({
+  /* ★ 7B：parseSmart 的落点写的是分区的 k（z_short / z_long / z_repeat）。 */
+  zones: [
+    { k: 'z_long', name: '长期', color: '#2f6fed' },
+    { k: 'z_short', name: '短期', color: '#2f8f5b' },
+    { k: 'z_repeat', name: '循环', color: '#d98a1f' }
+  ]
+});
 const { parseSmart, stripShell } = P;
 
 /* smartHintCount 在应用层（要 parseDayParts 才完整）—— 单独按名切出来，桩掉一个依赖。 */
@@ -86,7 +93,7 @@ console.log('\n[1b] 相对时间「N 分钟后 / N 小时后」（5B：用户实
   const near = (p, mins) => !!p.date && !!p.time && Math.abs(ts(p) - (Date.now() + mins * 60000)) <= 90000;
   const P1 = parseSmart('帮我设置一个1分钟后看书的待办');
   t('帮我设置一个1分钟后看书的待办 → 标题只剩「看书」', P1.title, '看书');
-  t('   → 分区不再是长期（有具体时刻就是短期）', P1.zone, 'short');
+  t('   → 分区不再是长期（有具体时刻就是短期）', P1.zone, 'z_short');
   tOk('   → 时刻 ≈ 现在 + 1 分钟', near(P1, 1), P1.date + ' ' + P1.time);
   const P10 = parseSmart('十分钟后提醒我打电话');
   t('十分钟后提醒我打电话 → 标题「打电话」', P10.title, '打电话');

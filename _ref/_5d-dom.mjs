@@ -20,7 +20,7 @@ const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
 
 const mk = o => Object.assign({
   id: 'x', raw: '', title: 'x', date: null, dateEnd: null, monthOnly: false, time: null,
-  zone: 'short', tags: [], done: false, doneAt: null, createdAt: 1700000000000,
+  zone: 'z_short', tags: [], done: false, doneAt: null, createdAt: 1700000000000,
   hw: null, repeat: null, parent: null, goal: false, pri: 0, timeMode: 'once'
 }, o);
 /* 用户实测那一幕：1 父 + 3 子（早/中/晚各一条），另加一条没有子任务的 solo。

@@ -29,7 +29,7 @@ const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
 
 /* 种子：一条今天完成的父 + 一个挂在它下面的子 —— 清单页那行入口才会渲染 */
 const base = {
-  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'short', tags: [],
+  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'z_short', tags: [],
   done: false, doneAt: null, hw: null, repeat: null, parent: null, goal: false, pri: 0,
   timeMode: 'once', createdAt: 1700000000000,
 };

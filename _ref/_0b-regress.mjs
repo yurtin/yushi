@@ -107,7 +107,15 @@ const today0Src = extractFn(html, 'today0');
    闭包外的桩函数看不到 —— 所以 isSeed 必须**当成参数传进来**。 */
 const calls = { itemHTML: 0, ordered: 0 };
 function makeEnv(items){
-  const S = { items: items || [], foldedZones: [], foldedZonesSet: null, q: '', filterTags: [], view: 'list' };
+  const S = { items: items || [], foldedZones: [], foldedZonesSet: null, q: '', filterTags: [], view: 'list',
+    /* ★ 7B：分区表的默认三个（与页面首装一致）。renderZoneBody 现在按 S.zones 分栏；
+       测试种子里的 zone 写的还是老值 long / short（真实老存档的形状），
+       所以这里给的是**分区表本身**——条目归哪一栏由它决定。 */
+    zones: [
+      { k: 'z_long', name: '长期', color: '#2f6fed' },
+      { k: 'z_short', name: '短期', color: '#2f8f5b' },
+      { k: 'z_repeat', name: '循环', color: '#d98a1f' }
+    ] };
   const collapsed = new Set();
   const view = { innerHTML: '' };
   const isSeedStub = it => !!it && it.kind === 'seed';
@@ -163,7 +171,7 @@ function makeEnv(items){
 }
 const mk = (o) => Object.assign({
   id: 'x', raw: '', title: 'x', date: null, dateEnd: null, monthOnly: false, time: null,
-  zone: 'short', tags: [], done: false, doneAt: null, createdAt: 0, hw: null,
+  zone: 'z_short', tags: [], done: false, doneAt: null, createdAt: 0, hw: null,
   repeat: null, parent: null, goal: false, pri: 0, timeMode: 'once'
 }, o);
 
@@ -177,7 +185,7 @@ const kidBoxes = (out) => (out.match(/class="goal-kids/g) || []).length;
 console.log('[1] 0B.4  父任务下 3 个子任务、完成 1 个 → 渲染出的子任务数仍是 3');
 {
   const { env, S } = makeEnv([
-    mk({ id: 'p', title: '论文', zone: 'short' }),
+    mk({ id: 'p', title: '论文', zone: 'z_short' }),
     mk({ id: 'k1', title: '查文献', parent: 'p', done: true, doneAt: 1 }),
     mk({ id: 'k2', title: '写提纲', parent: 'p' }),
     mk({ id: 'k3', title: '初稿', parent: 'p' }),
@@ -216,7 +224,7 @@ console.log('\n[2] 0B.3  goal 收口：角标只由"有没有子任务"决定');
 console.log('\n[3] 0B.1  勾父任务：子任务不升格为根条目（跟着父收进已完成区）');
 {
   const { env, S } = makeEnv([
-    mk({ id: 'p', title: '论文', zone: 'short' }),
+    mk({ id: 'p', title: '论文', zone: 'z_short' }),
     mk({ id: 'k1', title: '查文献', parent: 'p' }),
     mk({ id: 'k2', title: '写提纲', parent: 'p' }),
   ]);
@@ -248,7 +256,7 @@ console.log('\n[3] 0B.1  勾父任务：子任务不升格为根条目（跟着�
     /data-statentry="1"/.test(out) && out.indexOf('aria-label="今天已完成 ' + rootsG.length + ' 条') >= 0,
     (out.match(/aria-label="[^"]*"/) || [''])[0]);
   tOk('已完成根条目不再占分区列表（长期/短期/循环三栏里都找不到 p）',
-    !/data-z="(long|short|repeat)"[^]*?<div class="item[^"]*" data-id="p"/.test(out));
+    !/data-z="(z_long|z_short|z_repeat)"[^]*?<div class="item[^"]*" data-id="p"/.test(out));
   /* 0B.4 的承诺（完成之后父卡 + 子任务仍然画得出来、子任务仍带 .done）在 0E 之后
      落在统计页「今日完成」子页里（清单页不再画已完成）。这里用同一条渲染接缝取证：
      statTreeOf = 子页把命中集合折成"根 + 挂在根下面的子任务"的那一步（与 .goal-kids 同形）。
@@ -267,8 +275,8 @@ console.log('\n[3] 0B.1  勾父任务：子任务不升格为根条目（跟着�
   /* ★ 决策 B：只显示**今天**完成的 —— 昨天做完的不许占位 */
   {
     const { env: e3, S: S3 } = makeEnv([
-      mk({ id: 'yes', title: '昨天做完的', zone: 'short', done: true, doneAt: Date.now() - 86400000 }),
-      mk({ id: 'now', title: '今天做完的', zone: 'short', done: true, doneAt: Date.now() }),
+      mk({ id: 'yes', title: '昨天做完的', zone: 'z_short', done: true, doneAt: Date.now() - 86400000 }),
+      mk({ id: 'now', title: '今天做完的', zone: 'z_short', done: true, doneAt: Date.now() }),
     ]);
     const o3 = e3.renderZoneBody();
     /* 0E 之后那行入口没有"展开"这一步：它按"今天完成的条数"渲染一行文字，
@@ -288,7 +296,7 @@ console.log('\n[3] 0B.1  勾父任务：子任务不升格为根条目（跟着�
      绝不"两处都画"、也绝不"哪儿都不画" */
   {
     const { env: e2, S: S2 } = makeEnv([
-      mk({ id: 'q', title: '父', zone: 'short', done: true, doneAt: Date.now() }),
+      mk({ id: 'q', title: '父', zone: 'z_short', done: true, doneAt: Date.now() }),
       mk({ id: 'qk', title: '子', parent: 'q' }),
     ]);
     const o = e2.renderZoneBody();
@@ -385,7 +393,7 @@ console.log('\n[5] 0B.2  子任务全勾完 → 自动完成父任务（默认�
 console.log('\n[6] 0B.9  repeat 只对顶层条目生效（子任务不自造新条目）');
 {
   const { env, S } = makeEnv([
-    mk({ id: 'p', title: '父', zone: 'short' }),
+    mk({ id: 'p', title: '父', zone: 'z_short' }),
     mk({ id: 'c', title: '子（自带 repeat）', parent: 'p', date: '2026-10-01', repeat: 2 }),
   ]);
   const before = S.items.length;
@@ -525,7 +533,7 @@ console.log('\n[11] 0B.10  想法页搜索命中子想法时补祖先链');
   const byId = new Map([
     ['root', mk({ id: 'root', kind: 'seed', zone: 'idea', title: '根想法' })],
     ['kid', mk({ id: 'kid', kind: 'seed', zone: 'idea', title: '子想法', parent: 'root' })],
-    ['task', mk({ id: 'task', kind: undefined, zone: 'short', title: '待办父' })],
+    ['task', mk({ id: 'task', kind: undefined, zone: 'z_short', title: '待办父' })],
     ['kid2', mk({ id: 'kid2', kind: 'seed', zone: 'idea', title: '挂在待办下的想法', parent: 'task' })],
   ]);
   const S = { items: [...byId.values()] };

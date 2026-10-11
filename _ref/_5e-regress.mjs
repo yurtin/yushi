@@ -77,8 +77,16 @@ if (a < 0 || b < 0){ console.error('切片失败', a, b); process.exit(2); }
 const extra = ['SMART_APPEND_WORDS', 'SMART_LIST_VERBS'].map(n => extractConst(html, n)).join('\n')
   + '\n' + ['smartAppendWord', 'smartHintCount', 'smartNeedAI', 'smartLocalList', 'smartLocalPlan']
     .map(n => extractFn(html, n)).join('\n');
-const S = new Function(html.slice(a, b) + '\n' + extra
-  + '\nreturn {parseSmart, parseDayParts, stripShell, smartHintCount, smartNeedAI, smartLocalPlan, smartLocalList};')();
+const S = new Function('S', html.slice(a, b) + '\n' + extra
+  + '\nreturn {parseSmart, parseDayParts, stripShell, smartHintCount, smartNeedAI, smartLocalPlan, smartLocalList};')({
+  /* ★ 7B：parseSmart 的落点写的是**分区的 k**（z_short / z_long / z_repeat），
+     沙箱要有一份分区表；断言按 k 比。 */
+  zones: [
+    { k: 'z_long', name: '长期', color: '#2f6fed' },
+    { k: 'z_short', name: '短期', color: '#2f8f5b' },
+    { k: 'z_repeat', name: '循环', color: '#d98a1f' }
+  ]
+});
 const { parseSmart, stripShell, smartHintCount, smartNeedAI, smartLocalPlan } = S;
 
 console.log('被测文件:', FILE, html.length, 'bytes\n');
@@ -190,7 +198,7 @@ console.log(' —— 相对时间（date + time 都要有，否则静默不排�
 {
   const r = local('1分钟后看书');
   t('1分钟后看书 → title=看书, zone=short, 时刻≈+1 分钟',
-    [r.p.title, r.p.zone, near(r.p, 1)], ['看书', 'short', true]);
+    [r.p.title, r.p.zone, near(r.p, 1)], ['看书', 'z_short', true]);
   const r2 = local('半小时后');
   t('半小时后 → 时刻≈+30 分钟', near(r2.p, 30), true);
   const r3 = local('一个小时后');
@@ -199,8 +207,8 @@ console.log(' —— 相对时间（date + time 都要有，否则静默不排�
 console.log(' —— 循环');
 {
   const r = local('每2天 喂鱼');
-  t('每2天 喂鱼 → title=喂鱼, repeat=2, zone=short',
-    [r.p.title, r.p.repeat, r.p.zone], ['喂鱼', 2, 'short']);
+  t('每2天 喂鱼 → title=喂鱼, repeat=2, zone=z_repeat',
+    [r.p.title, r.p.repeat, r.p.zone], ['喂鱼', 2, 'z_repeat']);
   const r2 = local('每周三 跑步');
   t('每周三 跑步 → title=跑步, repeatKind=week, repeatDays=[3]',
     [r2.p.title, r2.p.repeatKind, r2.p.repeatDays], ['跑步', 'week', [3]]);
@@ -242,7 +250,7 @@ console.log(' —— 指令壳');
 console.log(' —— 落点（本地也要能分"还没定要不要做"）');
 {
   t('要不要换工作 → zone=idea（★ 5E 修：以前沉长期）', local('要不要换工作').p.zone, 'idea');
-  t('想一想什么时候开个会 → 待办（zone=long，2C 那七组词先挡一道）', local('想一想什么时候开个会').p.zone, 'long');
+  t('想一想什么时候开个会 → 待办（zone=long，2C 那七组词先挡一道）', local('想一想什么时候开个会').p.zone, 'z_long');
   t('以后想开个店 → zone=idea（★ 5E 修：以前沉长期）', local('以后想开个店').p.zone, 'idea');
 }
 
@@ -279,8 +287,8 @@ console.log('\n[3] 取舍与边界');
   t('stripShell(给妈妈的提醒) → 不动（后置壳只在前面剥过壳时才剥）', stripShell('给妈妈的提醒'), '给妈妈的提醒');
   /* 落点 cue 的三条纪律：带日期不认 idea / 2C 七组词不认 idea / 非行首不认 */
   t('要不要买票 921 → 有日期就不认 idea（2B 硬门槛）', local('要不要买票 921').p.zone !== 'idea', true);
-  t('以后想什么时候去 → 含「什么时候」不认 idea（2C 护栏）', local('以后想什么时候去').p.zone, 'long');
-  t('想一想什么时候开个会 → 不含本地 cue，也不误判', local('想一想什么时候开个会').p.zone, 'long');
+  t('以后想什么时候去 → 含「什么时候」不认 idea（2C 护栏）', local('以后想什么时候去').p.zone, 'z_long');
+  t('想一想什么时候开个会 → 不含本地 cue，也不误判', local('想一想什么时候开个会').p.zone, 'z_long');
 }
 
 /* ══════════════════════════════════════════════════════════════

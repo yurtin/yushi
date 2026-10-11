@@ -93,12 +93,20 @@ if (!statFromDecl) { console.error('找不到 `let statFrom = null;` 声明（0G
 const FN_NAMES = ['statPageHits', 'statTreeOf', 'statRootHits', 'statPageCount', 'statItemsHTML', 'statStreakDays', 'renderStatSub',
   'statGo', 'renderStat', 'renderZoneBody', 'ancestorIds', 'streak', 'statDoneItems', 'isSeed',
   'originCounts', 'originRowHTML', 'jumpButtonHTML',
+  /* ★ 7B：renderZoneBody / originCounts 现在按分区表分栏与计数，这三个辅助要一起切进来。 */
+  'zlist', 'zoneLongKey', 'zoneShortKey', 'zoneRepeatKey',
   'ymd', 'pad2', 'dateFrom', 'today0', 'daysFromToday', 'teDateLabelFromStr'];
 const appSrc = FN_NAMES.map(n => extractFn(html, n)).join('\n\n');
 
 /* ---------- 2. 造环境 ---------- */
 function makeEnv(items){
-  const S = { items: items || [], statLayout: 'card', foldedZones: [], q: '', filterTags: [], view: 'list' };
+  const S = { items: items || [], statLayout: 'card', foldedZones: [], q: '', filterTags: [], view: 'list',
+    /* ★ 7B：分区表（与首装默认一致）—— renderZoneBody 按它分栏、originCounts 按它计数。 */
+    zones: [
+      { k: 'z_long', name: '长期', color: '#2f6fed' },
+      { k: 'z_short', name: '短期', color: '#2f8f5b' },
+      { k: 'z_repeat', name: '循环', color: '#d98a1f' }
+    ] };
   const collapsed = new Set();
   const view = { innerHTML: '' };
   const calls = { itemHTML: 0 };
@@ -145,7 +153,7 @@ function makeEnv(items){
 }
 const mk = (o) => Object.assign({
   id: 'x', raw: '', title: 'x', date: null, dateEnd: null, monthOnly: false, time: null,
-  zone: 'short', tags: [], done: false, doneAt: null, createdAt: 0, hw: null,
+  zone: 'z_short', tags: [], done: false, doneAt: null, createdAt: 0, hw: null,
   repeat: null, parent: null, goal: false, pri: 0, timeMode: 'once'
 }, o);
 
@@ -172,16 +180,16 @@ function fullItems(){
   const DAY = 86400000;
   const hw = (status) => ({ course: '侦查学', status, detail: '', channel: '', naming: '', submittedAt: null });
   return [
-    mk({ id: 't1', title: '今天做完的父', zone: 'short', done: true, doneAt: Date.now() }),
+    mk({ id: 't1', title: '今天做完的父', zone: 'z_short', done: true, doneAt: Date.now() }),
     mk({ id: 't2', title: '今天做完的子', parent: 't1', done: true, doneAt: Date.now() }),
-    mk({ id: 't3', title: '昨天做完的', zone: 'short', done: true, doneAt: Date.now() - DAY }),
+    mk({ id: 't3', title: '昨天做完的', zone: 'z_short', done: true, doneAt: Date.now() - DAY }),
     mk({ id: 's1', title: '用过的想法', kind: 'seed', zone: 'idea', done: true, doneAt: Date.now() }),
-    mk({ id: 'o1', title: '逾期父', zone: 'short', date: '2020-01-01' }),
-    mk({ id: 'p_ok', title: '没逾期的父', zone: 'short' }),
+    mk({ id: 'o1', title: '逾期父', zone: 'z_short', date: '2020-01-01' }),
+    mk({ id: 'p_ok', title: '没逾期的父', zone: 'z_short' }),
     mk({ id: 'o2', title: '逾期子', parent: 'p_ok', date: '2020-01-02' }),
-    mk({ id: 'h1', title: '作业父', zone: 'short', hw: hw('todo') }),
-    mk({ id: 'h3', title: '作业子', parent: 'h1', zone: 'short', hw: hw('doing') }),
-    mk({ id: 'h2', title: '已交的作业', zone: 'short', hw: hw('submitted') }),
+    mk({ id: 'h1', title: '作业父', zone: 'z_short', hw: hw('todo') }),
+    mk({ id: 'h3', title: '作业子', parent: 'h1', zone: 'z_short', hw: hw('doing') }),
+    mk({ id: 'h2', title: '已交的作业', zone: 'z_short', hw: hw('submitted') }),
   ];
 }
 
@@ -210,7 +218,7 @@ console.log('\n[1b] 0G  数字口径（根级）与「按树算出来的根数�
   /* 卡里点名的这一档：**父 + 2 个子任务都今天完成**。
      0F 登记的缺陷就是这里 —— 入口写着「3 条」，点进去只有 1 张父卡。 */
   const three = [
-    mk({ id: 'P', title: '父', zone: 'short', done: true, doneAt: Date.now() }),
+    mk({ id: 'P', title: '父', zone: 'z_short', done: true, doneAt: Date.now() }),
     mk({ id: 'C1', title: '子一', parent: 'P', done: true, doneAt: Date.now() }),
     mk({ id: 'C2', title: '子二', parent: 'P', done: true, doneAt: Date.now() }),
   ];
@@ -367,30 +375,30 @@ console.log('\n[4] 0E  等式：统计页「今日完成」卡的 N == 清单页
   };
   check('今天完成父+子（t2 挂在 t1 下面 → 根级 N=1）', fullItems(), 1);
   check('只有一条今天完成（N=1）', [
-    mk({ id: 'a', title: '今天做完的', zone: 'short', done: true, doneAt: Date.now() }),
-    mk({ id: 'b', title: '没做完的', zone: 'short' }),
+    mk({ id: 'a', title: '今天做完的', zone: 'z_short', done: true, doneAt: Date.now() }),
+    mk({ id: 'b', title: '没做完的', zone: 'z_short' }),
   ], 1);
   /* ★ 关键的一档：父是**昨天**完成的、子是今天完成的 ——
      卡的取数是"今天 doneAt 的条目"（子命中、父不命中），子没有命中祖先 → 它是根，
      入口行同样只数这一条（0E 起就有的断言，0G 不许把它带回 2）。 */
   check('父昨天完成、子今天完成（N=1，不是 2）', [
-    mk({ id: 'old', title: '昨天完成的父', zone: 'short', done: true, doneAt: Date.now() - 86400000 }),
+    mk({ id: 'old', title: '昨天完成的父', zone: 'z_short', done: true, doneAt: Date.now() - 86400000 }),
     mk({ id: 'kid', title: '今天完成的子', parent: 'old', done: true, doneAt: Date.now() }),
   ], 1);
   /* ★ 0G 的核心那一档：父 + 2 个子任务都今天完成 → 三处数字都必须是 1（不是 3） */
   check('今天完成父 + 2 个子任务（根级 N=1，不是 3）', [
-    mk({ id: 'P', title: '父', zone: 'short', done: true, doneAt: Date.now() }),
+    mk({ id: 'P', title: '父', zone: 'z_short', done: true, doneAt: Date.now() }),
     mk({ id: 'C1', title: '子一', parent: 'P', done: true, doneAt: Date.now() }),
     mk({ id: 'C2', title: '子二', parent: 'P', done: true, doneAt: Date.now() }),
   ], 1);
 
   /* N = 0 时那一行不显示；N > 0 时文案与无障碍标签都在 */
-  const zero = makeEnv([mk({ id: 'n1', title: '什么都没做完', zone: 'short' })]);
+  const zero = makeEnv([mk({ id: 'n1', title: '什么都没做完', zone: 'z_short' })]);
   zero.env.renderStat();
   const zout = zero.env.renderZoneBody();
   t('没有今天完成的事时：卡上是 0', cardN(zero.view.innerHTML, 'today'), 0);
   tOk('N=0 → 清单页那一行入口**不显示**', !/done-entry/.test(zout) && !/今天已完成/.test(zout));
-  const one = makeEnv([mk({ id: 'n1', title: '做完的', zone: 'short', done: true, doneAt: Date.now() })]);
+  const one = makeEnv([mk({ id: 'n1', title: '做完的', zone: 'z_short', done: true, doneAt: Date.now() })]);
   const oneOut = one.env.renderZoneBody();
   tOk('N>0 → 那一行入口出现，且文案是「今天已完成 N 条」',
     /今天已完成 <b class="de-n mono">1<\/b> 条/.test(oneOut), (oneOut.match(/今天已完成[^<]*<b[^>]*>\d+<\/b>[^<]*/) || [''])[0]);

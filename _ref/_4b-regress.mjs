@@ -86,7 +86,9 @@ function extractLet(src, name){
 /* 4B 需要的常量（注意 AI_UNDERSTAND_SCHEMA 必须在 AI_IMAGE_SYS 之前拼进 body） */
 const CONSTS = ['AI_KEY_LS', 'AI_TIMEOUT_MS', 'AI_RETRY_MAX', 'AI_CALL_GAP_MS',
   'AI_UNDERSTAND_MAX', 'TAG_PER_ITEM',
-  'AI_UNDERSTAND_SCHEMA', 'IMG_MAX_SIDE', 'IMG_JPEG_Q', 'IMG_REJECT_BYTES', 'AI_IMAGE_SYS'];
+  'AI_UNDERSTAND_SCHEMA', 'IMG_MAX_SIDE', 'IMG_JPEG_Q', 'IMG_REJECT_BYTES', 'AI_IMAGE_SYS',
+  /* ★ 7B：validZoneKey 读它判 k 的形状。 */
+  'ZONE_KEY_RE'];
 const FNS = ['aiKey', 'aiOn', 'aiCall', 'aiParseJSON', 'aiFail', 'aiSay',
   'aiValidDateStr', 'aiValidTimeStr', 'aiValidTag', 'aiValidateItems',
   'aiPlanPreset', 'aiImageUser', 'imgFitSide',
@@ -94,6 +96,8 @@ const FNS = ['aiKey', 'aiOn', 'aiCall', 'aiParseJSON', 'aiFail', 'aiSay',
   /* ★ 4D：确认页改成"每条可点开编辑"之后，openImageConfirm 内部改用这两个纯函数
      渲染那行灰字（icRowBits）与写回字段（icApplyEdit）—— 沙箱里必须一起切进来。 */
   'icRowBits', 'icApplyEdit', 'imageConfirmEdit',
+  /* ★ 7B：aiValidateItems 现在要把 long/short 翻成分区的 k，需要这几个辅助。 */
+  'zlist', 'zoneLongKey', 'zoneShortKey', 'validZoneKey',
   'it_byId', 'isSeed', 'snapshot', 'ymd', 'pad2',
   'dateFrom', 'today0', 'daysFromToday'];
 const LETS = ['aiLastCallAt', 'aiLastText', 'aiLastRetry', 'icItems'];

@@ -35,7 +35,7 @@ const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
    外加一条用过的想法 sd —— 它必须被**所有**子页排除（0B.8 的口径）。 */
 const DAY = 86400000;
 const base = {
-  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'short', tags: [],
+  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'z_short', tags: [],
   done: false, doneAt: null, hw: null, repeat: null, parent: null, goal: false, pri: 0,
   timeMode: 'once', createdAt: 1700000000000,
 };

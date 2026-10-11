@@ -171,7 +171,13 @@ const realClearTimeout = globalThis.clearTimeout;
 const fastSetTimeout = (fn, ms) => realSetTimeout(fn, (Number(ms) || 0) > 500 ? 40 : (Number(ms) || 0));
 
 const S = { items: [], tags: [], aiMode: 'off', aiBase: 'https://api.deepseek.com',
-  aiModel: 'deepseek-flash', hotwords: [], hotwordSeen: {}, aiAnchor: null };
+  aiModel: 'deepseek-flash', hotwords: [], hotwordSeen: {}, aiAnchor: null,
+  /* ★ 7B：落点现在写的是分区的 k（z_short / z_long …），沙箱要有一份分区表。 */
+  zones: [
+    { k: 'z_long', name: '长期', color: '#2f6fed' },
+    { k: 'z_short', name: '短期', color: '#2f8f5b' },
+    { k: 'z_repeat', name: '循环', color: '#d98a1f' }
+  ] };
 let justAdded = null;
 const saveStub = () => {};
 
@@ -317,7 +323,7 @@ await (async () => {
       return [made[0].title, made[0].date, !!parent, parent && parent.goal, made[0].parent === (parent && parent.id)];
     }, ['查文献', '2026-09-21', true, true, true]],
     /* 循环 */
-    ['每天 跑步', 1, made => [made[0].title, made[0].repeat, made[0].zone], ['跑步', 1, 'short']],
+    ['每天 跑步', 1, made => [made[0].title, made[0].repeat, made[0].zone], ['跑步', 1, 'z_repeat']],
     /* 目标前缀 */
     ['目标 写论文 921', 1, made => [made[0].title, made[0].goal], ['写论文', true]],
     /* 区间（两端都保真） */

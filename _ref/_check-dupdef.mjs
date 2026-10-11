@@ -152,6 +152,24 @@ const NAMES = [
      被改动的既有函数（toast / hideToast / askTickWithKids / hotwordObserve / aiOpsActs /
      commitEntry / openItemEditor）都已在上面登记过，不重复加。 */
   'later',
+  /* ================= 7B 分区与 AI 落点 ================= */
+  /* 数据层（分区表 / 迁移 / 行为学习）：
+     validZoneKey zoneOptions zoneNameOf zoneLongKey zoneShortKey zoneRepeatKey zoneColorOf zonesForPick
+     zoneGrams zoneHintAdd zoneHintGuess zoneHintList zoneHintText zoneHintClear zoneHintsDropKey
+     sanitizeZones sanitizeZoneHints defaultZones sanitizeZoneKeys sanitizeItemZones
+     migrateZones zlist nextZoneKey zoneAdd zoneMove zoneRename zoneDelete zonePruneFolded bucketKeyOf
+     渲染与交互：zoneChipHTML zoneTeach zoneTeachPick zoneTeachFromEditor
+     openZoneMenu closeZoneMenu zoneRenameOpen zoneDeleteConfirm zoneAddOpen
+     AI 落点：aiZoneAsk zoneAdvisorLocal zoneAdvisorAsk
+     ⚠️ 常量 ZONE_KEY_RE / ZONE_COLORS / ZONE_LEGACY / AI_ZONE_SYS / zoneAskBusy 不是函数声明，不收。 */
+  'zlist', 'validZoneKey', 'zoneOptions', 'zoneNameOf', 'zoneLongKey', 'zoneShortKey', 'zoneRepeatKey',
+  'zoneColorOf', 'zonesForPick', 'zoneGrams', 'zoneHintAdd', 'zoneHintGuess', 'zoneHintList',
+  'zoneHintText', 'zoneHintClear', 'zoneHintsDropKey', 'sanitizeZones', 'sanitizeZoneHints',
+  'defaultZones', 'sanitizeZoneKeys', 'sanitizeItemZones', 'migrateZones', 'nextZoneKey',
+  'zoneAdd', 'zoneMove', 'zoneRename', 'zoneDelete', 'zonePruneFolded', 'bucketKeyOf',
+  'zoneChipHTML', 'zoneTeach', 'zoneTeachPick', 'zoneTeachFromEditor',
+  'openZoneMenu', 'closeZoneMenu', 'zoneRenameOpen', 'zoneDeleteConfirm', 'zoneAddOpen',
+  'aiZoneAsk', 'zoneAdvisorLocal', 'zoneAdvisorAsk',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }

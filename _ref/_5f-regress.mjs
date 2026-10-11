@@ -86,7 +86,7 @@ tOk('hotwordObserve 的「加进常用词」也 defer（它同步 aiSay 一条�
 tOk('aiOpsActs 的「撤销」也 defer（aiOpsUndo 结尾同步弹「已撤回」）',
   GUARD.test(opsFn) && /\bdefer\(/.test(opsFn), '');
 tOk('commitEntry 的「存入想法」也 defer（taskToSeed 同步弹「已存成想法…」）',
-  GUARD.test(ceFn) && /\bdefer\(/.test(ceFn), '');
+  GUARD.test(ceFn) && /\bdefer0?\(/.test(ceFn), '');
 /* 不改的三处：它们的按钮 fn 里**没有**同步提示，不该无谓延后。 */
 const imgCommit = extractFn(html, 'imageCommit');
 tOk('imageCommit 的「撤销」不需要 defer（fn 里只 save/refresh，无新提示）',

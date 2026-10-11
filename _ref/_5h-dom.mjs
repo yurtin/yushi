@@ -34,7 +34,7 @@ const ymd = d => d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDa
 const plus = n => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return ymd(d); };
 
 const base = {
-  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'short', tags: [],
+  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'z_short', tags: [],
   done: false, doneAt: null, hw: null, repeat: null, parent: null, goal: false, pri: 0,
   createdAt: 1700000000000,
 };
@@ -147,7 +147,7 @@ console.log('[1] 进行中档：区间进行中 == 单日今天（同色），�
    ══════════════════════════════════════════════════════════════ */
 console.log('\n[2] 折叠几何：padding 不变量 / 四份 rect / 热区 ⊇ 卡片 / 底边不露内容');
 const SNAP = `
-  var sec = document.querySelector('.zone[data-z="short"]');
+  var sec = document.querySelector('.zone[data-z="z_short"]');
   if (!sec) return 'NO-ZONE';
   sec.scrollIntoView({ block: 'center' });
   var head = sec.querySelector(':scope > header');
@@ -197,7 +197,7 @@ else {
 
 /* 折叠：点标题 → 等动画 + 收尾 */
 await ev(`
-  var sec = document.querySelector('.zone[data-z="short"]');
+  var sec = document.querySelector('.zone[data-z="z_short"]');
   sec.scrollIntoView({ block: 'center' });
   sec.querySelector('header[data-zfold]').click(); return 1;`);
 await sleep(900);
@@ -236,7 +236,7 @@ if (typeof expanded !== 'string' && typeof folded !== 'string'){
 
   /* ⑤ 热区真的能命中（三个角点 + 底边） —— 透明伪元素命中测试返回 header */
   const hits = await ev(`
-    var sec = document.querySelector('.zone[data-z="short"]');
+    var sec = document.querySelector('.zone[data-z="z_short"]');
     sec.scrollIntoView({ block: 'center' });
     var r = sec.getBoundingClientRect();
     function at(x, y){
@@ -279,12 +279,12 @@ if (typeof expanded !== 'string' && typeof folded !== 'string'){
 console.log('\n[3] 折叠动画：逐帧高度 + 终点与真实折叠高度');
 {
   /* 先确保是展开态 */
-  await ev(`var s = document.querySelector('.zone[data-z="short"]');
+  await ev(`var s = document.querySelector('.zone[data-z="z_short"]');
     if (s.classList.contains('folded')) s.querySelector('header[data-zfold]').click(); return 1;`);
   await sleep(800);
 
   const col = await ev(`
-    var sec = document.querySelector('.zone[data-z="short"]');
+    var sec = document.querySelector('.zone[data-z="z_short"]');
     sec.scrollIntoView({ block: 'center' });
     var chip = sec.querySelector('header[data-zfold]');
     var seq = [], endH = null, padB = null, t0 = performance.now();
@@ -308,7 +308,7 @@ console.log('\n[3] 折叠动画：逐帧高度 + 终点与真实折叠高度');
     col && col.padB === expanded.padding.bottom, 'padB=' + (col && col.padB) + ' / 展开 ' + expanded.padding.bottom);
   await sleep(700);
   const real = await ev(`
-    var sec = document.querySelector('.zone[data-z="short"]');
+    var sec = document.querySelector('.zone[data-z="z_short"]');
     return { h: Math.round(sec.offsetHeight), folded: sec.classList.contains('folded'), inline: sec.style.height,
              padB: getComputedStyle(sec).paddingBottom,
              bodyDisplay: (function(){ var b = sec.querySelector(':scope > .zone-body'); return b ? getComputedStyle(b).display : null; })(),
@@ -323,7 +323,7 @@ console.log('\n[3] 折叠动画：逐帧高度 + 终点与真实折叠高度');
 
   /* 展开方向 */
   const exp = await ev(`
-    var sec = document.querySelector('.zone[data-z="short"]');
+    var sec = document.querySelector('.zone[data-z="z_short"]');
     sec.scrollIntoView({ block: 'center' });
     var chip = sec.querySelector('header[data-zfold]');
     var seq = [], t0 = performance.now();
@@ -343,7 +343,7 @@ console.log('\n[3] 折叠动画：逐帧高度 + 终点与真实折叠高度');
   tOk('[3] 展开过程中高度**单调不减**', monoUp, monoUp ? '' : ('第 ' + worst2 + ' 帧回落'));
   await sleep(700);
   const full = await ev(`
-    var sec = document.querySelector('.zone[data-z="short"]');
+    var sec = document.querySelector('.zone[data-z="z_short"]');
     return { h: Math.round(sec.offsetHeight), folded: sec.classList.contains('folded'),
              padB: getComputedStyle(sec).paddingBottom, vis: [].slice.call(sec.querySelectorAll('.item')).filter(function(e){ return e.getClientRects().length; }).length };`);
   tOk('[3] 展开后回到自然全高、条目重新可见、padding 依旧是原值',

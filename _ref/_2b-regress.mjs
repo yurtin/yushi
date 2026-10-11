@@ -75,14 +75,22 @@ function extractLet(src, name){
 const FNS = ['isSeed', 'sanitizeHotwords', 'sanitizeHotwordSeen', 'hotwordDiff', 'hotwordAdd',
   'hotwordObserve', 'taskToSeed',
   'aiValidDateStr', 'aiValidTimeStr', 'aiValidTag', 'aiValidateItems', 'aiPlanPreset',
-  'aiDropEcho', 'aiContextTitles'];
+  'aiDropEcho', 'aiContextTitles',
+  /* ★ 7B：aiValidateItems 要把 long/short 翻成 k。 */
+  'zlist', 'zoneLongKey', 'zoneShortKey', 'validZoneKey'];
 const srcAll = pure + '\n'
   + ['HOTWORDS_MAX', 'HOTWORD_ASK_AT', 'AI_UNDERSTAND_MAX', 'AI_LISTEN_MAX'].map(n => extractConst(html, n)).join('\n') + '\n'
   + FNS.map(n => extractFn(html, n)).join('\n\n') + '\n'
   + 'return { dateText, taskToSeed, hotwordObserve, hotwordDiff, sanitizeHotwordSeen, HOTWORD_ASK_AT, HOTWORDS_MAX, aiValidateItems, aiPlanPreset, aiDropEcho, aiContextTitles };';
 
 const toasts = [];
-const S = { items: [], tags: [], hotwords: [], hotwordSeen: {}, dateShow: { y: true, m: true, d: true }, ideaUsedAt: null };
+const S = { items: [], tags: [], hotwords: [], hotwordSeen: {}, dateShow: { y: true, m: true, d: true }, ideaUsedAt: null,
+  /* ★ 7B：落点写的是分区的 k，沙箱要有一份分区表（模型给老值 long/short 时会被翻译过去）。 */
+  zones: [
+    { k: 'z_long', name: '长期', color: '#2f6fed' },
+    { k: 'z_short', name: '短期', color: '#2f8f5b' },
+    { k: 'z_repeat', name: '循环', color: '#d98a1f' }
+  ] };
 const box = new Function('S', 'save', 'refresh', 'toast', 'hideToast', 'goView', 'window', 'ymd',
   srcAll
 )(S, () => {}, () => {}, (m, a) => { toasts.push({ msg: String(m), acts: a ? a.length : 0 }); },
@@ -114,7 +122,7 @@ console.log('\n[2] 录入变想法：不自动生成子想法（原文只在 raw
 {
   const mk = extra => Object.assign({
     id: 'k1', raw: '冰箱里的酸奶过期了，记得喝', title: '喝冰箱里的酸奶',
-    date: null, dateEnd: null, time: null, zone: 'long', tags: [], done: false, pri: 0
+    date: null, dateEnd: null, time: null, zone: 'z_long', tags: [], done: false, pri: 0
   }, extra || {});
   S.items = []; toasts.length = 0;
   const it = mk(); S.items.push(it);
@@ -190,10 +198,12 @@ console.log('\n[4] 源码级接线');
 console.log('\n[5] AI 判落点（长期 / 想法）与子想法的门槛');
 {
   const V = box.aiValidateItems;
-  /* zone */
-  t('zone 认 long', V([{ title: '交房租', zone: 'long' }])[0].zone, 'long');
+  /* zone ★ 7B：模型看 schema 学的是 long / short / idea，落库统一翻成**分区的 k**。 */
+  t('zone 认 long → 翻成 z_long', V([{ title: '交房租', zone: 'long' }])[0].zone, 'z_long');
   t('zone 认 idea', V([{ title: '学做菜', zone: 'idea' }])[0].zone, 'idea');
-  t('zone 不认自创值', V([{ title: '甲', zone: 'short' }])[0].zone, '');
+  t('zone 认 short → 翻成 z_short', V([{ title: '甲', zone: 'short' }])[0].zone, 'z_short');
+  t('zone 认分区表里的 k', V([{ title: '甲', zone: 'z_short' }])[0].zone, 'z_short');
+  t('zone 不认自创值', V([{ title: '甲', zone: '自创的分区' }])[0].zone, '');
   t('★ 带了日期的想法不成立（有安排的事就是待办）',
     V([{ title: '交房租', date: '2026-11-01', zone: 'idea' }])[0].zone, '');
   /* steps */
@@ -211,10 +221,10 @@ console.log('\n[5] AI 判落点（长期 / 想法）与子想法的门槛');
   const pp = box.aiPlanPreset;
   t('★ 模型表了态就听模型的（idea 不被日期推断盖掉）',
     pp({ title: '学做菜', zone: 'idea' }).zone, 'idea');
-  t('模型说 long 就是 long', pp({ title: '交房租', zone: 'long' }).zone, 'long');
+  t('模型说 long → 翻成 z_long', pp({ title: '交房租', zone: 'z_long' }).zone, 'z_long');
   t('模型没表态 + 有近日期 → 短期（老规则不变）',
-    pp({ title: '甲', date: '2026-10-10' }).zone, 'short');
-  t('模型没表态 + 没日期 → 长期', pp({ title: '甲' }).zone, 'long');
+    pp({ title: '甲', date: '2026-10-10' }).zone, 'z_short');
+  t('模型没表态 + 没日期 → 长期', pp({ title: '甲' }).zone, 'z_long');
   t('steps 原样带进 preset', pp({ title: '甲', steps: ['一', '二'] }).steps, ['一', '二']);
   /* 提示词里得写清楚这两条规矩，否则模型不知道有这两个字段 */
   const sys = html.match(/const AI_UNDERSTAND_SYS =[\s\S]*?;\n/)[0];
@@ -222,9 +232,11 @@ console.log('\n[5] AI 判落点（长期 / 想法）与子想法的门槛');
   tOk('提示词讲了 steps 的"两个及以上才给、宁可少给"', /两个及以上/.test(sys) && /宁可少给/.test(sys), '');
   tOk('schema 里带了 zone 与 steps 两个字段',
     html.indexOf('"note":"","zone":"","steps":[]') > 0, '');
-  /* 设置三档 */
-  tOk('设置页的落点是三档（自动 / 长期 / 想法）',
-    /data-capzone="auto"/.test(html) && /data-capzone="long"/.test(html) && /data-capzone="idea"/.test(html), '');
+  /* 设置三档 ★ 7B：按钮不再写死，改成"自动 + 分区表里每一栏 + 想法"，
+     所以断言改成"生成按钮的模板在"（具体有哪些分区由 S.zones 决定）。 */
+  tOk('设置页的落点按钮：自动 + 分区表 + 想法',
+    /data-capzone="auto"/.test(html) && /data-capzone="\$\{esc\(z\.k\)\}"/.test(html)
+    && /data-capzone="idea"/.test(html), '');
   tOk('默认是「自动」', /captureZone: 'auto'/.test(html), '');
 }
 
@@ -380,7 +392,7 @@ await ev(`closeModalNow(); S.items.length=0;
 await sleep(1600);
 const n2 = await ev(`var it=S.items[0]; if(!it) return { none:true };
   return { kind: it.kind || null, zone: it.zone, sparks: (it.sparks||[]).length, shown: it.title };`);
-t('★ 模型判「长期」→ 进长期，不是想法', [n2.kind, n2.zone], [null, 'long']);
+t('★ 模型判「长期」→ 进长期（分区表里的 k），不是想法', [n2.kind, n2.zone], [null, 'z_long']);
 t('★ 没有 steps 就不长任何子想法', n2.sparks, 0);
 t('标题也是模型给的', n2.shown, '交房租');
 

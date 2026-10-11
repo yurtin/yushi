@@ -752,13 +752,83 @@ body.view-enter .entry-extra{animation:entryIn .62s cubic-bezier(.16,1,.3,1) .12
    直接去掉：条目的分隔由每个 .item 自己的 border-bottom 承担，标题靠字重/字号就够分开了。 */
 .zone header{display:flex;align-items:center;gap:9px;padding:16px 2px 12px}
 .zone header .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
-.zone[data-z="short"] header .dot{background:var(--accent);box-shadow:0 0 10px color-mix(in srgb,var(--accent) 55%,transparent)}
-.zone[data-z="long"]  header .dot{background:var(--accent);box-shadow:0 0 10px color-mix(in srgb,var(--accent) 55%,transparent)}
+/* ★ 7B：原来这里有两行写死的点色规则（`.zone[data-z="short"]` / `[data-z="long"]`，
+   都是 --accent）。分区可配置之后"哪一栏是什么色"由数据决定，改成 section 上内联的
+   `--zc`（见 renderZoneBody）—— 同一件事只留一处真相源。 */
 /* ★ v5.0：`.zone[data-z="consider"]` 那条绿点规则已删 —— 「考虑」分区并入想法，没有元素再命中它。 */
 /* 「考虑」不是待办，只是「还没决定要不要做」的暂存区 —— 排在最后，并铺满整行收尾 */
 .zone-wide{grid-column:1/-1}
 .zone header h3{margin:0;font-size:13px;font-weight:900;letter-spacing:.2em;text-transform:uppercase;color:var(--fg)}
 .zone header .n{margin-left:auto;font-size:12px;color:var(--faint)}
+/* ---------- ★ 7B：分区管理（⋯ 面板 / 新建分区 / 卡片上的「哪一栏」chip） ----------
+   这一块的形状都照着项目既有的做法来，不新造语言：
+     · 每栏的主色由 section 上的内联 `--zc` 给（存进 S.zones[].color），子元素继承；
+     · ⋯ 面板是 body 上的 fixed 实底卡片（同 .sel-pop 的纪律：**不许半透明**）；
+     · 卡片上那枚 chip 就是 .chip 体量的一枚小按钮。 */
+.zone header .dot{background:var(--zc,var(--accent));box-shadow:0 0 10px color-mix(in srgb,var(--zc,var(--accent)) 55%,transparent)}
+/* 两个写在 data-z 上的旧点色规则（short / long）已被 --zc 取代，删掉避免"一处两真相"。 */
+
+/* 每栏标题右侧那枚「⋯」。基线对齐靠 order 排在 z-chev 之后（header 是 flex row）。 */
+.zmenu{
+  order:4;flex:0 0 auto;width:26px;height:26px;margin-left:2px;padding:0;
+  display:inline-flex;align-items:center;justify-content:center;
+  border:0;background:transparent;color:var(--faint);border-radius:9px;
+  font-size:15px;font-weight:900;line-height:1;cursor:pointer;
+  transition:color .16s var(--mo-soft),background .16s var(--mo-soft);
+}
+/* 悬停反馈一律包在 `@media (hover:hover)` 里 —— 触摸端命中 :hover 会**粘住**
+   （v3.38 那条铁律，见文件末尾的中和块）。所以在下面这几条上不加顶层 :hover。 */
+.zmenu:active{background:var(--tap)}
+.zmenu:focus-visible{outline:2px solid var(--zc,var(--accent));outline-offset:1px}
+@media (hover:hover){ .zmenu:hover{background:var(--pill);color:var(--zc,var(--accent))} }
+/* 分区管理面板（挂在 body 上）。position/top/left 由 openZoneMenu 内联写 ——
+   fixed 定位 + 实底，避免被 .zone 的 content-visibility / 层叠上下文吃掉。 */
+.zmenu-pop{
+  position:fixed;z-index:132;min-width:132px;padding:6px;
+  background:var(--bg);border:1px solid var(--line2);border-radius:14px;
+  box-shadow:0 16px 40px rgba(0,0,0,.22);
+}
+.zmenu-pop .zm{
+  display:block;width:100%;text-align:left;border:0;background:transparent;
+  color:var(--fg);font:inherit;font-size:13px;padding:9px 10px;border-radius:9px;cursor:pointer;
+}
+.zmenu-pop .zm:active{background:var(--tap)}
+@media (hover:hover){ .zmenu-pop .zm:hover{background:var(--pill)} }
+.zmenu-pop .zm.danger{color:var(--danger)}
+.zmenu-pop .zm[disabled]{opacity:.35;cursor:default}
+.zmenu-pop .zm-note{display:block;padding:2px 10px 6px;font-size:11px;color:var(--faint)}
+
+/* 「+ 新建分区」：压在分区名单脚下（与 .done-entry 同区、同为整行）。 */
+.zone-add{
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  width:100%;margin-top:2px;padding:13px 16px;cursor:pointer;
+  border:1px dashed var(--line2);border-radius:20px;background:transparent;
+  color:var(--muted);font:inherit;font-size:13px;font-weight:700;
+  transition:color .16s var(--mo-soft),border-color .16s var(--mo-soft),background .16s var(--mo-soft);
+}
+@media (hover:hover){ .zone-add:hover{color:var(--fg);border-color:var(--fg);background:var(--pill)} }
+.zone-add:active{background:var(--tap)}
+.zone-add .za-plus{font-size:15px;font-weight:900;line-height:1}
+
+/* 卡片上那枚「在哪一栏」的 chip。它是 .meta 里最后一个元素（标签之后），
+   视觉上跟标签同一档，但点了会开"换一栏"面板 —— 所以用按钮而不是 span。 */
+.zchip{
+  border:1px solid color-mix(in srgb,var(--accent) 34%,transparent);
+  background:color-mix(in srgb,var(--accent) 10%,transparent);
+  color:var(--accent);font:inherit;font-size:11px;font-weight:800;line-height:1;
+  padding:4px 9px;border-radius:999px;cursor:pointer;white-space:nowrap;
+  transition:background .16s var(--mo-soft),border-color .16s var(--mo-soft);
+}
+@media (hover:hover){ .zchip:hover{background:color-mix(in srgb,var(--accent) 20%,transparent);border-color:var(--accent)} }
+.zchip.none{color:var(--muted);border-color:var(--line2);background:transparent}
+@media (hover:hover){ .zchip.none:hover{border-color:var(--fg);color:var(--fg)} }
+
+/* 「换一栏」选择面板（住在现有 #mask/.modal 里）。 */
+.zpick-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.zpick{justify-content:space-between;text-align:left}
+.zpick.on{border-color:var(--accent);color:var(--accent)}
+.zpick .zp-name{font-weight:700}
+.zpick .zp-n{font-size:11px;color:var(--faint)}
 /* ---------- 分区折叠（长期 / 短期 / 循环 / 考虑）----------
    整条 header 都是热区：比只点右边那个小三角好按得多（手指点 7px 的三角太费劲）。 */
 /* ★ v3.38（用户截图 + 原话："我点击时变灰的地方只有这一小块，那显然就是里边这个圆角矩形…
@@ -3754,6 +3824,342 @@ function guessTags(text){
   return score.slice(0, 2).map(x => x.t);
 }
 
+/* ---------------- 分区（用户自定义的栏目） ----------------
+   ★ 7B（2026-10-11，见 方案-自定义分区.md）：「时间决定进哪一栏」这件事**取消**。
+   现在进哪一栏由**用户自己的分区**决定，长期/短期/循环降级成条目上的一个标记
+   （循环仍是渲染成 chip 的，那条路一个字没动）。
+
+   三条硬规则（后面所有函数都靠它们）：
+     · 标识与名字解耦   —— 条目存的是 `k`（分区编号），`name` 只是显示。
+                           用户改一次名，若拿名字当主键，他所有条目会一起掉进「未分组」。
+     · 未分组是内置兜底 —— 不在 S.zones 里（用 it.zone === '' 表示）、不可删不可改名、
+                           空的时候不渲染、固定排在最后。
+     · 想法不参与分区   —— kind:'seed' / zone==='idea' 是独立机制，这一块一个字都不碰。
+
+   常量放在这里（解析层之前）：parseSmart 要把落点写成**分区的 k**（以前写死 long/short），
+   纯 Node 回归脚本会把解析层整段切进隔离环境，所以这些必须落在那个切片里。 */
+const ZONE_COLORS = ['#2f6fed', '#2f8f5b', '#d98a1f', '#8b5cf6', '#d9527a', '#0d9ea8'];
+const ZONE_HINT_MIN = 2;      // 同一个词命中 2 次才算数（1 次可能是误操作）
+/* zoneHints 的规模纪律：参照 hotwordSeen —— 满了淘汰 n 最小的（并列淘汰先记进来的）。 */
+const ZONE_HINT_MAX = 120;
+/* 老数据的三个固定值 → 默认分区表的主键。**只在 load() 迁移那一次用**：
+   迁移之后条目上只会有 k 或 ''，别的地方再出现这些字面量就是 bug。 */
+const ZONE_LEGACY = { long: 'z_long', short: 'z_short', repeat: 'z_repeat' };
+
+/* 分区只收小写字母/数字/下划线 —— k 会进 data-* 属性与提示词。
+   ⚠️ 必须与 nextZoneKey() 的产出**同一条口径**：它生成 z1 / z2 …（不是 z_1）。
+       v1 这里写成 `^z_[a-z0-9_]{1,16}$`，于是用户新建的分区在下次启动
+       被 sanitizeZones 当成"认不出的 k"整条丢掉（分区和里面的条目一起变成未分组）。
+   ⚠️ 'idea' 是**保留字**：「分区=想法」那条路走的是想法机制，不能被一个自定义分区顶掉。
+   'z' 这个键太短、容易和别的规则撞，也排除（nextZoneKey 从 z1 起）。 */
+const ZONE_KEY_RE = /^z[0-9a-z_]{1,17}$/;
+/* ⚠️ 下面这几个读 S.zones 的地方都写成"拿不到就当成空表"：
+   项目里一大批纯 Node 回归脚本是"切片 + 按名取函数"，它们喂进来的环境
+   **可能连 S 都没有**（_parse-regress / _0c-regress 只切解析层函数直接调 parseSmart）。
+   直接 `S.zones.find` 会让 parseSmart 整段崩掉、把这些脚本本来全绿的断言一起带走。
+   真机上 S.zones 永远是数组（S 初始化 / load / sanitizeZones 三处都保证）。 */
+function zlist(){
+  if (typeof S === 'undefined' || !S || !Array.isArray(S.zones)) return [];
+  return S.zones;
+}
+function validZoneKey(k){
+  if (typeof k !== 'string' || !ZONE_KEY_RE.test(k)) return false;
+  if (k === 'idea') return false;
+  for (const z of zlist()) if (z.k === k) return true;
+  return false;
+}/* 分区表 → 可选项（喂 makeSel / 喂 AI 提示词）。
+   ⚠️ 不进 smartHintCount：那两处是"分区名出现在提示词里"的地方，不是路由判据
+   （与 5E 的本地落点 cue 同一条例外，说明写在 smartHintCount 上方）。 */
+function zoneOptions(){
+  const out = [];
+  for (const z of zlist()) out.push([z.k, String(z.name)]);
+  out.push(['', '未分组']);
+  return out;
+}
+/* k → 显示名。不认识的一律「未分组」—— 渲染与提示语共用这一处，别再各写一份。 */
+function zoneNameOf(k){
+  if (k === 'idea') return '想法';
+  if (k === '') return '未分组';
+  const z = zlist().find(x => x.k === k);
+  return z ? String(z.name) : '未分组';
+}
+/* 「长期」这一类默认分区在表里的那个 k（老数据的默认落点）。表被改名不影响它，被删掉才返回 ''。 */
+function zoneLongKey(){
+  const z = zlist().find(x => x.k === 'z_long');
+  return z ? z.k : '';
+}
+/* 「短期」/「循环」同理（parseSmart 的落点要用；删掉了就返回 ''）。 */
+function zoneShortKey(){
+  const z = zlist().find(x => x.k === 'z_short');
+  return z ? z.k : '';
+}
+function zoneRepeatKey(){
+  const z = zlist().find(x => x.k === 'z_repeat');
+  return z ? z.k : '';
+}
+function zoneColorOf(k){
+  const z = zlist().find(x => x.k === k);
+  return (z && z.color) || ZONE_COLORS[0];
+}
+/* AI 只在这些分区里挑一个 —— 「未分组」是兜底、不是让模型选的落点（失败自然留空 = 未分组）。 */
+function zonesForPick(){
+  return zlist().filter(z => !!z.k).map(z => ({ k: z.k, name: String(z.name) }));
+}
+/* ---------- 行为学习：2-gram ----------
+   取标题的 2-gram（与 aiScoreCandidate 的"二元组字面重合"同一把刀，**不引入分词依赖**）：
+   中文天然是两字词，英文/数字按滑窗。 */
+function zoneGrams(title){
+  const s = String(title == null ? '' : title).trim().toLowerCase();
+  const out = [];
+  if (!s) return out;
+  if (s.length <= 2){ out.push(s); return out; }
+  for (let i = 0; i + 2 <= s.length; i++) out.push(s.slice(i, i + 2));
+  return out;
+}
+/* 记一次教学信号：用户把这条挪进了某个分区。
+   ★ 只在用户**手动**挪的时候调用 —— 自动预测出来的结果不许再喂回学习（否则会自我强化）。 */
+function zoneHintAdd(title, k){
+  if (!validZoneKey(k)) return 0;
+  if (!S.zoneHints || typeof S.zoneHints !== 'object') S.zoneHints = {};
+  const grams = zoneGrams(title);
+  let n = 0;
+  for (const g of grams){
+    const rec = S.zoneHints[g];
+    if (rec && rec.k === k) rec.n = Math.min(99, (Number(rec.n) || 0) + 1);
+    else S.zoneHints[g] = { k: k, n: 1 };
+    n++;
+  }
+  /* 上限：满了淘汰 n 最小的（并列淘汰遍历顺序里靠前的那个，也就是先记进来的）。 */
+  const keys = Object.keys(S.zoneHints);
+  if (keys.length > ZONE_HINT_MAX){
+    const sorted = keys.slice().sort((a, b) =>
+      (Number(S.zoneHints[a].n) || 0) - (Number(S.zoneHints[b].n) || 0));
+    for (const kk of sorted.slice(0, keys.length - ZONE_HINT_MAX)) delete S.zoneHints[kk];
+  }
+  return n;
+}
+/* 用 2-gram 查学到的词，按分区取**最有力的那一条**。
+   返回 {k, score, tie, n, total}：
+     · score = 命中的 gram 里最大的 n（= 这个词被教过几次）；
+     · total = 命中 gram 的 n 之和（并列时用它挑更"厚"的那一边）；
+     · tie   = 多个分区拿到同样的 score（并列就别猜，往下一层走）。
+   ⚠️ 为什么 score 取 max 而不是求和：一个标题会切出好几个 2-gram，
+      求和的话"教一次"就能凑到 5 分，阈值 2 形同虚设。阈值要管的是"同一个词被教过几次"。
+      并列时用 total 兜底：`买菜的` vs `买菜` 两个词各教过一次，后者更该赢。 */
+function zoneHintGuess(title){
+  const out = { k: '', score: 0, tie: false, n: 0, total: 0 };
+  const hints = (S.zoneHints && typeof S.zoneHints === 'object') ? S.zoneHints : {};
+  const grams = zoneGrams(title);
+  if (!grams.length) return out;
+  const acc = {};
+  for (const g of grams){
+    const rec = hints[g];
+    if (!rec || !rec.k) continue;
+    if (!validZoneKey(rec.k)) continue;
+    const n = Number(rec.n) || 0;
+    const s = acc[rec.k] || (acc[rec.k] = { score: 0, total: 0 });
+    s.total += n;
+    if (n > s.score) s.score = n;
+  }
+  let best = null;
+  for (const k of Object.keys(acc)){
+    const s = acc[k];
+    if (best === null || s.score > best.score || (s.score === best.score && s.total > best.total))
+      best = { k: k, score: s.score, total: s.total };
+  }
+  if (!best) return out;
+  out.k = best.k; out.score = best.score; out.total = best.total; out.n = best.score;
+  for (const k of Object.keys(acc)){
+    const s = acc[k];
+    if (k !== best.k && s.score === best.score && s.total === best.total) out.tie = true;
+  }
+  return out;
+}
+/* 已学会的词（给设置页那行"已学会：课 → 学习，2 次"用）。按 n 从高到低，最多给 12 条。 */
+function zoneHintList(){
+  const hints = (S.zoneHints && typeof S.zoneHints === 'object') ? S.zoneHints : {};
+  return Object.keys(hints)
+    .map(g => ({ gram: g, k: (hints[g] && hints[g].k) || '', n: Number(hints[g] && hints[g].n) || 0 }))
+    .filter(x => x.k)
+    .sort((a, b) => b.n - a.n || (a.gram < b.gram ? -1 : 1))
+    .slice(0, 12);
+}
+/* 已学会的词那一行（设置页）。列出来是硬要求 —— 不列就是黑箱：
+   用户会觉得"它怎么老往那分"，却找不到原因也没法纠正。 */
+function zoneHintText(){
+  const list = zoneHintList();
+  if (!list.length){
+    return '还没有学到东西。你在清单里把一条待办挪到某一栏（或改掉它猜的分区），我就记一笔；'
+      + '同一个词见过两次之后，下次录入会直接猜那一栏。';
+  }
+  return '这些词出现时我会直接分到对应那一栏（见过两次才算数）：'
+    + list.map(x => '「' + x.gram + '」→ ' + zoneNameOf(x.k) + '（' + x.n + ' 次）').join('，');
+}
+/* 清空学习记录（设置页那个「清空」）。返回清掉了几条，便于提示语。 */
+function zoneHintClear(){
+  const n = Object.keys((S.zoneHints && typeof S.zoneHints === 'object') ? S.zoneHints : {}).length;
+  S.zoneHints = {};
+  save();
+  return n;
+}
+/* 删分区时把它名下的学习记录一起清掉 —— 否则以后会预测到一个不存在的分区。 */
+function zoneHintsDropKey(k){
+  let n = 0;
+  const hints = (S.zoneHints && typeof S.zoneHints === 'object') ? S.zoneHints : {};
+  for (const g of Object.keys(hints)){
+    if (hints[g] && hints[g].k === k){ delete hints[g]; n++; }
+  }
+  return n;
+}
+/* ---------- 存量数据的收口（load / 备份恢复共用） ----------
+   分区表本身：只收 {k,name,color} 且 k 合法的项；重复 k 丢弃；颜色缺了按调色板循环补。 */
+function sanitizeZones(raw){
+  const arr = Array.isArray(raw) ? raw : [];
+  const out = [], seen = new Set();
+  let ci = 0;
+  for (const z of arr){
+    if (!z || typeof z !== 'object') continue;
+    const k = String(z.k || '');
+    if (!ZONE_KEY_RE.test(k) || k === 'idea' || seen.has(k)) continue;
+    seen.add(k);
+    let name = String(z.name == null ? '' : z.name).replace(/\s+/g, ' ').trim().slice(0, 12);
+    if (!name) name = '未命名';
+    let color = typeof z.color === 'string' ? z.color.trim() : '';
+    if (!/^#[0-9a-fA-F]{6}$/.test(color)) color = ZONE_COLORS[ci % ZONE_COLORS.length];
+    ci++;
+    out.push({ k: k, name: name, color: color });
+  }
+  return out;
+}
+/* zoneHints 的形状校验（读存档 / 恢复备份都走它）——
+   键必须是字符串、值必须是 {k 合法, n 1~99}；认不出的整条丢掉。
+   与 sanitizeHotwords / sanitizeHotwordSeen 同一套纪律（外部数据不进内存当字段用）。 */
+function sanitizeZoneHints(raw){
+  const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  const out = {};
+  for (const g of Object.keys(src)){
+    const rec = src[g];
+    if (typeof g !== 'string' || !g || g.length > 8) continue;
+    if (!rec || typeof rec !== 'object') continue;
+    const k = String(rec.k || '');
+    const n = Number(rec.n);
+    if (!ZONE_KEY_RE.test(k) || k === 'idea') continue;
+    if (!Number.isFinite(n) || n < 1) continue;
+    out[g] = { k: k, n: Math.min(99, Math.round(n)) };
+  }
+  return out;
+}
+/* 分区表的默认值（全新安装 / 迁移老数据）。默认三个 k 固定为 z_long / z_short / z_repeat，
+   **名字可以改**（改的只是 name）。三个 k 与老数据映射表一一对应，见 ZONE_LEGACY。 */
+function defaultZones(){
+  return [
+    { k: 'z_long',   name: '长期', color: ZONE_COLORS[0] },
+    { k: 'z_short',  name: '短期', color: ZONE_COLORS[1] },
+    { k: 'z_repeat', name: '循环', color: ZONE_COLORS[2] },
+  ];
+}
+/* 条目上的 zone 收口：认不出的值一律 '' —— 决不许原样留着让它**哪一栏都进不去**。
+   ⚠️ 'idea' 原样保留（想法那套机制），其余不在分区表里的都算未分组。
+   `opts.migrate` 为真 = 这一次是**老数据迁移**：老的三值按 ZONE_LEGACY 映射。 */
+function sanitizeZoneKeys(items, opts){
+  const arr = Array.isArray(items) ? items : [];
+  const known = new Set(S.zones.map(z => z.k));
+  const canMig = !!(opts && opts.migrate);
+  const migrated = { ...ZONE_LEGACY };
+  let fixed = 0;
+  for (const it of arr){
+    if (!it || typeof it !== 'object') continue;
+    const v = it.zone;
+    if (v === 'idea') continue;
+    if (canMig && typeof v === 'string' && migrated[v]){ it.zone = migrated[v]; continue; }
+    if (v === undefined || v === null || v === ''){ it.zone = ''; continue; }
+    if (typeof v === 'string' && known.has(v)) continue;
+    it.zone = ''; fixed++;
+  }
+  return fixed;
+}
+/* 一次性迁移（load 里跑，且**必须幂等**）。
+   把老的写死值搬进默认分区表；跑完写一个 S.zones 上的标记 `z:1`（标记进存档，
+   下次启动看到它就直接跳过 —— 所以用户后来自己加/删/改名的分区不会被再迁一次）。
+   两个细节：
+     · 迁移前先把条目上的老值归一化（sanitizeZoneKeys migrate:true），**顺序要紧** ——
+       否则后面"还有人用 repeat 吗"这一问会被老数据自己糊住。
+     · 「循环」这个默认分区内容为空时会被收起来（和别的分区同一条规则）；
+       但**表里留着它**，用户想用还能自己往里挪。 */
+function migrateZones(o){
+  /* 幂等标记：**不放在 S.zones 里面** —— 分区表是用户能增删的数组，
+     而 sanitizeZones 只保留 {k,name,color}，夹在其中的标记会在下一次启动被洗掉。
+     所以标记（以及"迁移已跑过"这件事）单独存一格 zoneRev，进 save() / snapshot()。 */
+  if (o && (o.zoneRev === 1 || (Array.isArray(o.zones) && o.zones.some(z => z && z.z === 1)))) return;
+  S.zones = sanitizeZones(S.zones);
+  const hasDefault = S.zones.some(z => z.k === 'z_long' || z.k === 'z_short' || z.k === 'z_repeat');
+  if (!hasDefault){
+    const seen = new Set(S.zones.map(z => z.k));
+    for (const d of defaultZones()) if (!seen.has(d.k)) S.zones.push(d);
+  }
+  sanitizeZoneKeys(o && o.items, { migrate: true });
+  S.zoneRev = 1;
+}
+/* 新建分区。颜色**循环取色**（用户不选色）；k 取第一个没被占用的 z1 / z2 … */
+function nextZoneKey(){
+  const used = new Set(S.zones.map(z => z.k));
+  for (let i = 1; i < 1000; i++){ const k = 'z' + i; if (!used.has(k)) return k; }
+  return 'z' + Date.now();
+}
+/* 分区表的排序 / 增删（清单页「⋯」面板调它们）。 */
+function zoneAdd(name){
+  const n = String(name == null ? '' : name).replace(/\s+/g, ' ').trim().slice(0, 12);
+  if (!n) return null;
+  const z = { k: nextZoneKey(), name: n, color: ZONE_COLORS[S.zones.length % ZONE_COLORS.length] };
+  S.zones.push(z);
+  save();
+  return z;
+}
+/* 上移 / 下移。首 / 末不越界（返回 false，调用方据此禁用按钮）。 */
+function zoneMove(k, dir){
+  const i = S.zones.findIndex(z => z.k === k);
+  if (i < 0) return false;
+  const j = i + (dir < 0 ? -1 : 1);
+  if (j < 0 || j >= S.zones.length) return false;
+  const t = S.zones[i]; S.zones[i] = S.zones[j]; S.zones[j] = t;
+  save();
+  return true;
+}
+/* 改名：**只动 name**。条目的 it.zone 一个字都不碰 —— 这是本卡第一条红线。 */
+function zoneRename(k, name){
+  const z = S.zones.find(x => x.k === k);
+  if (!z) return false;
+  const n = String(name == null ? '' : name).replace(/\s+/g, ' ').trim().slice(0, 12);
+  if (!n) return false;
+  z.name = n;
+  save();
+  return true;
+}
+/* 删分区 = **只把归属改成 ''（未分组），一条条目都不删**，并清掉指向它的 zoneHints。
+   返回 { moved, dropped }：多少条被挪出来、清除多少条学习记录（给二次确认的文案与回归用）。 */
+function zoneDelete(k){
+  const i = S.zones.findIndex(z => z.k === k);
+  if (i < 0) return { ok: false, moved: 0, dropped: 0 };
+  let moved = 0;
+  for (const it of S.items) if (it && it.zone === k){ it.zone = ''; moved++; }
+  const dropped = zoneHintsDropKey(k);
+  S.zones.splice(i, 1);
+  if (Array.isArray(S.foldedZones)) S.foldedZones = S.foldedZones.filter(x => x !== k);
+  save();
+  return { ok: true, moved: moved, dropped: dropped };
+}
+/* 清掉指向不存在分区的折叠态（删分区 / 恢复老备份之后调用）。 */
+function zonePruneFolded(){
+  if (!Array.isArray(S.foldedZones)){ S.foldedZones = []; return; }
+  const known = new Set(S.zones.map(z => z.k));
+  S.foldedZones = S.foldedZones.filter(k => known.has(k));
+}
+/* 一条待办**现在**属于哪一栏（渲染与学习共用）：
+   重复任务一律进「循环」那一栏（循环的渲染有自己的 rules），其余按 it.zone 归类。 */
+function bucketKeyOf(it){
+  return it.zone || '';
+}
+
 /* ---------------- 日期工具 ---------------- */
 function pad2(n){ return String(n).padStart(2, '0'); }
 function ymd(d){ return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
@@ -4615,8 +5021,16 @@ function parseSmart(input){
      才落 idea —— 三条纪律见上面 localIdeaCue 那段。 */
   const localIdea = localIdeaCue && !date && !time && !repeat
     && !/什么时候|哪天|几点|在哪|跟谁|怎么弄|该怎么办/.test(fallback);
+  /* ★ 7B：落点现在写的是**分区的 k**（以前写死 long / short）。
+     为什么必须落在解析层：条目上的 zone 从此是"引用用户分区表"，
+     写 'long' / 'short' 这种老值会被 sanitizeItemZones 当成认不出的值清成 '' ——
+     表现就是"所有没写日期的条目一起掉进未分组"。
+     映射：有日期 → 近期算「短期」那一栏、远期算「长期」那一栏；没日期 → 「长期」那一栏；
+           循环 → 「循环」那一栏（那一栏被用户删掉时退到「短期」，条目不丢）。
+     分区表被用户删空时这些 key 都是 ''，条目落「未分组」—— 那是兜底，不是消失。 */
   const zone = explicit || (localIdea ? 'idea'
-    : (date ? (daysFromToday(date) <= 14 ? 'short' : 'long') : (repeat ? 'short' : 'long')));
+    : (date ? (daysFromToday(date) <= 14 ? zoneShortKey() : zoneLongKey())
+       : (repeat ? zoneRepeatKey() : zoneLongKey())));
 
   return {
     title: (cleaned || fallback).replace(/\s{2,}/g, ' '),
@@ -4785,6 +5199,24 @@ const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', t
         （见 AI_KEY_LS），这样导出的备份 JSON 永远不可能带上 key。 */
   aiMode: 'off', aiBase: 'https://api.deepseek.com', aiModel: 'deepseek-flash',
   hotwords: [], hotwordSeen: {}, aiAnchor: null,
+  /* ★ 7B（用户 2026-10-11 定，见 方案-自定义分区.md）：**分区交还给用户**。
+       分区 = 清单页的一条栏目（学习 / 工作 / 生活…），时间与循环从此只是条目上的**标记**。
+       数据形状：
+         S.zones      [{ k, name, color }]，k 是主键、name 只是显示。
+                      ⚠️ **k 与 name 必须解耦** —— 改名只动 name，绝不许动条目的 it.zone；
+                      拿名字当主键的话，用户改一次名，他所有条目会一起掉进「未分组」。
+         S.zoneRules  「对 AI 的规范设置」的自然语言规则，默认空串（空着也能用）。
+         S.zoneHints  行为学习：2-gram → { k, n }。用户挪一次分区就记一笔，
+                      同一个词累计 2 次（ZONE_HINT_MIN）才开始预测 —— 一次可能是误操作。
+       条目上：it.zone = 'z_xxx'（某个分区的 k）| ''（未分组）。
+       ★「未分组」**不在 S.zones 里**：它是内置兜底栏（不可删、不可改名、空时不渲染、固定排最后）。
+       ★「想法」也不在分区体系里：kind:'seed' / zone==='idea' 是另一套机制，一个字都没动。 */
+  zones: [
+    { k: 'z_long',   name: '长期', color: ZONE_COLORS[0] },
+    { k: 'z_short',  name: '短期', color: ZONE_COLORS[1] },
+    { k: 'z_repeat', name: '循环', color: ZONE_COLORS[2] },
+  ],
+  zoneRules: '', zoneHints: {}, zoneRev: 0,
   /* ★ v5.0：设置页展开了哪几栏（存的是栏目名，如 '外观与体感' / 'AI'）。
      默认**空数组 = 全部收起** —— 用户："设置栏目有点太长了"。 */
   setOpen: [],
@@ -4804,7 +5236,10 @@ const S = { items: [], lastBackup: null, view: 'entry', filterTags: [], q: '', t
    load() 拿它当白名单过滤 —— 不让数据里的任意字符串混进 class 名。 */
 /* ★ v5.0：「考虑」已并入想法（行尾 ? 直接建种子），分区里不再有 consider。
    老存档里 foldedZones 含 'consider' 的会被这里过滤掉 —— 那个分区已经不存在了。 */
-const ZONES = ['long', 'short', 'repeat', 'idea'];
+/* ★ 7B：原来这里有一个写死的 `const ZONES = ['long','short','repeat','idea']`。
+   分区改成用户自定义之后它就没有意义了 —— 折叠态的白名单改成
+   "S.zones 里真的有这个 k 吗"（见 zonePruneFolded）。'idea' 也不再出现在这里：
+   想法页不是一个分区，它的折叠态另有存放处。 */
 /* ★ v3.50 随手记 / 种子（第 2 批）：一条条目有两种**形状**，不是两种数据。
      kind:'task'（缺省）＝已定型要消耗的待办；kind:'seed' ＝还没定型的想法，会长、会长出、会合并。
      形状与「分区」是两条轴：分区回答"要不要做"，kind 回答"定没定型"。
@@ -4852,13 +5287,30 @@ const ideaUI = { mergeMode: false, mergeSel: new Set(), sparkOpen: null, reviewO
    于是同一份坏数据走两条路的结果不同（不对称）。
    规则：**别一刀切成空数组**（那会把还能救的数据一起丢掉）—— 只筛掉真正不是对象的条目
    （null / 数字 / 字符串），对象一律保留；顺手给缺 id 的补一个（id 是内部键，缺了整棵树都建不起来）。 */
+/* ★ 7B：条目上的 `zone` 在这里收口 —— **认不出的值一律落 ''（未分组）**。
+   为什么必须做：渲染按分区表分栏，一个表里没有的 zone 值会让这条"哪一栏都不收"
+   （0B 那轮排查过同型 bug：时间轴里看得见、切过来就凭空消失）。
+   'idea' 原样保留（想法那套独立机制，不参与分区）。 */
+function sanitizeItemZones(items){
+  const known = new Set(zlist().map(z => z.k));
+  (Array.isArray(items) ? items : []).forEach(it => {
+    if (!it || typeof it !== 'object') return;
+    const v = it.zone;
+    if (v === 'idea') return;
+    if (v === undefined || v === null || v === '' || (typeof v === 'string' && known.has(v))) return;
+    it.zone = '';
+  });
+}
 function sanitizeItems(raw){
   const arr = Array.isArray(raw) ? raw
     : (raw && typeof raw === 'object') ? Object.values(raw)   // 万一存成了 id→条目 的字典也尽量救
     : [];
-  return arr
+  const out = arr
     .filter(x => x && typeof x === 'object')
     .map(x => (typeof x.id === 'string' && x.id) ? x : Object.assign({}, x, { id: uid() }));
+  /* ★ 7B：与 load() 同一条标准 —— 备份恢复那条路也走这里（以前只有 load 会收 zone）。 */
+  sanitizeItemZones(out);
+  return out;
 }
 /* ★ 0A.1：parent 的收口（悬空 + 环路）。原先是三处各抄一遍的"扫一遍悬空 parent 并置 null"，
    现在合成一个函数，并补上**断环** —— 沿 parent 链最多走 64 步（对齐本文件其它几处 guard
@@ -4909,7 +5361,22 @@ function load(){
          顺手给缺 id 的补一个（id 是内部键，缺了整棵树都建不起来）。
          拖拽导入那条路径（window drop）当年也只判了"是不是数组"、同样没逐条筛，
          所以两条路都不完整，0A.6 起统一走 sanitizeItems()，不再各写一套。 */
+      /* ★ 7B：分区表的建立与**条目归属的迁移**分两步，缺一不可，顺序也不能反：
+           ① 先把分区表建好（老存档里可能压根没有 zones 字段）；
+           ② 再逐条认 zone —— long / short / repeat 按 ZONE_LEGACY 翻成 k，认不出的落 ''。
+         ⚠️ 为什么不能先 sanitizeItems：它会把"分区表里认不出"的 zone 清成 ''，
+            而老数据的 long / short / repeat 正是"还没迁、所以认不出"的值 ——
+            先洗再迁 = 老条目全掉进未分组（实测踩过）。
+         ⚠️ S.items 的赋值**必须在这一步之后**：migrateZones 只动传进去的那份数组
+            （load 里是存档对象 o.items）。早先写过"先 sanitizeItems(o.items) 再迁移"，
+            结果迁移把 o.items 改了、S.items 还是空的。 */
+      S.zones = sanitizeZones(o.zones);
+      migrateZones(o);
       S.items = sanitizeItems(o.items);
+      S.zoneRev = 1;
+      S.zoneRules = (typeof o.zoneRules === 'string') ? o.zoneRules.slice(0, 1000) : '';
+      S.zoneHints = sanitizeZoneHints(o.zoneHints);
+      zonePruneFolded();
       /* ★ 0A.1：存档里的 parent 可能指向一条已经不存在的条目（删条目只删自己、
          不级联删子条目；手工改存档、恢复备份也会留下悬空引用）——
          统一在装载时收口：悬空的置 null（子条目上浮为根），成环的断开。 */
@@ -4926,10 +5393,10 @@ function load(){
       /* 页面说明文字默认开。老数据里没有这个字段 → 保持默认开；
          显式存过 false 才关（不能写成 `!!o.showHelp`，否则老数据会被静默关掉）。 */
       S.showHelp = o.showHelp !== false;
-      /* 折叠起来的清单分区（长期/短期/循环/考虑）。只收白名单里的键 ——
-         别把数据里的任意字符串直接塞进 class 名。老数据没有这个字段就是全展开。 */
-      S.foldedZones = Array.isArray(o.foldedZones)
-        ? o.foldedZones.filter(k => ZONES.includes(k)) : [];
+      /* 折叠起来的清单分区。★ 7B：白名单从写死的 ZONES 改成"当前分区表里真的有这个 k"
+         （收口在 zonePruneFolded 里，它是唯一一处）——别把数据里的任意字符串塞进 class 名。
+         老数据没有这个字段就是全展开。 */
+      S.foldedZones = Array.isArray(o.foldedZones) ? o.foldedZones.filter(k => typeof k === 'string') : [];
       /* 主题三档与清单展示模式：老数据没有这两个字段就保持默认（auto / zone）。
          老备份里单独存过的 LS+'.theme' 在启动块里兜底读取，这里以备份内字段为准。 */
       if (o.theme === 'light' || o.theme === 'dark' || o.theme === 'auto') S.theme = o.theme;
@@ -4951,7 +5418,9 @@ function load(){
       S.lastScanAt = Number.isFinite(o.lastScanAt) ? o.lastScanAt : 0;
       S.ideaReview = o.ideaReview !== false;
       S.ideaReviewDone = typeof o.ideaReviewDone === 'string' ? o.ideaReviewDone : null;
-      S.captureZone = (o.captureZone === 'idea' || o.captureZone === 'long') ? o.captureZone : 'auto';
+      /* ★ 7B：可选值现在是 auto / idea / 任意分区的 k（老存档里的 'long' 认不出 → auto）。 */
+      S.captureZone = (o.captureZone === 'idea' || o.captureZone === 'auto' || validZoneKey(o.captureZone))
+        ? o.captureZone : 'auto';
       S.ideaGestureSeen = o.ideaGestureSeen === true;
       S.ideaLayout = o.ideaLayout === 'tree' ? 'tree' : 'list';
       /* ★ v5.0 第 3 批（AI）：老存档没有这几个字段 → 保持默认（**off**）。
@@ -5016,6 +5485,8 @@ function save(){
          ★ 2A：配额字段拆掉，换成常用词表 + 上次焦点。 */
       aiMode: S.aiMode, aiBase: S.aiBase, aiModel: S.aiModel,
       hotwords: S.hotwords, hotwordSeen: S.hotwordSeen, aiAnchor: S.aiAnchor,
+      /* ★ 7B：分区表 / 规范设置 / 行为学习的学习记录 —— 一个都不能少（红线 7）。 */
+      zones: S.zones, zoneRules: S.zoneRules, zoneHints: S.zoneHints, zoneRev: S.zoneRev,
       setOpen: S.setOpen,
       /* ★ v5.1.2：日期显示口径 + 震动档位 */
       dateShow: S.dateShow, haptic: S.haptic,
@@ -5050,6 +5521,9 @@ function snapshot(){
        ★ 2A：常用词表与上次焦点也进备份 —— 换设备后不用重新攒词。 */
     aiMode: S.aiMode, aiBase: S.aiBase, aiModel: S.aiModel,
     hotwords: S.hotwords, hotwordSeen: S.hotwordSeen, aiAnchor: S.aiAnchor,
+    /* ★ 7B：分区表 / 规范设置 / 行为学习 —— 备份必须带它们（红线 7：
+       换设备恢复后，用户自定义的栏目、写的规则、教过的词都得跟着过来）。 */
+    zones: S.zones, zoneRules: S.zoneRules, zoneHints: S.zoneHints, zoneRev: S.zoneRev,
     setOpen: S.setOpen,
     /* ★ v5.1.2：日期显示口径 + 震动档位也进备份 —— 换手机/换电脑后不用再调一遍 */
     dateShow: S.dateShow, haptic: S.haptic,
@@ -5641,6 +6115,17 @@ function seedHTML(it, info){
   </div>`;
 }
 
+/* ★ 7B：卡片上那枚「哪一栏」的 chip。点它换一栏 —— 换成功就是一次**教学信号**
+   （用户 2026-10-11 定的第二个教学信号："改了 AI 猜的分区"）。
+   为什么必须给入口：不给的话用户没有任何办法教它"这类内容归这栏"，
+   行为学习就成了黑箱。 */
+function zoneChipHTML(it){
+  if (!it || isSeed(it)) return '';          // 想法不参与分区，不给这枚 chip
+  const name = zoneNameOf(it.zone);
+  const cls = it.zone ? 'zchip' : 'zchip none';
+  return `<button type="button" class="${cls}" data-zpick="${esc(it.id)}" title="点一下换一栏（我学）"
+     aria-label="现在在${esc(name)}，点一下换一栏">${esc(name)}</button>`;
+}
 function itemHTML(it, kidsHTML, goalInfo, extraHTML, noDel){
   if (isSeed(it)) return seedHTML(it);
   /* 标签名和 id 都必须转义：标签名来自用户输入（重命名时 normTagList 只去 # 和空白），
@@ -5658,7 +6143,7 @@ function itemHTML(it, kidsHTML, goalInfo, extraHTML, noDel){
      dateEnd < date 的脏数据（老备份可能有）：取两者**较晚**的那个，不会误报逾期。 */
   const due = (it.dateEnd && (!it.date || daysFromToday(it.dateEnd) >= daysFromToday(it.date))) ? it.dateEnd : it.date;
   const overdue = !it.done && due && daysFromToday(due) < 0;
-  const staleDays = (!it.done && !it.date && it.zone === 'long' && it.createdAt)
+  const staleDays = (!it.done && !it.date && it.zone === zoneLongKey() && it.createdAt)
     ? Math.floor((Date.now() - it.createdAt) / 86400000) : 0;
   const stale = staleDays > 30;
   const pri = it.pri || 0;
@@ -5690,6 +6175,7 @@ function itemHTML(it, kidsHTML, goalInfo, extraHTML, noDel){
         ${it.hw ? '<span class="chip hwchip">作业</span>' : ''}
         ${stale ? `<span class="chip old">放了${staleDays}天</span>` : ''}
         ${tags}
+        ${zoneChipHTML(it)}
       </div>
       ${extraHTML || ''}
     </div>
@@ -5710,8 +6196,8 @@ function renderList(){
   const introNote = isTL
     ? `这一屏是<b>时间轴</b>：所有写了日期的未完成任务，按截止日从近到远上下排。<br>
        点越红越急：灰＝还早，黄＝这周内，橙＝三天内，红＝逾期，深红＝标了 <b class="mono">!!</b>。`
-    : `这一屏是<b>分区</b>：没日期的沉长期，有死线的进短期，带节奏的走循环，行尾带 <b class="mono">?</b> 的会直接长成一条<b>想法</b>（进想法页）—— 你不用先想它属于哪。<br>
-       每条最左边那颗点按紧急度上色：灰 → 黄 → 橙 → 红 → 深红，点一下那颗点会说是哪一档。`;
+    : `这一屏是<b>分区</b>：栏目由你自己定（默认是长期 / 短期 / 循环，能加、能改名、能删）。时间与循环以后只是条目上的标记，<b>不再决定它进哪一栏</b>。<br>
+       每张卡右下角那枚小字是它现在在哪一栏 —— 点一下就能换；挪过一次，同一类内容下次会直接被猜到这里。`;
 
   let h = `<div class="section-intro${rv()}">
         <p class="section-kicker">Today</p>
@@ -5781,7 +6267,7 @@ function renderList(){
     h += renderZoneBody();
     /* 长期区积压提醒：每次会话只问一次；备份提醒更重要，它要弹时这里让位 */
     const backupStale = !S.lastBackup || Date.now() - S.lastBackup >= 7 * 86400000;
-    const staleCount = S.items.filter(i => !i.done && !i.date && i.zone === 'long' &&
+    const staleCount = S.items.filter(i => !i.done && !i.date && i.zone === zoneLongKey() &&
       i.createdAt && (Date.now() - i.createdAt) > 30 * 86400000).length;
     if (staleCount && !staleToastShown && !backupStale){
       staleToastShown = true;
@@ -5921,47 +6407,39 @@ function renderZoneBody(){
     .filter(i => !i.done && i.repeat && vis.has(i.id) && !(i.parent && byId.get(i.parent) && !byId.get(i.parent).done))
     .sort(cmpItem);
 
-  /* 三栏顺序＝「要管的程度」从松到紧：长期（最没期限）→ 短期（有死线）→ 循环（节奏固定）。
-     ★ v5.0：「考虑」这一栏已整块删除（并入想法页）。老数据里 zone==='consider' 的条目
-     会被下面那段兜底扫描收进「长期」，不会在任何视图里凭空消失。 */
-  const cols = [
-    { k:'long',   label:'长期', list: rootList('long'),  empty:'空' },
-    { k:'short',  label:'短期', list: rootList('short'), empty:'空' },
-    { k:'repeat', label:'循环', cls:' repeat-zone', list: repList,
-      empty:'还没有循环任务。写「每2天 喂寄居蟹」，打勾后自动排下一次。' },
-  ];
+  /* ★ 7B：分栏改成**按用户的分区表**（S.zones 的顺序），不再写死长期 / 短期 / 循环。
+     要点：
+       · 每个分区的条目 = rootList(该分区的 k) —— 父 / 子 / 已完成 / 搜索过滤那套一个字没动，
+         只是"归哪一栏"的判据从写死的值换成 k；
+       · 含 repeat 的条目仍走 repList，落在 **z_repeat 那一栏**（与 5.x 的 `i.repeat` 过滤同一条规则：
+         它不进别的分区栏，只在那一条重复任务栏里出现）；
+       · **未分组固定排最后**：列 k 是空串、没有 data-zfold（不可折叠、不可删、不可改名），
+         而且**空时不渲染**（别让空栏占地方）。
+      ⚠️ 这一段只读 S（S.zones / S.foldedZones），不引用任何新增全局函数 ——
+      0B / 0E 的纯 Node 回归脚本把 renderZoneBody 整段切出来喂桩跑，
+      引用一个没桩的全局会直接 ReferenceError，把那一批本来绿的断言一起带走。 */
+  const bucketOf = {};
+  for (const z of S.zones) bucketOf[z.k] = rootList(z.k);
+  const repListFor = [];
+  for (const it of repList){
+    if (S.zones.some(z => z.k === 'z_repeat')) repListFor.push(it);
+  }
+  const ungrouped = rootList('');
 
-  /* 三栏顺序＝「要管的程度」从松到紧：长期（最没期限）→ 短期（有死线）→ 循环（节奏固定）。
-     「考虑」不算待办，只在这儿暂存想法，铺满整行收在最后，不挤进这三栏。 */
-
-  /* ★ v3.38（用户："时间轴里边有一条，我点到这个分类里面，它直接闪没了"）：
-     兜底扫一遍 —— 凡是"一栏都没收走"的**未完成**条目，一律补进**长期**。
-     原来只有 zone 恰好等于 long / short / consider 的条目才进得去（循环走 repList），
-     所以只要一条数据的 zone 是别的值（旧备份、导入、以后新增分区），它在分区视图里
-     就完全不存在：时间轴里看得见、切过来就凭空消失 —— 正是用户描述的那一下。
-     宁可让它出现在长期里，也绝不能让它"不在任何一个视图里"。
-
-     ★ 0B 修（这条兜底从 0B.4 之后开始会重复渲染）：
-     它原来只数"三栏根节点 + 它们的**未完成**子任务"（kids 那时只收未完成的），
-     而 0B.4 让 kids 也收已完成的子任务 —— 于是"父卡下面挂着一个已完成的子任务"
-     这种最普通的情况，子任务会被判成 orphan，再作为**根**补进长期栏，
-     同时它又照旧挂在父卡下面：同一条画两遍。
-     两处收口：①不再拿当前 kids 当"已收录"的判据 —— 折叠态 / 深度上限 / done 父
-     都会让 kids 暂时不含某个后代，但那个后代此刻**正画在父卡里**；改判
-     "父链上有没有一个正在被当根渲染的祖先"（也就是当初"父已完成才升格"的那个判据）；
-     ②已完成的条目照旧排除（它们本来就不进任何分区栏）。 */
+  /* ★ 7B：兜底扫描（v3.38 那条"一栏都没收走就补进长期"，0B 修过一次重复渲染）。
+     分区改成用户自定义之后它的落点变了：**补进「未分组」**（而不是塞进某一栏） ——
+     这样"认不出的 zone 值"与"真的没分组"落在同一处，用户看得见、点得着、挪得走。
+     判据三条与 0B 一致：已进某一栏的（listed）、正画在父卡里的（inKids）、父已完成的
+     （underDone）都不再补，否则同一条会画两遍。 */
   {
-    /* 判据三条，缺一条就会重复渲染或多出一条谁也点不开的条目：
-       ① 已经出现在某一栏里的（根条目）—— 它的 parent 是 null，underDone 对它返回 false，
-          拿 underDone 当"已收录"判据会把它自己也塞进长期栏（实测同一条渲染两遍）；
-       ② 正画在父卡 .goal-kids 里的子任务 —— 读上面那张 inKids，不猜；
-       ③ 父已完成 —— 它已经在 rootList 里上浮到分区列表了，这里不能再收一次。
-       `vis` 里会含"命中搜索的条目的祖先"，那些祖先不必再补（它们是第 ① 或 ③ 类）。 */
     const listed = new Set();
-    cols.forEach(c => c.list.forEach(it => listed.add(it.id)));
+    Object.keys(bucketOf).forEach(k => bucketOf[k].forEach(it => listed.add(it.id)));
+    repListFor.forEach(it => listed.add(it.id));
+    const placed = new Set(ungrouped.map(it => it.id));
     const orphan = ordered().filter(i => !i.done && vis.has(i.id) &&
-      !listed.has(i.id) && !inKids.has(i.id) && !underDone(i.id));
-    if (orphan.length) cols[0].list = cols[0].list.concat(orphan).sort(cmpItem);
+      !listed.has(i.id) && !placed.has(i.id) && !inKids.has(i.id) && !underDone(i.id));
+    if (orphan.length) orphan.forEach(it => ungrouped.push(it));
+    ungrouped.sort(cmpItem);
   }
 
   /* 三栏顺序＝「要管的程度」从松到紧：长期（最没期限）→ 短期（有死线）→ 循环（节奏固定）。
@@ -5993,16 +6471,50 @@ function renderZoneBody(){
   const doneTodayIds = new Set(doneTodayAll.map(i => i.id));
   const doneTodayN = doneTodayAll.filter(i => !ancestorIds(i.id).some(a => doneTodayIds.has(a))).length;
 
+  /* ★ 7B：最终列 = 用户分区表的顺序（长期/短期/循环是默认的三个，名字可改、顺序可调、可删）
+     + 「未分组」（它不参与 S.zones，固定排最后，空时不进这个数组 = 不渲染）。
+     data-z 用的仍是分区的主键 k；未分组用空串（CSS 只按 --zc 上色，不依赖具体值）。 */
+  const cols = [];
+  for (const z of S.zones){
+    const isRep = z.k === 'z_repeat';
+    cols.push({
+      k: z.k, label: String(z.name), color: z.color,
+      cls: isRep ? ' repeat-zone' : '',
+      /* 「循环」那一栏的文案与 5.x 一致（就是原来那个默认分区，只是现在可删可改名）。 */
+      empty: isRep ? '还没有循环任务。写「每2天 喂寄居蟹」，打勾后自动排下一次。' : '空',
+      list: isRep ? repListFor : (bucketOf[z.k] || []),
+      fixed: false
+    });
+  }
+  if (ungrouped.length){
+    cols.push({ k: '', label: '未分组', color: '#8a8f98', cls: ' ungrouped-zone',
+      empty: '空', list: ungrouped, fixed: true });
+  }
+
+  /* ★ 7B：每栏多一枚「⋯」（改名 / 上移 / 下移 / 删除）——
+     它是整条 header 热区里的一个按钮，所以必须 stopPropagation，
+     否则点它会顺手把这一栏折叠掉（见 #view 委托里 data-zmenu 那一段）。 */
+  const zmenuBtn = c => c.fixed ? ''
+    : `<button type="button" class="zmenu" data-zmenu="${c.k}" aria-label="${esc(c.label)}：改名、排序、删除" title="改名 / 排序 / 删除">⋯</button>`;
+
   cols.forEach((c, zi) => {
     /* ★ 0B：分区列表**不收已完成的根条目** —— 它们沉到下面那条「已完成」里。
        不排除的话，一个做完了的父任务会继续占着分区列表（数据上它是根），
        与「收进已完成区」的说法自相矛盾；它的子任务则跟着它在已完成区里展开。 */
     const live = c.list.filter(x => !x.done);
-    const fd = S.foldedZones.includes(c.k);
-    bh += `<section class="glass zone${c.cls || ''}${fd ? ' folded' : ''}${rv()}" data-z="${c.k}"${rvd(100 + zi * 80)}>
-      <header data-zfold="${c.k}" role="button" tabindex="0" aria-expanded="${fd ? 'false' : 'true'}">
-        <span class="dot"></span><h3>${c.label}</h3><span class="n mono">${live.length}</span>
-        <i class="z-chev" aria-hidden="true"></i>
+    if (c.fixed && !live.length) return;          // 「未分组」空时不渲染
+    const fd = !c.fixed && S.foldedZones.includes(c.k);
+    /* ⚠️ 7B 实测踩到的坑：`--zc`（本栏主色）与 `--delay`（入场错峰）**必须守在同一个
+       style 属性里**。原来写成 `style="--zc:…"` + `${rvd(...)}`（后者自带一个 style="…"），
+       同一元素上出现两个 style 属性 —— HTML 只认第一个，`--delay` 被浏览器整个丢掉，
+       表现就是"三栏一起冒出来，没有从上到下的错峰"（而入口那行仍带延迟，看不出问题）。
+       现在合成一个：把 `--zc` 塞进那条样式串里（rvd/rv 都是转发口，纯 Node 回归里
+       被桩掉了，所以这里**不许直接读 ANIM 变量** —— 0B 的隔离环境没有声明它）。 */
+    const zSty = '--zc:' + c.color + rvd(100 + zi * 80).replace(/^ style="/, ';').replace(/"$/, '');
+    bh += `<section class="glass zone${c.cls || ''}${fd ? ' folded' : ''}${rv()}" data-z="${c.k}" style="${zSty}">
+      <header${c.fixed ? '' : ` data-zfold="${c.k}" role="button" tabindex="0" aria-expanded="${fd ? 'false' : 'true'}"`}>
+        <span class="dot"></span><h3>${esc(c.label)}</h3><span class="n mono">${live.length}</span>
+        <i class="z-chev" aria-hidden="true"></i>${zmenuBtn(c)}
       </header>
       <div class="zone-body">${live.length ? live.map(x => renderTree(x)).join('') : `<div class="empty">${c.empty}</div>`}</div>
     </section>`;
@@ -6022,6 +6534,14 @@ function renderZoneBody(){
       <span class="de-chev" aria-hidden="true">›</span>
     </button>`;
   }
+
+  /* ★ 7B：「+ 新建分区」—— 压在分区名单的脚下（与「今天已完成」那一行同区）。
+     只要名字，颜色循环取色（不让用户选色）。点它开一个只有一个输入框的弹层。
+     固定排在分栏之后、.board 之内（它是这个网格的一个整行 item）。 */
+  bh += `<button class="zone-wide zone-add${rv()}" data-zoneadd="1"${rvd(100 + cols.length * 80 + 40)}
+    aria-label="新建分区">
+    <span class="za-plus" aria-hidden="true">+</span> 新建分区
+  </button>`;
 
   /* 考虑区：这里放的是「还没决定要不要做」的事，不是待办 —— 不占三栏之一，
      靠 grid-column:1/-1 铺满整行落在所有栏目脚下，绿点跟上面三栏的蓝点分开。
@@ -7734,10 +8254,11 @@ function statPageCount(key){
    所以挪到模块作用域：卡片与子页共用同一份，以后不可能漂。 */
 function originCounts(list){
   const c = { short: 0, long: 0, loop: 0 };
+  const kS = zoneShortKey(), kL = zoneLongKey();
   (list || []).forEach(i => {
     if (i.repeat) c.loop++;
-    else if (i.zone === 'short') c.short++;
-    else if (i.zone === 'long' || i.zone === 'consider') c.long++;
+    else if (i.zone === kS) c.short++;
+    else if (i.zone === kL) c.long++;
   });
   return c;
 }
@@ -8587,6 +9108,87 @@ function aiDropEcho(items, raw, ctxTitles){
   });
 }
 
+/* ==================== ★ 7B：AI 落点（三级层次） ====================
+   用户 2026-10-11 定的口径（见 方案-自定义分区.md 第四节）：
+     ① 用户写了 S.zoneRules（规范设置）→ 出网：把「规则 + 现有分区名 + 原话」给它，让它选一个；
+     ② 没写规则，但本地 S.zoneHints 命中（2-gram 累计 ≥ ZONE_HINT_MIN 且不并列）→ 本地直接定，零请求；
+     ③ 都没命中 → 出网：把「现有分区名 + 原话」给它。
+   **失败 / 超时 / AI 关着一律留空 → 未分组**（绝不瞎猜）。
+
+   三条纪律（与 2A/3A 那几条同源，改这里之前先读）：
+     · 前缀逐字符固定：AI_ZONE_SYS 是常量，**不许拼任何变量**；分区名与规则只能进
+       最后那条 user 消息（缓存命中价差 50 倍）。`_7b-regress` 有源码级断言钉着。
+     · 失败**不编数据**：拿不到就返回 ''（未分组），绝不返回一个"猜的"分区。
+     · 这是**新增的一次请求**，只在"没写日期、模型也没表态"的条目上发生
+       （见 commitEntry 里的调用条件），且只有开关开着时才会真的发出去。 */
+const AI_ZONE_SYS =
+  '用户在往待办清单里加一条**没写日期**的事。清单被分成了若干个「分区」（栏目）。\n'
+  + '你的任务：只根据我给的原话（以及可能给的规则说明），判断这条事该进哪个分区。\n'
+  + '只输出 JSON，不要解释文字、不要 markdown 围栏：{"zone":"分区标识","confidence":0.0}\n'
+  + '规则：\n'
+  + '· zone 必须是我给的那份**分区标识列表**里的一个标识，原样照抄，不许改写、不许自创；\n'
+  + '· 拿不准就写空串 "" —— **宁可留空，也不要瞎猜**；\n'
+  + '· 规则说明是用户自己写的口径，与它冲突时以规则为准；\n'
+  + '· 只做分类，不要改写原话、不要补充内容。';
+
+const zoneAskBusy = {};
+/* 出网那一次。命中规则 / 兜底都走它，区别只在 `rules` 是否为空。
+   返回 ''=没结论（未分组）。**任何异常都吞掉** —— 分区是可选增强，不能因为它失败而丢用户的话。 */
+async function aiZoneAsk(text, rules){
+  const zs = zonesForPick();
+  if (!zs.length) return '';
+  const lines = ['可用分区（只能用这些标识）：'];
+  for (const z of zs) lines.push('- ' + z.k + '  ' + String(z.name).slice(0, 20));
+  const r = String(rules == null ? '' : rules).trim();
+  if (r) lines.push('用户写的分区规则：\n' + r.slice(0, 600));
+  lines.push('只判断这一行该进哪个分区，不要做别的事：');
+  lines.push('原话：' + String(text == null ? '' : text).trim().slice(0, 200));
+  let txt;
+  try {
+    txt = await aiCall([
+      { role: 'system', content: AI_ZONE_SYS },
+      { role: 'user', content: lines.join('\n') }
+    ], { json: true });
+  } catch (e){ return ''; }
+  let d = null;
+  try { d = aiParseJSON(txt); } catch (e){ return ''; }
+  const z = (d && typeof d.zone === 'string') ? d.zone.trim() : '';
+  return validZoneKey(z) ? z : '';
+}
+/* 三级决策的**纯函数**部分（同步、可单测）：
+   `hasRules` 为真 = 第一层（必须出网，别读 hints）；否则本地命中就零请求直接定。 */
+function zoneAdvisorLocal(title, hasRules){
+  if (hasRules) return null;                    // ① 规则在手：不读 zoneHints，交给模型
+  const g = zoneHintGuess(title);               // ② 行为学习
+  if (g.k && g.score >= ZONE_HINT_MIN && !g.tie) return { zone: g.k, by: 'hint' };
+  return null;                                  // ③ 都不中 → 出网
+}
+/* 接线口（commitEntry 调它）。**同步拿不到结论时返回 Promise 不了** —— commitEntry 不等它，
+   所以这里只做"本地能定的立刻定"，剩下的交给一个不阻塞的异步任务，回来后重画。 */
+function zoneAdvisorAsk(title, cur, rawText, preset){
+  /* 结构型条目（早中晚 / 带父级路径）不出网：它的归属由结构决定，不是"分不清"。
+     判据读的是 preset（本地解析的完整结果），没有 preset 的模型条目不受影响。 */
+  if (preset && ((preset.dayParts && preset.dayParts.length) || (preset.path && preset.path.length))) return null;
+  const rules = String(S.zoneRules || '').trim();
+  const loc = zoneAdvisorLocal(title, !!rules);
+  if (loc) return loc;                          // ② 零请求
+  if (!aiOn()) return null;                     // AI 关着 → 留空（未分组）
+  /* ③ / ①：出网要 await，这里不能阻塞录入 —— 用一个"打了标就不重复跑"的异步任务。 */
+  if (zoneAskBusy[title]) return null;
+  zoneAskBusy[title] = 1;
+  aiZoneAsk(title, rules ? rules : '').then(z => {
+    delete zoneAskBusy[title];
+    if (!z) return;
+    const it = S.items.find(x => x.title === title);
+    if (!it || it.zone === z) return;
+    it.zone = z;
+    it.zoneBy = rules ? 'rule' : 'ai';
+    save();
+    if (typeof refresh === 'function') refresh();
+  }).catch(() => { delete zoneAskBusy[title]; });
+  return null;
+}
+
 /* ---------- 校验器（本卡的重点，不许省） ----------
    落库之前逐条校验，**任一不过就丢弃该条**（宁可少收一条，也不收一条脏的）。
    日期 / 时间只接受严格格式；模型给别的格式就丢掉那个字段 —— 不猜着转换。 */
@@ -8627,12 +9229,18 @@ function aiValidateItems(raw, fromText){
     if (x.date && x.dateEnd && x.dateEnd < x.date) x.dateEnd = null;   // endDate 不早于 date
     if (typeof r.time === 'string' && aiValidTimeStr(r.time.trim())) x.time = r.time.trim();
     /* ★ 2B：落点由模型判（用户 2026-10-08 定："让用户接入的 AI 模型去区分，应该归入
-       「长期待办」还是「想法」"）。只收 long / idea 两个值；**带了日期或钟点的一律不认
-       idea** —— 有具体安排的事就是待办，不是念头（模型偶尔会把带日期的事也判成想法）。
+       「长期待办」还是「想法」"）；**带了日期或钟点的一律不认 idea** —— 有具体安排的事
+       就是待办，不是念头（模型偶尔会把带日期的事也判成想法）。
        ★ 4D：原来只挡 `x.date`，漏了 `time` —— 而 taskToSeed / 编辑器里"改成想法"会把
        date/time/repeat 一起清掉，于是"只有钟点、没有日期"的句子一旦被判成想法，
-       钟点被清 → 永不提醒（一条静默失效的路）。补上 time，代价为零。 */
-    if (r.zone === 'long' || r.zone === 'idea') x.zone = r.zone;
+       钟点被清 → 永不提醒（一条静默失效的路）。补上 time，代价为零。
+       ★ 7B：schema 里那行枚举**故意保持逐字符不动**（AI_UNDERSTAND_SYS 是缓存前缀，
+       红线 8 钉着）。所以除了 'idea' 之外，这里额外认两种"模型可能回的值"：
+       ① 某个分区的主键 k（用户分区表里的，见 validZoneKey）；
+       ② 老值 long / short —— 模型看 schema 学的就是这两个词，按默认分区翻译它。 */
+    if (r.zone === 'idea' || r.zone === 'long' || r.zone === 'short' || validZoneKey(r.zone)){
+      x.zone = (r.zone === 'long') ? zoneLongKey() : (r.zone === 'short' ? zoneShortKey() : r.zone);
+    }
     if (x.zone === 'idea' && (x.date || x.time)) x.zone = '';
     /* ★ 2C：**事已定、只差细节** → 不许写 idea。
        「什么时候 / 哪天 / 几点 / 在哪 / 跟谁 / 怎么弄 / 该怎么办」表示这件事**要做了**，
@@ -8724,10 +9332,13 @@ function aiPlanPreset(x){
     tags: (x.tags || []).slice(0, TAG_PER_ITEM),
     /* ★ 2B：zone 的优先级 —— **模型表了态就听模型的**（用户 2026-10-08 定：让 AI 判
        "该进长期待办还是想法"）；模型没表态（空串 / 不认识的值）才按日期推：
-       14 天内算短期，其余算长期，没日期也当长期（再由 commitEntry 按「录入默认落点」处置）。 */
-    zone: (x.zone === 'idea' || x.zone === 'long')
+       14 天内算短期，其余算长期，没日期也当长期（再由 commitEntry 按「录入默认落点」处置）。
+       ★ 7B：这些落点现在写的是**分区的 k**（校验器已经翻译过 long/short），不再是老值 ——
+       写老值会被 sanitizeItemZones 清成未分组。分区表被删空时 k 为 ''，落在「未分组」。 */
+    zone: (x.zone === 'idea' || validZoneKey(x.zone))
       ? x.zone
-      : (date ? (daysFromToday(date) <= 14 ? 'short' : 'long') : 'long'),
+      : (date ? (daysFromToday(date) <= 14 ? zoneShortKey() : zoneLongKey())
+         : (zoneLongKey() || zoneShortKey())),
     repeat: null, pri: x.pri || 0, goal: false, dayParts: null,
     path: x.parent ? [x.parent] : [],
     /* 子想法：校验器已经保证"少于 2 步等于没有"，这里只是原样带过去 */
@@ -9240,7 +9851,11 @@ function aiOpsUser(text, top){
   lines.push('我的原话：' + String(text || '').trim());
   return lines.join('\n');
 }
-function aiZoneLabel(z){ return z === 'idea' ? '想法' : (z === 'short' ? '短期' : (z === 'long' ? '长期' : '未定')); }
+/* ★ 7B：分区标签改成"查用户的分区表" ——
+   以前是写死的 short→短期 / long→长期 / 其它→未定。分区可配置之后那样会显示「未定」，
+   用户看到的是"我自己建的分区名没了"。现在：想法 → 「想法」，分区表里有的 → 它的名字，
+   空 / 认不出 → 「未分组」。 */
+function aiZoneLabel(z){ return zoneNameOf(z); }
 
 /* ---------- 3A.6 校验器（本卡的重点） ---------- */
 /* 逐条校验，**任一不过就作废那一条操作**（不是整个计划）——
@@ -9287,7 +9902,8 @@ function aiValidateOps(raw, allowedIds){
       out.push({ kind: kind, id: id, title: t2 });
     } else if (kind === 'rezone'){
       const z = String(r.zone == null ? '' : r.zone).trim();
-      if (z !== 'long' && z !== 'short' && z !== 'idea') continue;
+      /* ★ 7B：分区白名单从写死的三选一改成"当前分区表里的 k"（外加 ''＝未分组、'idea'＝想法）。 */
+      if (z !== '' && z !== 'idea' && !validZoneKey(z)) continue;
       out.push({ kind: kind, id: id, zone: z });
     } else if (kind === 'remount'){
       const pid = String(r.parent == null ? '' : r.parent).trim();
@@ -9843,8 +10459,10 @@ function renderSettings(){
           <div class="seg-cap" role="group" aria-label="没写时间的条目默认去哪">
             <button type="button" class="pill${S.captureZone === 'auto' ? ' on' : ''}"
                     data-capzone="auto" aria-pressed="${S.captureZone === 'auto' ? 'true' : 'false'}">自动</button>
-            <button type="button" class="pill${S.captureZone === 'long' ? ' on' : ''}"
-                    data-capzone="long" aria-pressed="${S.captureZone === 'long' ? 'true' : 'false'}">长期</button>
+            <!-- ★ 7B：原来这里是写死的「长期」。分区可配置之后，"默认去哪"也得能选到
+                 用户自己建的那些分区（否则他建了「学习」却指不进去）。 -->
+            ${S.zones.map(z => `<button type="button" class="pill${S.captureZone === z.k ? ' on' : ''}"
+                    data-capzone="${esc(z.k)}" aria-pressed="${S.captureZone === z.k ? 'true' : 'false'}">${esc(z.name)}</button>`).join('')}
             <button type="button" class="pill${S.captureZone === 'idea' ? ' on' : ''}"
                     data-capzone="idea" aria-pressed="${S.captureZone === 'idea' ? 'true' : 'false'}">想法</button>
           </div>
@@ -9929,6 +10547,29 @@ function renderSettings(){
           <div class="seg-cap">
             <button type="button" class="pill" data-act="aitest">试连接</button>
             <button type="button" class="pill" data-act="aiscan">现在找一次</button>
+          </div>
+        </div>
+        <!-- ★ 7B：「对 AI 的规范设置」——和「常用词」并列（那两个是同一类东西：
+             都是"用户教 AI 的"：常用词管"听对"，规范设置管"分对"）。
+             ⚠️ 本卡只把它放进现有 AI 卡；6B 重做设置页时会挪进新结构。
+             内容可选：**空着也能用**（空着就走行为学习 + 模型自己判）。 -->
+        <div class="set-row stack">
+          <div class="set-txt">
+            <b>对 AI 的规范设置</b>
+            <span>用大白话写清"什么内容归哪个区"，比如：<i>学习的事归学习，买东西、做饭归生活；临时想起来的一句念头算想法</i>。
+              写了它，AI 就按你的规则分；<b>空着也能用</b> —— 空着时靠下面那些"学到的词"和你自己的手改。</span>
+          </div>
+          <textarea class="ai-input ai-rules" id="zoneRulesInput" rows="3" spellcheck="false"
+            placeholder="例：学习的事归「学习」，买东西、做饭归「生活」">${esc(S.zoneRules || '')}</textarea>
+        </div>
+        <div class="set-row stack">
+          <div class="set-txt">
+            <b>它学到的（分区）<span class="mono">${zoneHintList().length}</span></b>
+            <span>${zoneHintText()}</span>
+          </div>
+          <div class="seg-cap">
+            <button type="button" class="pill${zoneHintList().length ? '' : ' is-off'}" data-act="zonehintclear"
+              ${zoneHintList().length ? '' : 'disabled aria-disabled="true"'}>清空学到的</button>
           </div>
         </div>
         <div class="set-row">
@@ -10627,7 +11268,8 @@ function icApplyEdit(src, it){
   src.time = it.time || null;
   src.pri = Number(it.pri) || 0;
   src.tags = Array.isArray(it.tags) ? it.tags.slice() : [];
-  if (it.zone === 'idea' || it.zone === 'long' || it.zone === 'short') src.zone = it.zone;
+  /* ★ 7B：分区白名单从写死的三值改成"分区表里认得出 + 未分组 + 想法"。 */
+  if (it.zone === 'idea' || it.zone === '' || validZoneKey(it.zone)) src.zone = it.zone;
   return src;
 }
 function openImageConfirm(items){
@@ -11622,7 +12264,31 @@ async function commitEntry(opts){
        （循环任务被归入 short），所以取不到 undefined。但 ZONES 里是有 'repeat' 的，
        一旦有代码把 zone 设成它，这行就会拼出「已加入「undefined」」这种用户可见的错。
        加个默认值，代价为零。 */
-    const zl = { short:'短期', long:'长期', idea:'想法' }[it.zone] || '待办';
+    /* ★ 7B：把这条它现在归进哪一栏说出来。以前这里只有一块写死的 {short,long,idea} 表 ——
+       分区改成用户自定义之后必须读分区表，而且**只能说"未分组"**不能拼出「undefined」。 */
+    /* ★ 7B：AI 落点的**三级层次**（用户 2026-10-11 定，见 方案-自定义分区.md 第四节）：
+         ① 用户写了 S.zoneRules（规范设置）→ 出网，把「规则 + 现有分区名 + 原话」给模型让它挑；
+         ② 没写规则但行为学习命中（2-gram 累计 ≥ ZONE_HINT_MIN 且不并列）→ **本地直接定、零请求**；
+         ③ 都不中 → 出网，只给「现有分区名 + 原话」。
+       失败 / 超时 / AI 关着**一律留空 → 未分组**（绝不瞎猜）。
+       只在"没写日期、且不是想法"的条目上发生：写了日期的条目自己就会落短期/长期，
+       语义已经明确，再问一次模型只是白花钱（2C 那套落点规则仍然管想法）。
+       ★ 7B 补（实测 _5e-dom）：**还要求这一条没有任何本地能判的日期/钟点** ——
+       否则"明天下午三点开会"这种纯本地句子会凭空多出一次请求，把"写了语法就零请求"
+       这条老口径打红。判的是条目自己的 date / time（本地解析出来的就是它们），
+       不是再解析一遍原文。
+       转发口用 typeof 守卫 —— 纯 Node 回归把 commitEntry 切进隔离环境时没有这一层。 */
+    if (!it.date && !it.time && it.zone !== 'idea' && typeof zoneAdvisorAsk === 'function'){
+      /* preset 一并交过去：带 dayParts（早中晚）或 path 的条目是**结构型**的，
+         它的"归哪一栏"由结构本身决定，再问一次模型既白花钱也会把父条目的归属改掉
+         （实测 _5e-dom：'早中晚吃药' 的父条目没有 date/time，于是凭空多发了一次请求）。
+         preset 挂在 plan 的第一条上（本地路径自带；模型路径没有 → 不受影响）。 */
+      const zo = zoneAdvisorAsk(it.title, it.zone, v, (plan.items[0] && plan.items[0].preset) || null);
+      if (zo && zo.zone !== it.zone){
+        it.zone = (zo.zone === '' || validZoneKey(zo.zone)) ? zo.zone : it.zone;
+        it.zoneBy = zo.by;
+      }
+    }
     /* ★ v5.0 录入提示条（1.14）：**没解析出日期**的**新建**条目，顺手给一个「存入想法」出口。
        为什么要给：现有规则是「没日期的沉长期」，于是长期里混着两种东西 ——
        真的要长期做的任务，和"其实只是个念头"。当场让你选会抬高记录阻力
@@ -11630,6 +12296,10 @@ async function commitEntry(opts){
        不点就自己消失，不阻塞，也不改变"默认算待办"这件事。
        只在新建时给；编辑已有条目不弹（否则每次改长期都要被问一遍）。 */
     const ids = made.map(x => x.id);
+    /* ★ 5F：多按钮提示条的按钮处理器是 `a.fn(); hideToast();` —— 同步落库 / 同步弹新提示
+       会被随后的 hideToast 收掉。所以凡"点下去会同步弹新提示"的按钮都包一层延迟。
+       typeof 守卫 = 转发口（本函数会被 2B/3B 那几个切片式回归放进隔离环境跑，那里没有 later）。 */
+    const defer0 = (typeof later === 'function') ? later : function(f){ return f; };
     const tActs = [{ label: '撤销', fn: () => {
       const kill = new Set(ids);
       S.items = S.items.filter(x => !kill.has(x.id));
@@ -11650,16 +12320,17 @@ async function commitEntry(opts){
         return;
       }
       /* ★ 5F：taskToSeed 是同步的、会弹「已存成想法 —— 在底栏左端那颗灯泡里」——
-         不延后会被按钮处理器的 hideToast() 收掉（同 later 的说明）。
-         typeof 守卫 = 转发口（本函数会被 2B/3B 那几个切片式回归放进隔离环境跑）。 */
-      const defer = (typeof later === 'function') ? later : function(f){ return f; };
-      tActs.unshift({ label: '存入想法', fn: defer(() => taskToSeed(it)) });
+         不延后会被按钮处理器的 hideToast() 收掉（同 later 的说明）。 */
+      tActs.unshift({ label: '存入想法', fn: defer0(() => taskToSeed(it)) });
     }
     /* 提示语分档见 aiEntryReply（纯函数、可单测）：AI 听懂 → aiSay；
        本地语法 / AI 关着 → 静默 toast；降级 → aiFail 且**必须说清"用的是本地识别"**。 */
-    const where = '已加入「' + zl + '」' + (it.date ? ' · ' + dateLabel(it) : '') +
+    const where = '已加入「' + zoneNameOf(it.zone) + '」' + (it.date ? ' · ' + dateLabel(it) : '') +
       ((it.tags && it.tags.length) ? ' · ' + it.tags.join('/') : '') +
       (made.length > 1 ? ' · 共 ' + made.length + ' 条' : '');
+    /* ★ 7B：落点提示 —— 刚才这一条被放进了哪一栏，就长在提示条末尾（`→ 学习`）。
+       点它换一栏；换成功就是一次教学信号（见 zoneTeach）。想法不参与分区，所以不给它。 */
+    if (!isSeed(it)) tActs.push({ label: '→ ' + zoneNameOf(it.zone), fn: defer0(() => zoneTeachPick(it)) });
     const reply = aiEntryReply(plan, where);
     if (reply.via === 'aiSay') aiSay(reply.msg, tActs, 6000);
     else if (reply.via === 'aiFail') aiFail(reply.msg, tActs, 8000);
@@ -11757,6 +12428,14 @@ view.addEventListener('change', e => {
     const v = String(e.target.value || '').trim();
     S.aiModel = v || 'deepseek-flash';
     save(); refresh(); toast('模型名已更新');
+    return;
+  }
+  /* ★ 7B：「对 AI 的规范设置」——存的是自然语言，原样留着（只限长），空串合法（= 不写规则）。 */
+  if (id === 'zoneRulesInput'){
+    S.zoneRules = String(e.target.value || '').slice(0, 1000);
+    save();
+    toast(S.zoneRules.trim() ? '规则存好了 · 以后 AI 按它分区' : '规则清空了 · 改用学到的词 + 模型自己判');
+    return;
   }
 });
 view.addEventListener('keydown', e => {
@@ -11797,7 +12476,15 @@ view.addEventListener('keydown', e => {
 });
 
 view.addEventListener('click', e => {
-  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart],[data-statpage],[data-statback],[data-statentry],[data-jump]');
+  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart],[data-statpage],[data-statback],[data-statentry],[data-jump],[data-zmenu],[data-zoneadd],[data-zoneopt],[data-zpick]');
+  /* ★ 7B：卡片右下那枚「在哪一栏」的 chip —— 点它换一栏（= 一次教学信号）。
+     必须**留在上面那串选择器之外**：它一旦挂 data-act，长按手势的排除名单就会把它吃掉
+     （与 5I 给 .sp-tx 留的那条口子同一个理由）。 */
+  const zpick = e.target.closest ? e.target.closest('[data-zpick]') : null;
+  if (zpick){
+    const zi = S.items.find(x => x.id === zpick.dataset.zpick);
+    if (zi){ zoneTeachPick(zi); return; }
+  }
   /* ★ 5I：子想法那一行的文字（.sp-tx[data-sparkedit]）点一下就能改。
      必须**留在上面那串选择器之外**：长按手势的排除名单只认 `[data-act]`，
      一旦给它挂 data-act，这一行从此再也长按不了（旧行为是长按整张卡出菜单）。 */
@@ -11820,6 +12507,23 @@ view.addEventListener('click', e => {
      就地切换、不走 refresh()。走 refresh() 的话整页重建会闪、滚动位置也会跳，
      跟设置页那个开关同一个道理。折叠态存进 S.foldedZones，刷新或重开仍保持收起。 */
   if (el.dataset.zfold !== undefined){ foldZoneWithMotion(el); return; }
+
+  /* ★ 7B：分区管理（清单页每个分区标题右侧的「⋯」+ 末尾那枚「+ 新建分区」）。
+     两次 stopPropagation 都要有，理由不同：
+       · 在 ⋯ 上：它长在整条 header 热区里，不拦会把这一栏顺手折叠掉；
+       · 在 .zmenu-pop 上：面板挂在 body 上，点它不能触发"点外面就关"那条 outside-click。 */
+  if (el.dataset.zmenu !== undefined){
+    e.stopPropagation();
+    const btn = el;
+    if (document.getElementById('zmenuPop')) closeZoneMenu();
+    else openZoneMenu(btn, el.dataset.zmenu);
+    return;
+  }
+  if (el.dataset.zoneadd !== undefined){ zoneAddOpen(); return; }
+  if (el.dataset.zoneopt !== undefined){
+    e.stopPropagation();
+    return;                          // 面板里的动作由它自己的监听处理（见 openZoneMenu）
+  }
 
   /* 主题三档（浅色 / 深色 / 跟随系统）：在设置页点 .segbtn[data-theme] 切换。
      不整页刷新（否则设置页会闪），直接就地同步同组三档的 on / aria-pressed。 */
@@ -12156,6 +12860,17 @@ view.addEventListener('click', e => {
   if (act === 'aiprune'){ aiPrune(); return; }
   if (act === 'aipaste'){ aiPasteKey(); return; }
   if (act === 'aishowkey'){ aiToggleKeyShow(); return; }
+  /* ★ 7B：清空行为学习学到的词。**只清学习记录，不动分区表、不动条目** ——
+     用户看到的黑箱抱怨必须有一个"一键回到没学过"的出口。 */
+  if (act === 'zonehintclear'){
+    const n = Object.keys(S.zoneHints || {}).length;
+    if (!n){ toast('还没有学到东西'); return; }
+    uiConfirm('清空学到的分区？',
+      '它会忘掉这 ' + n + ' 条"哪个词归哪一栏"的记录。分区本身和里面的条目不受影响。',
+      '清空',
+      () => { zoneHintClear(); refresh(); toast('已清空学到的 · 以后重新学'); });
+    return;
+  }
   /* ---- ★ v5.0 想法页自己的标签筛选（不碰清单页的 S.filterTags）---- */
   if (act === 'ideatag'){
     const tg = el.dataset.tag;
@@ -12199,14 +12914,15 @@ view.addEventListener('click', e => {
     }
     return;
   }
-  /* ★ v5.0：「没写时间的条目默认去哪」—— 只改默认落点，不改录入流程本身 */
+  /* ★ v5.0：「没写时间的条目默认去哪」—— 只改默认落点，不改录入流程本身。
+     ★ 7B：可选值从写死的 long / idea 扩成"分区表里的任意一个 k"（外加 auto / idea）。 */
   if (el.dataset.capzone){
     const cz = el.dataset.capzone;
-    S.captureZone = (cz === 'idea' || cz === 'long') ? cz : 'auto';
+    S.captureZone = (cz === 'idea' || cz === 'auto') ? cz : (validZoneKey(cz) ? cz : 'auto');
     save(); refresh();
     toast(S.captureZone === 'idea' ? '以后没写时间的条目直接长成想法'
-      : S.captureZone === 'long' ? '以后没写时间的条目还是进「长期」'
-      : '以后没写时间的条目交给 AI 判：念头进想法，正经事进长期');
+      : S.captureZone === 'auto' ? '以后没写时间的条目交给 AI 判：念头进想法，正经事进长期'
+      : '以后没写时间的条目默认进「' + zoneNameOf(S.captureZone) + '」');
     return;
   }
   /* ---- ★ v5.0 回顾抽屉 ---- */
@@ -12383,6 +13099,184 @@ view.addEventListener('click', e => {
     save(); refresh(); return;
   }
 });
+
+/* ==================== ★ 7B：分区的「教学信号」与清单页的「⋯」面板 ====================
+   这一块是全卡最容易做错的地方，两条红线先写在前面：
+
+   ① **改名绝不动 it.zone**。分区的主键是 k，name 只是显示 —— 用户改一次名，
+      条目存的还是同一个 k，所以一条都不会掉进「未分组」。
+   ② **删分区绝不删条目**。删分区只做两件事：把归属改成 ''（未分组）、清掉指向它的
+      zoneHints。`zoneDelete()` 里没有一处 `S.items.splice/filter`，这是硬约束。
+
+   教学信号有两个（用户 2026-10-11 定）：
+     · 用户手动把一条待办挪到分区 X（清单页卡片上的 → 分区 一行，或编辑弹层里改分区）
+     · 用户改了 AI 猜的分区（同一条路：AI 猜的会带 zoneBy，用户一改就落成教学信号）
+   记法：取标题的 2-gram，每个 gram 在 S.zoneHints 里 +1（同一个词记到 2 次才开始预测，
+   一次可能是误操作）。 */
+
+/* 一次教学：把这条挪进 k，并记一笔。返回是否真的变了（没变就不记，避免"点开又点回同一栏"
+   被算成两次教学）。 */
+function zoneTeach(it, k, opts){
+  if (!it || !it.id) return false;
+  const to = (k === 'idea') ? 'idea' : (k === '' ? '' : (validZoneKey(k) ? k : ''));
+  const from = it.zone;
+  if (from === to) return false;
+  const title = String(it.title || '');
+  /* 先按编辑器的口径切换 kind（想法 ↔ 待办两个方向的字段清理都在 aiApplyZone 里，
+     与 openItemEditor 的保存分支、taskToSeed 共用同一份 —— 不许在这里各写一套）。 */
+  if (to === 'idea') aiApplyZone(it, 'idea');
+  else if (from === 'idea') aiApplyZone(it, to);
+  else it.zone = to;
+  it.zoneBy = 'user';
+  /* 只有搬进**真实分区**才算教学；挪去「未分组」/「想法」不记（那不是"这类内容归那栏"）。 */
+  if (to && to !== 'idea' && title) zoneHintAdd(title, to);
+  save();
+  if (typeof notifyFire === 'function') notifyFire(it);
+  return true;
+}
+/* 清单页卡片的 → 分区 一行、以及录入提示条末尾那枚按钮：开一个只做一件事的面板。 */
+function zoneTeachPick(it){
+  if (!it) return;
+  const rows = [];
+  rows.push(`<button type="button" class="btn ghost zpick${it.zone === '' ? ' on' : ''}"
+    data-zpick=""><span class="zp-name">未分组</span><span class="zp-n"></span></button>`);
+  for (const z of S.zones){
+    const hits = zoneHintList().filter(x => x.k === z.k).reduce((s, x) => s + x.n, 0);
+    rows.push(`<button type="button" class="btn ghost zpick${it.zone === z.k ? ' on' : ''}"
+      data-zpick="${esc(z.k)}"><span class="zp-name">${esc(z.name)}</span>
+      <span class="zp-n mono">${hits ? hits + ' 次' : ''}</span></button>`);
+  }
+  rows.push(`<button type="button" class="btn ghost zpick" data-zpick="idea">
+    <span class="zp-name">想法</span><span class="zp-n">独立机制，不参与分区</span></button>`);
+  modal.innerHTML = `<h3 id="modalTitle">这条归哪一栏</h3>
+    <p class="confirm-msg">现在在「${esc(zoneNameOf(it.zone))}」。挪一次，我就记住「这类内容归这一栏」——
+      相同的词见过两次之后，下次录入会直接猜它。</p>
+    <div class="zpick-list">${rows.join('')}</div>
+    <div class="foot"><div class="spacer"></div><button class="btn" id="zp_no">取消</button></div>`;
+  openMask();
+  document.getElementById('zp_no').onclick = closeModal;
+  modal.querySelectorAll('.zpick').forEach(b => {
+    b.onclick = () => {
+      const k = b.dataset.zpick;
+      closeModal();
+      if (zoneTeach(it, k)) toast('已挪到「' + zoneNameOf(it.zone) + '」 · 我记下了');
+      refresh();
+    };
+  });
+}
+/* 编辑弹层里改分区也算一次教学（用户把 AI 猜的分区改掉，正是本卡点名的第二个教学信号）。 */
+function zoneTeachFromEditor(it, before, after){
+  if (before === after) return false;
+  if (after === 'idea') return false;              // 改成想法 = 机制切换，不算"归哪一栏"
+  if (!after || !validZoneKey(after)) return false;
+  const title = String(it.title || '');
+  if (title) zoneHintAdd(title, after);
+  return true;
+}
+/* 「⋯」面板里的四个动作。删除走二次确认，文案写清条数（绝不悄悄删条目）。 */
+function openZoneMenu(btn, k){
+  closeZoneMenu();
+  const idx = S.zones.findIndex(z => z.k === k);
+  if (idx < 0) return;
+  const z = S.zones[idx];
+  const n = S.items.filter(x => x && x.zone === k).length;
+  const box = document.createElement('div');
+  box.className = 'zmenu-pop';
+  box.id = 'zmenuPop';
+  box.innerHTML = `
+    <button type="button" class="zm" data-zoneopt="rename">改名</button>
+    <button type="button" class="zm" data-zoneopt="up"${idx === 0 ? ' disabled aria-disabled="true"' : ''}>上移</button>
+    <button type="button" class="zm" data-zoneopt="down"${idx === S.zones.length - 1 ? ' disabled aria-disabled="true"' : ''}>下移</button>
+    <button type="button" class="zm danger" data-zoneopt="del">删除</button>
+    <span class="zm-note">这一栏有 ${n} 条</span>`;
+  document.body.appendChild(box);
+  const r = btn.getBoundingClientRect();
+  box.style.position = 'fixed';
+  box.style.top = Math.round(Math.min(r.bottom + 6, window.innerHeight - box.offsetHeight - 12)) + 'px';
+  box.style.left = Math.round(Math.min(Math.max(8, r.right - box.offsetWidth), window.innerWidth - box.offsetWidth - 8)) + 'px';
+  box.querySelectorAll('[data-zoneopt]').forEach(b => {
+    b.onclick = () => {
+      const act = b.dataset.zoneopt;
+      closeZoneMenu();
+      if (act === 'rename') return zoneRenameOpen(k);
+      if (act === 'up' || act === 'down') zoneMove(k, act === 'up' ? -1 : 1);
+      if (act === 'del') return zoneDeleteConfirm(k);
+      refresh();
+    };
+  });
+}
+function closeZoneMenu(){
+  const el = document.getElementById('zmenuPop');
+  if (el) el.remove();
+}
+document.addEventListener('click', e => {
+  const el = document.getElementById('zmenuPop');
+  if (!el) return;
+  if (e.target.closest && e.target.closest('#zmenuPop')) return;
+  if (e.target.closest && e.target.closest('[data-zmenu]')) return;
+  closeZoneMenu();
+});
+/* 改名：只改 name，条目一个字都不动（红线 1）。复用现有弹层 + uiConfirm 的骨架。 */
+function zoneRenameOpen(k){
+  const z = S.zones.find(x => x.k === k);
+  if (!z) return;
+  modal.innerHTML = `<h3 id="modalTitle">改这一栏的名字</h3>
+    <p class="confirm-msg">只改显示的名字 —— 里面的条目还属于这一栏，一条都不会动。</p>
+    <div class="field"><label>名字</label>
+      <input type="text" id="zr_name" maxlength="12" autocomplete="off" value="${esc(z.name)}"></div>
+    <div class="foot"><div class="spacer"></div>
+      <button class="btn" id="zr_no">取消</button>
+      <button class="btn primary" id="zr_ok">保存</button></div>`;
+  openMask();
+  const inp = document.getElementById('zr_name');
+  document.getElementById('zr_no').onclick = closeModal;
+  document.getElementById('zr_ok').onclick = () => {
+    const v = String(inp.value || '').replace(/\s+/g, ' ').trim();
+    if (!v){ toast('名字不能空着'); return; }
+    zoneRename(k, v);
+    closeModal(); refresh();
+    toast('改好了 · 里面 ' + S.items.filter(x => x && x.zone === k).length + ' 条还在这一栏');
+  };
+  if (!reduceMotion()) setTimeout(() => inp.focus(), 60);
+}
+/* 删分区：二次确认，文案写清「里面的 N 条会移到『未分组』」。 */
+function zoneDeleteConfirm(k){
+  const z = S.zones.find(x => x.k === k);
+  if (!z) return;
+  const n = S.items.filter(x => x && x.zone === k).length;
+  uiConfirm('删除「' + z.name + '」',
+    n ? '「' + z.name + '」里的 ' + n + ' 条会移到「未分组」，一条都不会删。\n\n这个分区本身会消失（以后还能再建）。'
+      : '这个分区里现在没有条目。删掉它只是不再显示这一栏。',
+    '删掉这一栏',
+    () => {
+      const r = zoneDelete(k);
+      refresh();
+      toast('「' + z.name + '」删掉了' + (r.moved ? ' · ' + r.moved + ' 条进了「未分组」' : '')
+        + (r.dropped ? ' · 清掉 ' + r.dropped + ' 条学习记录' : ''));
+    });
+}
+/* 新建分区：只要名字，颜色循环取色。 */
+function zoneAddOpen(){
+  modal.innerHTML = `<h3 id="modalTitle">新建分区</h3>
+    <p class="confirm-msg">分区就是清单页里的一条栏目（比如「学习」「工作」「生活」）。
+      时间与循环以后只是条目上的标记，不再决定它进哪一栏。</p>
+    <div class="field"><label>名字</label>
+      <input type="text" id="za_name" maxlength="12" autocomplete="off" placeholder="学习 / 工作 / 生活…"></div>
+    <div class="foot"><div class="spacer"></div>
+      <button class="btn" id="za_no">取消</button>
+      <button class="btn primary" id="za_ok">建好</button></div>`;
+  openMask();
+  const inp = document.getElementById('za_name');
+  document.getElementById('za_no').onclick = closeModal;
+  document.getElementById('za_ok').onclick = () => {
+    const v = String(inp.value || '').replace(/\s+/g, ' ').trim();
+    if (!v){ toast('给它起个名字'); return; }
+    const z = zoneAdd(v);
+    closeModal(); refresh();
+    toast(z ? '建好了「' + z.name + '」' : '没能建出来');
+  };
+  if (!reduceMotion()) setTimeout(() => inp.focus(), 60);
+}
 
 /* 打勾的确认 + 退场（v3.38 按用户指定的形态重做）：
    点击瞬间 → 绿勾弹一下 → 整条纵向压成一条线并亮一下（CRT 关机那道亮线）→ 往右退出；
@@ -14087,7 +14981,13 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
   /* ★ 3A 决策 3：打开详情也算一次"操作过它" → 更新焦点（内存 + sessionStorage，不进 S/备份）。 */
   if (!isNew && it && it.id && typeof aiFocusSet === 'function') aiFocusSet(it.id);
   /* ★ v5.0：「考虑」并入想法，下拉里不再有它 */
-  const zoneOpts = [['short','短期'], ['long','长期'], ['idea','想法']];
+  /* ★ 7B：分区选项改成读分区表（原来写死三选一）。「想法」仍在最后 —— 它是机制切换，
+     不是"归哪一栏"；「未分组」排最前，好让"取消归类"一眼可见。
+     ⚠️ 值必须是分区的主键 k：把 name 当值的话，用户改一次名，保存时写回的旧名字
+     会让条目认不出自己的分区（本卡第一条红线就是这个）。 */
+  const zoneOpts = [['', '未分组']]
+    .concat(S.zones.map(z => [z.k, String(z.name)]))
+    .concat([['idea', '想法']]);
   const stOpts = [['todo','未开始'], ['doing','在做'], ['submitted','已交']];
   modal.innerHTML = `
     <h3 id="modalTitle">${(opts && opts.title) || (isNew ? '新建' : '编辑')}</h3>
@@ -14213,7 +15113,10 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
 
   /* 三个下拉改自定义控件后在这里赋值（模板里只剩空的 <div class="sel">）。
      m_pri 的初始值：原文里解析出的 ! / !! 优先，否则用条目上已有的档位。 */
-  makeSel(document.getElementById('m_zone'), zoneOpts, it.zone || 'short');
+  /* ★ 7B：初始值只认分区表里真的有的 k —— 老数据里的 'short' 这种值在这里就是认不出的，
+     落到「未分组」那一档（它本来也会被 sanitizeItemZones 收成 ''）。 */
+  const zoneInit = (it.zone === 'idea' || validZoneKey(it.zone)) ? it.zone : '';
+  makeSel(document.getElementById('m_zone'), zoneOpts, zoneInit);
   makeSel(document.getElementById('m_pri'),
     [['0', '普通'], ['1', '重要（!）'], ['2', '紧急（!!）']], String(it.pri || 0));
   makeSel(document.getElementById('m_status'), stOpts, (it.hw && it.hw.status) || 'todo');
@@ -14412,8 +15315,12 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
     /* ★ 2A：改标题之前先留一份原样 —— 纠错层的"常用词"采集要拿它做差异
        （用户把「豆付」改成「豆腐」两次 → 问一次要不要收进常用词）。 */
     const titleBefore = String(it.title || '');
+    const zoneBefore = it.zone;
     it.title = titleVal || it.title;
+    /* ★ 7B：保存时改分区 = **一次教学信号**（用户把 AI 猜的分区改掉了，正是本卡点名的第二个信号）。
+       口径见 zoneTeachFromEditor：改回想法/未分组不算（那不是"这类内容归那栏"）。 */
     it.zone = selValue('m_zone');
+    it.zoneBy = 'user';
     it.tags = [...modal.querySelectorAll('#m_tags .pill.on')].map(b => b.dataset.t);
     /* ★ v3.40 核心修复：日期/时刻/循环只由结构化控件写入。
        v3.39 及以前这里拿原文重解析的结果覆盖 date/dateEnd/time/repeat，
@@ -14511,6 +15418,8 @@ function openItemEditor(it, isNew, onSaved, exitOnSave, opts){
        要不要收进常用词。带按钮的提示不会被下面那句"已保存"顶掉（toast 的老规矩），
        所以这里排在收尾提示之前。 */
     hotwordObserve(titleBefore, it.title);
+    /* ★ 7B：改了分区 = 一次教学信号（记进 S.zoneHints，2-gram）。只在真的改了才记。 */
+    zoneTeachFromEditor(it, zoneBefore, it.zone);
     /* ★ 阶段1 提醒：编辑保存后按新的日期 / 钟点重排这一条（约定 7 的唯一入口）。
        排在这里而不是上面各字段赋值处 —— 无论改了哪几个字段，收口都只有这一次。 */
     notifyFire(it);
@@ -14746,6 +15655,11 @@ window.addEventListener('drop', e => {
        一个存成 id→条目 字典的 items 在启动加载那边能救，在这边以前会被当成笔记文本去导。
        逐条校验也共用 sanitizeItems()。 */
     if (o && typeof o === 'object' && o.items && typeof o.items === 'object'){
+      /* ★ 7B：恢复备份要和 load() 走**同一条**分区迁移 —— 备份可能是老版本导出的
+         （条目上还是 long / short / repeat），不迁的话恢复完就是一堆「未分组」。
+         顺序与 load() 一致：先建分区表 → 迁移 → 再 sanitizeItems 收口。 */
+      S.zones = sanitizeZones(o.zones);
+      migrateZones(o);
       const items = sanitizeItems(o.items);
       /* 原生 confirm 对话框换成应用内确认框 —— 系统弹窗跟全站不是一个语言。
          恢复逻辑整个挪进回调：uiConfirm 关掉弹窗后才真正动数据。 */
@@ -14758,9 +15672,9 @@ window.addEventListener('drop', e => {
           if (o.statLayout === 'tile' || o.statLayout === 'card') S.statLayout = o.statLayout;
           if (typeof o.hintOpen === 'boolean') S.hintOpen = o.hintOpen;
           if (typeof o.showHelp === 'boolean') S.showHelp = o.showHelp;
-          /* 折叠状态也恢复。跟 tags 一样要判形状 + 过白名单 ——
-             备份是外部数据，别让里面的任意字符串直接变成 class 名 */
-          if (Array.isArray(o.foldedZones)) S.foldedZones = o.foldedZones.filter(k => ZONES.includes(k));
+          /* 折叠状态也恢复。跟 tags 一样要判形状 —— 备份是外部数据，
+             别让里面的任意字符串直接变成 class 名；指向不存在分区的那些由 zonePruneFolded 收掉。 */
+          if (Array.isArray(o.foldedZones)) S.foldedZones = o.foldedZones.filter(k => typeof k === 'string');
           if (o.lastBackup) S.lastBackup = o.lastBackup;
           /* ★ v5.0：想法系统的全局状态也恢复 —— 缺字段时保持当前值，不用 undefined 覆盖 */
           if (typeof o.ideaUsedAt === 'string') S.ideaUsedAt = o.ideaUsedAt;
@@ -14768,7 +15682,7 @@ window.addEventListener('drop', e => {
           if (Number.isFinite(o.lastScanAt)) S.lastScanAt = o.lastScanAt;
           if (typeof o.ideaReview === 'boolean') S.ideaReview = o.ideaReview;
           if (typeof o.ideaReviewDone === 'string') S.ideaReviewDone = o.ideaReviewDone;
-          if (o.captureZone === 'idea' || o.captureZone === 'long' || o.captureZone === 'auto') S.captureZone = o.captureZone;
+          if (o.captureZone === 'idea' || o.captureZone === 'auto' || validZoneKey(o.captureZone)) S.captureZone = o.captureZone;
           if (typeof o.ideaGestureSeen === 'boolean') S.ideaGestureSeen = o.ideaGestureSeen;
           if (o.ideaLayout === 'tree' || o.ideaLayout === 'list') S.ideaLayout = o.ideaLayout;
           /* ★ 审查修复（2026-10-04）：snapshot() 里写了 setOpen / aiMode / aiBase / aiModel /
@@ -14796,6 +15710,8 @@ window.addEventListener('drop', e => {
           /* ★ 0A.1：备份里的 parent 同样可能悬空或成环（备份可能来自旧版本、也可能被手改过）——
              落盘前收口，判据与启动加载完全一致。 */
           sanitizeParents();
+          /* ★ 7B：备份里指向不存在分区的折叠态也收掉（同一份备份恢复两次结果必须相同） */
+          zonePruneFolded();
           save(); applyHelp(); refresh();
           /* ★ 阶段1 提醒：整批 id 都换了 —— 必须做一次全量对账，把上一批的排期撤干净、
              按新数据重排（这是"旧排期不残留"的唯一出口）。 */
@@ -15053,7 +15969,7 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '5.17.2';
+const APP_VERSION = '6.0.0';
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：

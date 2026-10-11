@@ -75,7 +75,8 @@ function extractFn(src, name){
   return src.slice(i, k + 1);
 }
 
-const appFnNames = ['sanitizeItems', 'sanitizeParents', 'uid', 'isSeed', 'spawnNextCycle', 'spawnDailyKids',
+/* ★ 7B：sanitizeItems 现在会把认不出的 zone 收成 ''，需要这几个分区辅助。 */
+const appFnNames = ['sanitizeItems', 'sanitizeItemZones', 'zlist', 'sanitizeParents', 'uid', 'isSeed', 'spawnNextCycle', 'spawnDailyKids',
   'snapshot', 'repLabel'];
 const appSrc = appFnNames.map(n => extractFn(html, n)).join('\n\n');
 
@@ -391,7 +392,7 @@ console.log('\n[7] 源码级检查');
   tOk('snapshot() 仍整包带 items（新字段随条目一起进备份）',
     /items: S\.items/.test(extractFn(html, 'snapshot')));
   tOk('load 与备份恢复共用 sanitizeItems(o.items)',
-    nOcc(/sanitizeItems\(o\.items\)/g) === 2, nOcc(/sanitizeItems\(o\.items\)/g) + ' 处');
+    nOcc(/sanitizeItems\(o\.items\)/g) === 3, nOcc(/sanitizeItems\(o\.items\)/g) + ' 处');
 
   /* 红线 2：不新增排期调用点。口径与 _1-regress [5] **完全一致**：
      先去掉注释再数带括号的调用（注释里会写这两个名字，拿原文数会假红）。 */

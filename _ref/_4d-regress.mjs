@@ -155,9 +155,22 @@ t('teParseTime(空) → null', teParseTime(''), null);
 /* 沙箱 2：落点门槛 aiValidateItems                                     */
 /* ==================================================================== */
 const CONSTS = ['AI_UNDERSTAND_MAX', 'TAG_PER_ITEM'];
-const AFNS = ['pad2', 'dateFrom', 'ymd', 'today0', 'aiValidDateStr', 'aiValidTimeStr', 'aiValidTag', 'aiValidateItems'];
-const A = new Function(CONSTS.map(n => extractConst(html, n)).join('\n') + '\n'
-  + AFNS.map(n => extractFn(html, n)).join('\n\n') + '\nreturn {aiValidateItems};')();
+/* ★ 7B：aiValidateItems 要对分区表翻 long/short —— 这几个辅助一起切进来。 */
+const AFNS = ['pad2', 'dateFrom', 'ymd', 'today0', 'aiValidDateStr', 'aiValidTimeStr', 'aiValidTag', 'aiValidateItems',
+  'zlist', 'zoneLongKey', 'zoneShortKey', 'validZoneKey'];
+/* ★ 7B：validZoneKey 读 ZONE_KEY_RE 判形状；aiValidateItems 还要一张分区表 ——
+   沙箱里给它默认三个（真机上来自 S.zones）。 */
+const zoneReSrc = html.slice(html.indexOf('const ZONE_KEY_RE ='),
+  html.indexOf(';', html.indexOf('const ZONE_KEY_RE =')) + 1);
+const A = new Function('S', CONSTS.map(n => extractConst(html, n)).join('\n') + '\n'
+  + zoneReSrc + '\n'
+  + AFNS.map(n => extractFn(html, n)).join('\n\n') + '\nreturn {aiValidateItems};')({
+  zones: [
+    { k: 'z_long', name: '长期', color: '#2f6fed' },
+    { k: 'z_short', name: '短期', color: '#2f8f5b' },
+    { k: 'z_repeat', name: '循环', color: '#d98a1f' }
+  ]
+});
 const { aiValidateItems } = A;
 const MODEL = zone => [{ title: '提醒我去看看书', date: '', endDate: '', time: '21:51',
   tags: [], pri: 0, parent: '', zone: zone, steps: [] }];
@@ -165,7 +178,7 @@ const MODEL = zone => [{ title: '提醒我去看看书', date: '', endDate: '', 
 console.log('\n[5] 落点门槛：只有钟点也算"有安排"（红线 3，真 bug）');
 t('模型判 idea + 只给钟点 → 不是想法', aiValidateItems(MODEL('idea'))[0].zone, '');
 t('模型判 idea + 只给钟点 → time 保住', aiValidateItems(MODEL('idea'))[0].time, '21:51');
-t('模型判 long + 只给钟点 → 还是 long', aiValidateItems(MODEL('long'))[0].zone, 'long');
+t('模型判 long + 只给钟点 → 翻成 z_long', aiValidateItems(MODEL('long'))[0].zone, 'z_long');
 t('模型判 idea + 日期 → 不是想法（老口径）',
   aiValidateItems([{ title: 'x', date: '2026-10-10', time: '', zone: 'idea' }])[0].zone, '');
 t('模型判 idea + 什么都没有 → 才是想法',
@@ -176,9 +189,11 @@ t('源码级：门槛那一行同时看 date 与 time',
 /* ==================================================================== */
 /* 沙箱 3：确认页（纯逻辑 + 桩 DOM）                                     */
 /* ==================================================================== */
-const CFNS = ['icRowBits', 'icApplyEdit', 'openImageConfirm', 'imageConfirmEdit'];
-const C = new Function(
-  extractLet(html, 'icItems') + '\n'
+/* ★ 7B：icApplyEdit 也要 validZoneKey 收口（确认页编辑后写回分区）。 */
+const CFNS = ['icRowBits', 'icApplyEdit', 'openImageConfirm', 'imageConfirmEdit', 'validZoneKey', 'zlist'];
+const C = new Function('S',
+  zoneReSrc + '\n'
+  + extractLet(html, 'icItems') + '\n'
   + CFNS.map(n => extractFn(html, n)).join('\n\n') + '\n'
   + `
 /* ================= 测试替身（页面里这些是 DOM / 应用层） ================= */
@@ -218,7 +233,13 @@ return { icRowBits, icApplyEdit, openImageConfirm, imageConfirmEdit, modal,
   editorCalls: () => editorCalls,
   afterCloseGet: () => afterClose,
   closeModal };
-`)();
+`)({
+  zones: [
+    { k: 'z_long', name: '长期', color: '#2f6fed' },
+    { k: 'z_short', name: '短期', color: '#2f8f5b' },
+    { k: 'z_repeat', name: '循环', color: '#d98a1f' }
+  ]
+});
 const { icRowBits, icApplyEdit, openImageConfirm, imageConfirmEdit } = C;
 
 const mk = () => ({

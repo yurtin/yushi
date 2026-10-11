@@ -22,7 +22,7 @@ const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
 
 const items = [
   { id: 'keep', raw: '原有的一条', title: '原有的一条', date: null, dateEnd: null, monthOnly: false,
-    time: null, zone: 'short', tags: [], done: false, doneAt: null, createdAt: 1700000000000,
+    time: null, zone: 'z_short', tags: [], done: false, doneAt: null, createdAt: 1700000000000,
     hw: null, repeat: null, parent: null, goal: false, pri: 0 }
 ];
 const seed = { items, lastBackup: Date.now(), tags: [], statLayout: 'card', hintOpen: false,
@@ -89,7 +89,7 @@ const tomorrow = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.g
 const GOOD = JSON.stringify({
   items: [
     { title: '交实验报告', date: tomorrow, time: '', tags: ['学习'], pri: 1, parent: '', zone: '', steps: [] },
-    { title: '查文献', date: '', time: '', tags: [], pri: 0, parent: '交实验报告', zone: 'long', steps: [] }
+    { title: '查文献', date: '', time: '', tags: [], pri: 0, parent: '交实验报告', zone: 'z_long', steps: [] }
   ],
   corrected: '把实验报告交了，再去查文献', confidence: 0.8
 });

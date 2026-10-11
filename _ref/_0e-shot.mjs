@@ -15,7 +15,7 @@ const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
 
 const DAY = 86400000;
 const base = {
-  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'short', tags: [],
+  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'z_short', tags: [],
   done: false, doneAt: null, hw: null, repeat: null, parent: null, goal: false, pri: 0,
   timeMode: 'once', createdAt: 1700000000000,
 };

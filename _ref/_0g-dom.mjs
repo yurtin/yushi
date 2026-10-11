@@ -29,7 +29,7 @@ const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
 
 const DAY = 86400000;
 const base = {
-  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'short', tags: [],
+  date: null, dateEnd: null, monthOnly: false, time: null, zone: 'z_short', tags: [],
   done: false, doneAt: null, hw: null, repeat: null, parent: null, goal: false, pri: 0,
   timeMode: 'once', createdAt: 1700000000000,
 };
@@ -39,8 +39,8 @@ const base = {
 const items = [
   Object.assign({}, base, { id: 'pd', raw: '今天做完的父', title: '今天做完的父', done: true, doneAt: Date.now() }),
   Object.assign({}, base, { id: 'kd', raw: '今天做完的子', title: '今天做完的子', parent: 'pd', done: true, doneAt: Date.now() }),
-  Object.assign({}, base, { id: 'short1', raw: '还没做的', title: '还没做的', zone: 'short' }),
-  Object.assign({}, base, { id: 'long1', raw: '长期的事', title: '长期的事', zone: 'long' }),
+  Object.assign({}, base, { id: 'short1', raw: '还没做的', title: '还没做的', zone: 'z_short' }),
+  Object.assign({}, base, { id: 'long1', raw: '长期的事', title: '长期的事', zone: 'z_long' }),
   /* 一条作业：① 让「作业未交」这一页有数；② [8] 用它验编辑弹层的滚动位置
      （作业那条的 maxScroll 最大，是"打开就停在半路"最容易中招的形态）。 */
   Object.assign({}, base, { id: 'hwA', raw: '毒品预防教育作业 做宣传内容', title: '毒品预防教育作业',
@@ -224,6 +224,10 @@ console.log('\n[3] 子页里点底栏「统计」→ 回统计首页（原来被
 /* ---------- [4] 清单页那行的形态与入场排队 ---------- */
 console.log('\n[4] 清单页那行：去框 + 热区 + 入场排在三栏之后');
 {
+  /* ★ 入场延迟只在「切视图」那一帧写进 DOM（rv()/rvd() 只看 ANIM）。
+     底栏切页时 ANIM 为真，所以这里**显式打开 ANIM** 再切，让三栏真的带上 --delay；
+     否则读到的是一屏更早渲染的 DOM（延迟属性不在），得到的结论跟断言口径不是一回事。 */
+  await ev('ANIM = true; return 1;');
   await click('.tab[data-view="list"]');
   await sleep(500);
   const r = await ev(`
@@ -238,6 +242,8 @@ console.log('\n[4] 清单页那行：去框 + 热区 + 入场排在三栏之后'
       w: Math.round(e.getBoundingClientRect().width),
       boardW: Math.round(document.querySelector('.board').getBoundingClientRect().width),
       entryDelay: e.style.getPropertyValue('--delay'),
+      /* 7B：浏览器会把内联样式规范化成 --delay: 100ms（冒号后有空格），
+         所以必须走 CSSStyleDeclaration 取值，别用正则去抠 style 字符串。 */
       zoneDelays: zones.map(function(z){ return z.style.getPropertyValue('--delay'); }),
       zoneLabels: zones.map(function(z){ return z.querySelector('h3').textContent; }),
       text: e.textContent.replace(/\\s+/g, ' ').trim(),
