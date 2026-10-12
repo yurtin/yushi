@@ -117,22 +117,23 @@ console.log('[1] 五张卡：左边那列原样 + 右边灰色小字');
         lineTextRight: lineTextRight,
         asideTop: ar ? Math.round(ar.top) : null, cardTop: Math.round(g.top),
         pcolRight: pr ? Math.round(pr.right) : null }; });`);
-  tOk('五张卡的右边都有拓展说明', r.every(x => x.aside === true), JSON.stringify(r.map(x => [x.k, x.aside])));
+  /* ★ 7.3.2：只有"放得下"的三张卡带右侧说明（分区次数 / 连续打勾两行小字）。
+     「已逾期 / 作业未交」右边那两句太长，按用户口径"塞不下就不显示"。 */
+  tOk('右侧说明出现在放得下的三张卡上（今日完成 / 连续打勾 / 历史完成）',
+    r.filter(x => x.aside).map(x => x.k).join(',') === '今日完成,连续打勾,历史完成',
+    JSON.stringify(r.map(x => [x.k, x.aside])));
   tOk('左边那列内容原样（标签/大数字/单位都还在）',
     r.every(x => x.k && x.v !== undefined && x.s !== undefined), JSON.stringify(r.map(x => [x.k, x.v, x.s])));
   tOk('右侧是灰色小字（12px + 灰）',
-    r.every(x => parseFloat(x.asideSize) === 12 && /^rgba\(7, 7, 7, 0\.\d+\)$/.test(x.asideColor || '')),
-    JSON.stringify(r.map(x => [x.asideSize, x.asideColor])));
+    r.filter(x => x.aside).every(x => parseFloat(x.asideSize) === 12 && /^rgba\(7, 7, 7, 0\.\d+\)$/.test(x.asideColor || '')),
+    JSON.stringify(r.filter(x => x.aside).map(x => [x.asideSize, x.asideColor])));
   /* ★ 用户口径：左右留白一致 —— 也就是"卡片左内沿到左边内容" = "卡片右内沿到右边内容"。
      （左边那列的宽度是内容撑的，不能拿两个元素的 left 直接比。） */
-  /* ★ 7.2.6：说明改成**整行**排在卡片下半部（原来挤在右列 —— 真机上卡片只有 217~364px 宽，
-     实测把左边「作业未交」压成竖排）。所以留白口径也改：左边缘对齐左边内容的左边缘。 */
-  tOk('★ 7.2.6：说明整行铺开，左边缘与左边内容对齐（不再挤右列）',
-    r.every(x => Math.abs(x.asideLeft - x.pcolLeft) <= 2),
-    JSON.stringify(r.map(x => [x.k, x.asideLeft, x.pcolLeft])));
-  tOk('★ 7.2.6：说明排在左边内容**下面**（不是并排）',
-    r.every(x => x.asideTop > x.cardTop + 20),
-    JSON.stringify(r.map(x => [x.k, x.asideTop - x.cardTop])));
+  /* ★ 7.3.2（用户当场纠正）：说明**必须在右列**，不许整行排到下面。
+     判据：说明块的左边缘在左列内容的右边 → 两列并排。 */
+  tOk('★ 7.3.2：说明在**右列**（左边缘在左列内容右侧，不是排在下面）',
+    r.filter(x => x.aside).every(x => x.asideLeft >= x.pcolRight - 2),
+    JSON.stringify(r.filter(x => x.aside).map(x => [x.k, x.asideLeft, x.pcolRight])));
   await shot('stat-cards');
   globalThis.__cards = r;
 }
@@ -198,26 +199,17 @@ console.log('\n[3] 连续打勾：两行（累计天数 + 最长连打）');
     JSON.stringify(vals));
 }
 
-console.log('\n[4] 已逾期 / 作业未交：最多两行 + ···，句式按用户逐字给的');
+console.log('\n[4] 已逾期 / 作业未交：右侧长句**已按用户要求撤掉**');
 {
   const r = await ev(`
     function asideOf(name){
       var c = [].slice.call(document.querySelectorAll('.feature-card')).filter(function(x){
         return (x.querySelector('.k')||{}).textContent === name; })[0];
-      if (!c) return null;
-      var a = c.querySelector('.aside');
-      return a ? [].slice.call(a.querySelectorAll('.al')).map(function(l){ return l.textContent.trim(); }) : null; }
+      if (!c) return 'no-card';
+      return c.querySelector('.aside') ? 'has-aside' : 'none'; }
     return { overdue: asideOf('已逾期'), hw: asideOf('作业未交') };`);
-  tOk('逾期第一条 =「你的【…】已逾期 N 天」', /^你的【.+】已逾期 \d+ 天$/.test((r.overdue || [])[0] || ''), JSON.stringify(r.overdue));
-  tOk('逾期第二条 =「还有【…】已逾期 N 天」', /^还有【.+】已逾期 \d+ 天$/.test((r.overdue || [])[1] || ''), JSON.stringify(r.overdue));
-  /* ★ 用户口径："只有超过 2 条时才出现「···」" —— 这里逾期 3 条，第三行应该是 ··· */
-  tOk('★ 逾期 3 条时第三行是「···」（超过 2 条才出现）', (r.overdue || [])[2] === '···', JSON.stringify(r.overdue));
-  tOk('作业第一条 =「你的【…】都还有 N 天」', /^你的【.+】都还有 \d+ 天$/.test((r.hw || [])[0] || ''), JSON.stringify(r.hw));
-  tOk('★ 没日期的长期作业只写「还没做」，不带天数',
-    (r.hw || []).some(x => /还没做$/.test(x)) && !(r.hw || []).some(x => /还没做.*\d/.test(x)),
-    JSON.stringify(r.hw));
-  tOk('作业也只铺两行 + ···', (r.hw || []).length <= 3, JSON.stringify(r.hw));
-  await shot('stat-aside');
+  tOk('★ 「已逾期 / 作业未交」右侧不显示长句（用户："塞不下就不显示"）',
+    r.overdue === 'none' && r.hw === 'none', JSON.stringify(r));
 }
 
 console.log('\n[5] 方块布局下整块收起（不动方块那套版式）');
