@@ -361,10 +361,10 @@ console.log('\n[3] 0E  子页骨架：← 返回 + 标题 + 共 N 条');
   e2.renderStat();
   tOk('连续打勾子页写着「共 2 天」', v2.innerHTML.includes('共 2 天'),
     (v2.innerHTML.match(/共 \d+ 天/) || [''])[0]);
-  /* ★ 7.3.0（用户 2026-10-13）：这一屏从"按天列出、当天完成 N 条"换成月历热力图滚轮。
-     断言随之改成新形态：有滚轮容器、有月历块、每格带档位、仍不是条目列表。 */
-  tOk('连续打勾子页是月历热力图滚轮（.st-heat + .st-m + .st-cell）',
-    /class="st-heat"/.test(v2.innerHTML) && /class="st-m"/.test(v2.innerHTML) && /class="st-cell"/.test(v2.innerHTML), '');
+  /* ★ 7.4.0：这一页现在是「固定年月 + 真实日历（连续网格）」，不再是"月块滚轮"。 */
+  tOk('连续打勾子页是固定年月 + 连续日历网格（.st-cal + .st-fix + .st-cells + .st-cell）',
+    /class="st-cal"/.test(v2.innerHTML) && /class="st-fix"/.test(v2.innerHTML)
+    && /class="st-cells"/.test(v2.innerHTML) && /class="st-cell"/.test(v2.innerHTML), '');
   tOk('★ 格子带四档档位（data-lv），0 次不写数字',
     /data-lv="1"/.test(v2.innerHTML) && /data-lv="2"/.test(v2.innerHTML)
     && /data-lv="1"[^>]*><\/span>/.test(v2.innerHTML), '');

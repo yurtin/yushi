@@ -1,5 +1,5 @@
-/* 7.3.0 验收：连续打勾子页 = 月历热力图滚轮。
-   跑法：node _ref/_8d-heat.mjs   （SHOT8D=1 存截图到 _ref/shots-8d/） */
+/* 7.4.0 验收：连续打勾子页 = 固定年月 + 真实日历热力图 + 居中双列年月弹窗。
+   跑法：node _ref/_8d-heat.mjs   （SHOT8D=1 存图到 _ref/shots-8d/） */
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -11,32 +11,22 @@ const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
 const base = { raw: '', date: null, dateEnd: null, monthOnly: false, time: null, tags: [],
   done: true, doneAt: null, hw: null, repeat: null, parent: null, goal: false, pri: 0,
   timeMode: 'once', createdAt: 1700000000000 };
-const T = new Date();
-const Y = T.getFullYear(), M = T.getMonth();
+const T = new Date(); const Y = T.getFullYear(), M = T.getMonth();
 const ms = (y, m, d) => new Date(y, m, d, 12, 0, 0).getTime();
 const pad = n => String(n).padStart(2, '0');
-const items = [];
-let n = 0;
-/* 当月：5 号 1 条、6 号 3 条、7 号 4 条、8 号 7 条；其余 0 条 */
+const items = []; let n = 0;
 [[5, 1], [6, 3], [7, 4], [8, 7]].forEach(([d, k]) => {
-  for (let i = 0; i < k; i++) items.push(Object.assign({}, base, { id: 'it' + (n++), title: '条目' + n,
-    zone: 'z_long', doneAt: ms(Y, M, d) }));
+  for (let i = 0; i < k; i++) items.push(Object.assign({}, base, { id: 'it' + (n++), title: '条目' + n, zone: 'z_long', doneAt: ms(Y, M, d) }));
 });
-/* 上个月：2 号 2 条（验跨月与滚轮定位） */
 const pm = M === 0 ? { y: Y - 1, m: 11 } : { y: Y, m: M - 1 };
-for (let i = 0; i < 2; i++) items.push(Object.assign({}, base, { id: 'pm' + i, title: '上月' + i,
-  zone: 'z_short', doneAt: ms(pm.y, pm.m, 2) }));
-/* 去年的同月：用来验"往前翻" */
-items.push(Object.assign({}, base, { id: 'last', title: '去年', zone: 'z_long', doneAt: ms(Y - 1, M, 12) }));
+for (let i = 0; i < 2; i++) items.push(Object.assign({}, base, { id: 'pm' + i, title: '上月' + i, zone: 'z_short', doneAt: ms(pm.y, pm.m, 2) }));
 const seed = { items: items, zones: [{ k: 'z_long', name: '长期', color: '#2f6fed' }, { k: 'z_short', name: '短期', color: '#2f8f5b' }],
   foldedZones: [], zoneRules: '', zoneHints: {}, zoneRev: 1, lastBackup: Date.now(), tags: [],
-  statLayout: 'card', setOpen: [], aiMode: 'off', noteMode: false, noteTipSeen: true, theme: 'light' };
+  statLayout: 'card', setOpen: [], aiMode: 'off', noteMode: false, noteTipSeen: true };
 let served = false;
-const srv = http.createServer((q, r) => {
-  r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+const srv = http.createServer((q, r) => { r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   if (!served){ served = true; r.end(html.replace('</head>', '<script>localStorage.setItem("daibanji.v2",' + JSON.stringify(JSON.stringify(seed)) + ')</' + 'script></head>')); return; }
-  r.end(html);
-});
+  r.end(html); });
 await new Promise(res => srv.listen(PORT, '127.0.0.1', res));
 const chrome = spawn('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   ['--headless=new', '--remote-debugging-port=' + CDP, '--user-data-dir=' + path.join(os.tmpdir(), 'cdp-8d-' + Date.now()),
@@ -50,13 +40,10 @@ let mid = 0; const pend = new Map(); const errors = [];
 ws.onmessage = e => { const m = JSON.parse(e.data);
   if (m.method === 'Runtime.exceptionThrown') errors.push('EXC ' + ((m.params.exceptionDetails.exception || {}).description || '').split('\n')[0]);
   if (m.id && pend.has(m.id)){ pend.get(m.id)(m); pend.delete(m.id); } };
-const send = (method, params = {}) => new Promise(res => { const id = ++mid; pend.set(id, res); ws.send(JSON.stringify({ id, method, params })); });
-const ev = async expr => {
-  const r = await send('Runtime.evaluate', { expression: '(function(){' + expr + '})()', returnByValue: true, awaitPromise: true });
-  const res = r.result || {};
-  if (res.exceptionDetails) return 'ERR ' + ((res.exceptionDetails.exception || {}).description || '').split('\n')[0];
-  return res.result ? res.result.value : undefined;
-};
+const send = (m, p = {}) => new Promise(res => { const id = ++mid; pend.set(id, res); ws.send(JSON.stringify({ id, method: m, params: p })); });
+const ev = async expr => { const r = await send('Runtime.evaluate', { expression: '(function(){' + expr + '})()', returnByValue: true, awaitPromise: true });
+  const res = r.result || {}; if (res.exceptionDetails) return 'ERR ' + ((res.exceptionDetails.exception || {}).description || '').split('\n')[0];
+  return res.result ? res.result.value : undefined; };
 await send('Runtime.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 400, height: 888, deviceScaleFactor: 3, mobile: true });
 await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
@@ -74,70 +61,103 @@ const shot = async name => { if (!process.env.SHOT8D) return;
   const r = await send('Page.captureScreenshot', { format: 'png' });
   fs.writeFileSync(path.join(ROOT, '_ref', 'shots-8d', name + '.png'), Buffer.from(r.result.data, 'base64')); };
 
-console.log('[1] 标题栏 + 滚轮定位到当月');
-const head = await ev(`
-  var heat = document.getElementById('stHeat');
-  var block = heat.querySelector('.st-m[data-month="' + heat.dataset.cur + '"]');
-  var ym = block.querySelector('.st-ym');
-  var gridEl = block.querySelector('.st-grid');
-  var hr = heat.getBoundingClientRect(), br = block.getBoundingClientRect();
-  var gr = gridEl.getBoundingClientRect(), yr = ym.getBoundingClientRect();
-  /* 不透明区 = 遮罩的 20%~80% */
-  var opTop = hr.top + hr.height*0.20, opBot = hr.top + hr.height*0.80;
+console.log('[1] 标题栏 + 固定年月（不随热力图滑动）');
+const h1 = await ev(`
+  var ym = document.getElementById('stYm'), heat = document.getElementById('stHeat');
+  var fix = document.querySelector('.st-fix');
+  var wk = document.querySelector('.st-wk');
+  var r1 = ym.getBoundingClientRect(), hr = heat.getBoundingClientRect();
   return { title: (document.querySelector('.stat-sub-title')||{}).textContent,
+    titleFs: parseFloat(getComputedStyle(document.querySelector('.stat-sub-title')).fontSize),
     n: (document.querySelector('.stat-sub-n')||{}).textContent,
-    cur: heat.dataset.cur, heatH: Math.round(hr.height),
-    ymText: ym.textContent, ymCenter: Math.round(yr.top + yr.height/2), heatCenter: Math.round(hr.top + hr.height/2),
-    blockCenterDiff: Math.round((br.top + br.height/2) - (hr.top + hr.height/2)),
-    gridTopDiff: Math.round(gr.top - opTop), gridBotDiff: Math.round(opBot - gr.bottom),
-    gridInside: gr.top >= opTop - 1 && gr.bottom <= opBot + 1,
-    months: heat.querySelectorAll('.st-m').length,
-    scrollTop: Math.round(heat.scrollTop), scrollH: heat.scrollHeight,
-    firstBlockTop: Math.round(heat.querySelector('.st-m').getBoundingClientRect().top - hr.top),
-    lastBlockBottom: Math.round(heat.querySelectorAll('.st-m')[heat.querySelectorAll('.st-m').length-1].getBoundingClientRect().bottom - hr.top) };`);
-t('标题栏仍是「连续打勾」', head.title, '连续打勾');
-tOk('右边写着「共 N 天」', /^共 \d+ 天$/.test(head.n || ''), head.n);
-tOk('★ 滚轮停稳后，当月那一整块（标题+月历）居中在中轴上', Math.abs(head.blockCenterDiff) <= 2, JSON.stringify(head));
-tOk('★ 当月月历**完整**落在不透明区里（不被自己的遮罩吃掉）', head.gridInside === true,
-  'gridTopDiff=' + head.gridTopDiff + ' gridBotDiff=' + head.gridBotDiff);
-t('进来的默认月份 = 当月', head.cur, Y + '-' + pad(M + 1));
+    text: ym.textContent, fs: parseFloat(getComputedStyle(ym).fontSize),
+    ymTop: Math.round(r1.top), heatTop: Math.round(hr.top), heatH: Math.round(hr.height),
+    aboveHeat: r1.bottom <= hr.top + 1, fixSticky: getComputedStyle(fix).position,
+    wkCols: wk ? wk.querySelectorAll('span').length : 0,
+    wkTxt: wk ? [].slice.call(wk.querySelectorAll('span')).map(function(s){ return s.textContent; }).join('') : '',
+    cur: heat.dataset.cur };`);
+t('标题栏仍是「连续打勾」', h1.title, '连续打勾');
+tOk('★ 这一页的标题比别的子页小一号（≤20px）', h1.titleFs <= 20, h1.titleFs);
+tOk('右边写着「共 N 天」', /^共 \d+ 天$/.test(h1.n || ''), h1.n);
+tOk('★ 年月字号大一号（≥27px）', h1.fs >= 27, h1.fs);
+tOk('★ 年月在热力图**上方**，固定头是 sticky', h1.aboveHeat === true && h1.fixSticky === 'sticky', JSON.stringify([h1.aboveHeat, h1.fixSticky]));
+t('★ 星期表头 7 格、周一到周日', h1.wkTxt, '一二三四五六日');
+t('进来默认是当月', h1.cur, Y + '-' + pad(M + 1));
+/* 滚动热力图：年月那行必须一动不动，但字要跟着变 */
+const scrolled = await ev(`
+  var heat = document.getElementById('stHeat'), ym = document.getElementById('stYm');
+  var top0 = Math.round(ym.getBoundingClientRect().top);
+  heat.scrollTop = 0;                                   /* 滚到最早 */
+  return new Promise(function(resolve){ setTimeout(function(){
+    var early = { top: Math.round(ym.getBoundingClientRect().top), text: ym.textContent };
+    heat.scrollTop = heat.scrollHeight;
+    setTimeout(function(){
+      resolve({ top0: top0, early: early, late: { top: Math.round(ym.getBoundingClientRect().top), text: ym.textContent } });
+    }, 400);
+  }, 400); });`);
+tOk('★ 滚到最早时，年月那行**位置不变**、字跟着变',
+  scrolled.early.top === scrolled.top0, JSON.stringify(scrolled.early) + ' vs top0=' + scrolled.top0);
+tOk('★ 滚到最后时，年月那行位置仍不变、字走到今年末尾（最上一行可能跨月，11~12 月都算）',
+  scrolled.late.top === scrolled.top0
+  && (scrolled.late.text === Y + '年12月' || scrolled.late.text === Y + '年11月'),
+  JSON.stringify(scrolled.late) + ' vs top0=' + scrolled.top0);
+await ev('stGoMonth(today0().getFullYear(), today0().getMonth()+1); return 1;'); await sleep(900);
 
-console.log('\n[2] 月历格子：数量 = 当月天数；7 列；从 1 号横向排');
-const grid = await ev(`
+console.log('\n[2] 真实日历排布（1 号落在它星期几那一列）+ 月份相互衔接');
+const cal = await ev(`
   var heat = document.getElementById('stHeat');
-  var ym = heat.querySelector('.st-ym[data-k="' + heat.dataset.cur + '"]');
-  var box = ym.parentNode.querySelector('.st-grid');
-  var cs = getComputedStyle(box);
-  var cells = [].slice.call(box.querySelectorAll('.st-cell'));
-  var tops = {}; cells.forEach(function(c){ var tp = Math.round(c.getBoundingClientRect().top); tops[tp] = (tops[tp]||0)+1; });
-  return { days: cells.length, cols: cs.gridTemplateColumns.split(' ').length,
-    first: cells[0].dataset.day, last: cells[cells.length-1].dataset.day,
-    rows: Object.keys(tops).length, perRow: Object.values(tops),
-    border: getComputedStyle(cells[0]).borderTopWidth };`);
-tOk('格子数 = 当月天数（' + new Date(Y, M + 1, 0).getDate() + ' 天）', grid.days === new Date(Y, M + 1, 0).getDate(), grid.days);
-t('7 列', grid.cols, 7);
-t('第一格是当月 1 号', grid.first, Y + '-' + pad(M + 1) + '-01');
-t('最后一格是当月最后一天', grid.last, Y + '-' + pad(M + 1) + '-' + pad(new Date(Y, M + 1, 0).getDate()));
-tOk('横向依次排、自动换行（每行 7 格，最后一行是余数）',
-  grid.perRow.slice(0, -1).every(x => x === 7) && grid.perRow[grid.perRow.length - 1] === grid.days % 7
-  && grid.rows === Math.ceil(grid.days / 7), JSON.stringify(grid.perRow));
-t('★ 格子没有边框（用户："不要加细边儿"）', grid.border, '0px');
+  var cells = [].slice.call(heat.querySelectorAll('.st-cell'));
+  var blanks = [].slice.call(heat.querySelectorAll('.st-blank')).length;
+  /* 按"列"分组：同一列 = left 相同 */
+  var cols = {};
+  cells.forEach(function(c){ var l = Math.round(c.getBoundingClientRect().left); (cols[l] = cols[l] || []).push(c.dataset.day); });
+  var colKeys = Object.keys(cols).map(Number).sort(function(a,b){ return a-b; });
+  /* 抽查 12 天：列号（0=周一）必须等于它的星期几 */
+  function wdOf(ds){ var d = new Date(ds + 'T12:00:00'); return (d.getDay() + 6) % 7; }
+  var bad = [];
+  var step = Math.max(1, Math.floor(cells.length / 24));
+  for (var i = 0; i < cells.length; i += step){
+    var ds = cells[i].dataset.day;
+    var l = Math.round(cells[i].getBoundingClientRect().left);
+    var col = colKeys.indexOf(l);
+    if (col !== wdOf(ds)) bad.push([ds, col, wdOf(ds)]);
+  }
+  /* 衔接：任取一个月边界，看"上月最后一天"与"下月 1 号"是不是接着排
+     （同一行且列号 +1，或者换行且下月 1 号在第 0 列） */
+  var joins = [];
+  var months = {};
+  cells.forEach(function(c){ var m = c.dataset.m; (months[m] = months[m] || []).push(c); });
+  var mk = Object.keys(months).sort();
+  var colOf = function(el){ return colKeys.indexOf(Math.round(el.getBoundingClientRect().left)); };
+  for (var j = 1; j < mk.length; j++){
+    var last = months[mk[j-1]][months[mk[j-1]].length - 1];
+    var first = months[mk[j]][0];
+    /* ★ "衔接"的正确判据：下月 1 号的列 == (上月最后一天的列 + 1) % 7
+       （同行走一格、或从周日折到周一，都满足） */
+    var lc = colOf(last), fc = colOf(first);
+    joins.push({ m: mk[j], lastCol: lc, firstCol: fc, ok: fc === (lc + 1) % 7, firstDay: first.dataset.day });
+  }
+  return { n: cells.length, blanks: blanks, bad: bad, joins: joins.slice(0, 6),
+    firstDay: cells[0].dataset.day, cols: colKeys.length };`);
+tOk('格子是**一个连续网格**、每行 7 列', cal.cols === 7, JSON.stringify([cal.cols, cal.n]));
+tOk('★ 每一天都排在它自己星期几那一列（抽查 24 天，0=周一）', cal.bad.length === 0, JSON.stringify(cal.bad));
+tOk('★ 月份相互衔接：下月 1 号紧挨着上月最后一天（列号 +1，跨周折回周一）',
+  cal.joins.every(x => x.ok === true), JSON.stringify(cal.joins));
 
-console.log('\n[3] 四档颜色与反向文字色（0次浅灰不写字 / 1~3 中灰黑字 / 4~6 深灰白字 / ≥7 黑白字）');
+console.log('\n[3] 四档配色与反向文字色（0次浅灰不写字 / 1~3 中灰黑字 / 4~6 深灰白字 / ≥7 黑白字）');
 const lv = await ev(`
   var heat = document.getElementById('stHeat');
-  function cell(day){ return heat.querySelector('.st-cell[data-day="' + heat.dataset.cur + '-' + String(day).padStart(2,'0') + '"]'); }
+  var cur = heat.dataset.cur;
+  function cell(d){ return heat.querySelector('.st-cell[data-day="' + cur + '-' + String(d).padStart(2,'0') + '"]'); }
+  function rgb(s){ var m = s.match(/[\\d.]+/g).map(Number); return { r:m[0], g:m[1], b:m[2] }; }
+  function lum(c){ var a=[c.r,c.g,c.b].map(function(v){ v/=255; return v<=0.03928? v/12.92 : Math.pow((v+0.055)/1.055,2.4); }); return 0.2126*a[0]+0.7152*a[1]+0.0722*a[2]; }
   var out = {};
-  [4,5,6,7,8].forEach(function(d){
-    var c = cell(d); var cs = getComputedStyle(c);
-    var bg = cs.backgroundColor, fg = cs.color;
-    function rgb(s){ var m = s.match(/[\\d.]+/g).map(Number); return { r:m[0], g:m[1], b:m[2] }; }
-    function lum(c){ var a = [c.r,c.g,c.b].map(function(v){ v/=255; return v<=0.03928? v/12.92 : Math.pow((v+0.055)/1.055,2.4); }); return 0.2126*a[0]+0.7152*a[1]+0.0722*a[2]; }
-    var A = rgb(bg), B = rgb(fg);
+  [4,5,6,7,8].forEach(function(d){ var c = cell(d); if (!c) return; var cs = getComputedStyle(c);
+    var A = rgb(cs.backgroundColor), B = rgb(cs.color);
     var l1 = lum(A), l2 = lum(B);
-    var ratio = (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05);
-    out[d] = { lv: +c.dataset.lv, text: c.textContent, bg: bg, fg: fg, ratio: +ratio.toFixed(2) };
-  });
+    out[d] = { lv:+c.dataset.lv, text:c.textContent, bg:cs.backgroundColor,
+      ratio:+((Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05)).toFixed(2),
+      border: getComputedStyle(c).borderTopWidth }; });
   return out;`);
 t('4 号（0 条）= 档1', lv[4].lv, 1);
 t('5 号（1 条）= 档2', lv[5].lv, 2);
@@ -147,166 +167,128 @@ t('8 号（7 条）= 档4', lv[8].lv, 4);
 tOk('0 次不写数字', lv[4].text === '', JSON.stringify(lv[4].text));
 tOk('有数字的格子写着当天条数', lv[5].text === '1' && lv[6].text === '3' && lv[7].text === '4' && lv[8].text === '7',
   [lv[5].text, lv[6].text, lv[7].text, lv[8].text].join('/'));
-tOk('★ 中灰档（5/6 号）配黑字：对比度 ≥ 4.5', lv[5].ratio >= 4.5 && lv[6].ratio >= 4.5, [lv[5].ratio, lv[6].ratio].join(' / '));
-tOk('★ 深灰·黑档（7/8 号）配白字：对比度 ≥ 4.5', lv[7].ratio >= 4.5 && lv[8].ratio >= 4.5, [lv[7].ratio, lv[8].ratio].join(' / '));
-tOk('浅灰档底色与页面底不同（不加边框也看得见）', lv[4].bg !== 'rgba(0, 0, 0, 0)', lv[4].bg);
+tOk('★ 中灰档配黑字、深灰·黑档配白字，对比度都 ≥4.5',
+  [5,6,7,8].every(d => lv[d].ratio >= 4.5), JSON.stringify([lv[5].ratio, lv[6].ratio, lv[7].ratio, lv[8].ratio]));
+t('★ 格子没有边框（用户："不要加细边儿"）', lv[4].border, '0px');
+await shot('cal-light');
 
-console.log('\n[4] 上下对称淡出（以年月那行字的横向中线为准）');
-const fade = await ev(`
-  var heat = document.getElementById('stHeat'); var cs = getComputedStyle(heat);
-  return { mask: cs.maskImage || cs.webkitMaskImage, scrollable: heat.scrollHeight > heat.clientHeight };`);
-tOk('★ 滚轮有上下渐隐遮罩，上下对称（两段百分比加起来 = 100）',
-  (() => { const m = (fade.mask || '').match(/([\d.]+)%/g) || [];
-    if (m.length < 2) return false;
-    const a = parseFloat(m[0]), b = parseFloat(m[1]);
-    return a + b === 100 && (b - a) >= 50; })(), fade.mask);
-tOk('滚轮内容比可视区高（真的能滑）', fade.scrollable, fade.scrollable);
-
-console.log('\n[5] 点「年」/「月」弹滑轮 → 弹窗里再点中间那格转打字 → ✕ 退出后月历滚过去');
-/* 5a：点年份 -> 弹年份滑轮，右上角是 ✕（没有保存按钮） */
-const y5 = await ev(`
-  var heat = document.getElementById('stHeat');
-  var ys = heat.querySelector('.st-ym[data-k="' + heat.dataset.cur + '"] .st-yl');
-  ys.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+console.log('\n[4] 弹窗：屏幕中间展开 + 年/月两列一起改 + 中间那格可打字 + ✕ 退出后热力图滚过去');
+const sh = await ev(`
+  document.querySelector('.st-ym .st-yl').dispatchEvent(new MouseEvent('click', { bubbles: true }));
   return new Promise(function(resolve){ setTimeout(function(){
-    var sheet = document.querySelector('.wheel-mask .wheel-sheet');
-    if (!sheet) return resolve({ open: false });
-    var col = sheet.querySelector('.wheel-col');
-    var items = [].slice.call(col.querySelectorAll('.wheel-it'));
-    var on = items.filter(function(n){ return n.classList.contains('on'); });
-    resolve({ open: true, cap: sheet.querySelector('.wheel-cap').textContent,
-      hasX: !!sheet.querySelector('.wheel-x'), hasOk: /确定/.test(sheet.textContent),
-      n: items.length, first: items[0].textContent, last: items[items.length-1].textContent,
-      onText: on.length ? on[0].textContent : null, onIdx: items.indexOf(on[0]) });
-  }, 350); });`);
-tOk('点「年」弹出年份滑轮', y5.open === true && y5.cap === '年份', JSON.stringify(y5));
-tOk('★ 弹窗右上角有「✕」、没有「确定」', y5.hasX === true && y5.hasOk === false, JSON.stringify([y5.hasX, y5.hasOk]));
-tOk('年份轮的范围：1970 .. 今年（今年封顶）', y5.first === '1970' && y5.last === String(Y), y5.first + '..' + y5.last);
-tOk('弹窗打开时停在该年份上', y5.onText === String(Y).slice(0, 4), y5.onText);
-await shot('sheet-year');
-
-/* 5b：滚到另一个年份 -> ✕ 退出 -> 月历自动滚到那年 */
-const y6 = await ev(`
-  var sheet = document.querySelector('.wheel-mask .wheel-sheet');
-  var col = sheet.querySelector('.wheel-col');
-  var items = [].slice.call(col.querySelectorAll('.wheel-it'));
-  var want = items.findIndex(function(n){ return n.textContent === '${Y - 2}'; });
-  col.scrollTo({ top: want * 44, behavior: 'instant' });
-  return new Promise(function(resolve){ setTimeout(function(){
-    document.getElementById('ym_x').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    resolve({ sheetGone: !document.querySelector('.wheel-mask'), want: want });
+    var mask = document.querySelector('.wheel-mask');
+    if (!mask) return resolve({ open: false });
+    var sheet = mask.querySelector('.wheel-sheet');
+    var mr = mask.getBoundingClientRect(), sr = sheet.getBoundingClientRect();
+    var cols = [].slice.call(mask.querySelectorAll('.wheel-col'));
+    var yrs = cols[0] ? [].slice.call(cols[0].querySelectorAll('.wheel-it')) : [];
+    var mos = cols[1] ? [].slice.call(cols[1].querySelectorAll('.wheel-it')) : [];
+    var on = cols.map(function(c){ var o = c.querySelector('.wheel-it.on'); return o ? o.textContent : null; });
+    resolve({ open: true, mid: mask.classList.contains('wheel-mid'),
+      maskCenter: Math.round(mr.top + mr.height/2), viewCenter: Math.round(window.innerHeight/2),
+      sheetCenter: Math.round(sr.top + sr.height/2),
+      nCol: cols.length, cap: (mask.querySelector('.wheel-cap')||{}).textContent,
+      hasX: !!mask.querySelector('.wheel-x'), hasOk: /确定/.test(mask.textContent),
+      years: [yrs.length ? yrs[0].textContent : null, yrs.length ? yrs[yrs.length-1].textContent : null],
+      nMonth: mos.length, onY: on[0], onM: on[1],
+      units: [].slice.call(mask.querySelectorAll('.wheel-units span')).map(function(x){ return x.textContent; }).join('') });
   }, 400); });`);
-tOk('点「✕」弹窗关掉', y6.sheetGone === true, JSON.stringify(y6));
-const afterY = await ev(`
+tOk('点「年」弹出弹窗', sh.open === true, JSON.stringify(sh));
+tOk('★ 弹窗在**屏幕中间**（不是底部半屏）：中心与视口中心差 ≤40px',
+  Math.abs(sh.maskCenter - sh.viewCenter) <= 40, JSON.stringify([sh.maskCenter, sh.viewCenter]));
+tOk('★ 一个弹窗里**两列**：年 + 月，可以一起改', sh.nCol === 2 && sh.units === '年月', JSON.stringify([sh.nCol, sh.units]));
+tOk('★ 右上角有 ✕、没有「确定」', sh.hasX === true && sh.hasOk === false, JSON.stringify([sh.hasX, sh.hasOk]));
+tOk('年份轮 1970..今年（今年封顶）', sh.years[0] === '1970' && sh.years[1] === String(Y), JSON.stringify(sh.years));
+tOk('月份轮 1~12 铺三遍（循环）', sh.nMonth === 36, sh.nMonth);
+tOk('打开时停在当前年月', sh.onY === String(Y) && sh.onM === String(M + 1), JSON.stringify([sh.onY, sh.onM]));
+await shot('sheet-mid');
+const jump = await ev(`
+  var mask = document.querySelector('.wheel-mask');
+  var cols = [].slice.call(mask.querySelectorAll('.wheel-col'));
+  /* 年列滚到两年前；月列滚到中间那遍的 3 月 */
+  var yItems = [].slice.call(cols[0].querySelectorAll('.wheel-it'));
+  var yi = yItems.findIndex(function(x){ return x.textContent === '${Y - 2}'; });
+  cols[0].scrollTo({ top: yi * 44, behavior: 'instant' });
+  cols[1].scrollTo({ top: (12 + 2) * 44, behavior: 'instant' });
   return new Promise(function(resolve){ setTimeout(function(){
-    var heat = document.getElementById('stHeat');
-    var cur = document.querySelector('.st-m[data-month="' + (stCenteredMonth(heat)) + '"]');
-    resolve({ centered: stCenteredMonth(heat), label: cur ? cur.querySelector('.st-ym').textContent : null });
-  }, 1200); });`);
-tOk('★ 退出后月历自动滚到刚才选的年份', String(afterY.centered).slice(0, 4) === String(Y - 2), JSON.stringify(afterY));
-
-/* 5c：点月份 -> 月份轮（1~12 铺三遍做循环）-> 滚到 3 月 -> ✕ -> 月历滚到 3 月 */
-const m5 = await ev(`
-  var heat = document.getElementById('stHeat');
-  var ms = heat.querySelector('.st-ym .st-ml');
-  ms.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  return new Promise(function(resolve){ setTimeout(function(){
-    var sheet = document.querySelector('.wheel-mask .wheel-sheet');
-    var col = sheet.querySelector('.wheel-col');
-    var items = [].slice.call(col.querySelectorAll('.wheel-it'));
-    var on = items.filter(function(n){ return n.classList.contains('on'); });
-    resolve({ cap: sheet.querySelector('.wheel-cap').textContent, n: items.length,
-      onText: on.length ? on[0].textContent : null, onIdx: items.indexOf(on[0]),
-      val3: items.filter(function(n){ return n.textContent === '3'; }).length });
-  }, 350); });`);
-tOk('点「月」弹出月份滑轮', m5.cap === '月份', JSON.stringify(m5));
-t('★ 月份轮 1~12 铺三遍（无限循环的观感）', m5.n, 36);
-tOk('★ 弹窗打开时停在"中间那一遍"的当前月', m5.onIdx >= 12 && m5.onIdx < 24, m5.onIdx);
-const m6 = await ev(`
-  var sheet = document.querySelector('.wheel-mask .wheel-sheet');
-  var col = sheet.querySelector('.wheel-col');
-  var items = [].slice.call(col.querySelectorAll('.wheel-it'));
-  var want = 12 + 2;                       /* 中间那遍的 3 月 */
-  col.scrollTo({ top: want * 44, behavior: 'instant' });
-  return new Promise(function(resolve){ setTimeout(function(){
-    var selBefore = JSON.parse(JSON.stringify(stSel));
     document.getElementById('ym_x').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    setTimeout(function(){ resolve({ selBefore: selBefore, view: stView, jump: stJumpTo,
-      centered: stCenteredMonth(document.getElementById('stHeat')) }); }, 1500);
+    setTimeout(function(){
+      var heat = document.getElementById('stHeat');
+      var hr = heat.getBoundingClientRect();
+      var tgt = heat.querySelector('.st-cell[data-day="${Y - 2}-03-01"]');
+      var tr = tgt ? tgt.getBoundingClientRect() : null;
+      resolve({ title: document.getElementById('stYm').textContent,
+        targetVisible: !!tr && tr.top >= hr.top - 2 && tr.bottom <= hr.bottom + 2,
+        firstCellInView: (function(){
+          var cs = [].slice.call(heat.querySelectorAll('.st-cell'));
+          var top = hr.top;
+          for (var i = 0; i < cs.length; i++){ if (cs[i].getBoundingClientRect().bottom > top + 2) return cs[i].dataset.day; }
+          return null; })() });
+    }, 1500);
   }, 450); });`);
-tOk('★ 退出后月历滚到 3 月', String(m6.centered).slice(5) === '03', JSON.stringify(m6));
-
-/* 5d：弹窗里再点一次中间那格 -> 转打字 -> 输入 2023 -> 回车 -> 年份轮自己滚过去 */
+tOk('★ 关掉后固定年月变成选中的「' + (Y - 2) + '年3月」', jump.title === (Y - 2) + '年3月', JSON.stringify(jump));
+tOk('★ 热力图也滚到了那个月（目标月 1 号那一格在视口里可见）',
+  jump.targetVisible === true, JSON.stringify(jump));
+/* 打字：点中间那格 -> 输入 -> 回车 */
 const typ = await ev(`
-  var heat = document.getElementById('stHeat');
-  heat.querySelector('.st-ym .st-yl').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  document.querySelector('.st-ym .st-ml').dispatchEvent(new MouseEvent('click', { bubbles: true }));
   return new Promise(function(resolve){ setTimeout(function(){
-    var sheet = document.querySelector('.wheel-mask .wheel-sheet');
-    var col = sheet.querySelector('.wheel-col');
+    var mask = document.querySelector('.wheel-mask');
+    var col = [].slice.call(mask.querySelectorAll('.wheel-col'))[1];
     var on = col.querySelector('.wheel-it.on');
     on.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     setTimeout(function(){
       var inp = col.querySelector('.wheel-it-in');
       if (!inp) return resolve({ input: false });
-      inp.value = '2023';
+      inp.value = '7';
       inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       setTimeout(function(){
         var on2 = col.querySelector('.wheel-it.on');
-        resolve({ input: true, typingGone: !col.querySelector('.wheel-it-in'),
-          onText: on2 ? on2.textContent : null,
-          scrollTop: Math.round(col.scrollTop) });
+        resolve({ input: true, typingGone: !col.querySelector('.wheel-it-in'), onText: on2 ? on2.textContent : null });
       }, 900);
     }, 250);
-  }, 350); });`);
-tOk('★ 弹窗里再点中间那格 → 出现输入框', typ.input === true && typ.typingGone === true, JSON.stringify(typ));
-tOk('★ 输入 2023 回车后：光标消失、滑轮滚到 2023', typ.onText === '2023', JSON.stringify(typ));
-const typEnd = await ev(`
+  }, 400); });`);
+tOk('★ 中间那格再点一次 → 出输入框，输入 7 回车后滑轮滚到 7 月',
+  typ.input === true && typ.typingGone === true && typ.onText === '7', JSON.stringify(typ));
+const after = await ev(`
   document.getElementById('ym_x').dispatchEvent(new MouseEvent('click', { bubbles: true }));
   return new Promise(function(resolve){ setTimeout(function(){
-    resolve({ centered: stCenteredMonth(document.getElementById('stHeat')) }); }, 1300); });`);
-tOk('★ 最终月历停在 2023 年', String(typEnd.centered).slice(0, 4) === '2023', JSON.stringify(typEnd));
-await shot('heat-light');
+    resolve({ title: document.getElementById('stYm').textContent, sheetGone: !document.querySelector('.wheel-mask') }); }, 1500); });`);
+tOk('★ 退出后固定年月同步成 7 月', /年7月$/.test(after.title || '') && after.sheetGone === true, JSON.stringify(after));
 
-console.log('\n[6] 边界：年份到今年封顶；过去可以一直往前');
+console.log('\n[5] 边界：年份到今年封顶；过去可以一直往前');
+await ev('stGoMonth(today0().getFullYear(), 12); return 1;'); await sleep(1200);
 const cap = await ev(`
-  return new Promise(function(resolve){
-    /* 今年的 12 月存在（往后封顶），明年的任何月份都不存在 */
-    stGoMonth(today0().getFullYear(), 12);
-    setTimeout(function(){
-      var heat = document.getElementById('stHeat');
-      var all = [].slice.call(heat.querySelectorAll('.st-m'));
-      resolve({ tail: all[all.length-1].dataset.month, oldest: all[0].dataset.month,
-        hasNextYear: !!heat.querySelector('.st-m[data-month="' + (today0().getFullYear()+1) + '-01"]') });
-    }, 1500); });`);
-tOk('★ 年份封顶：今年 12 月是最后一块（2027 不存在）', cap.tail === Y + '-12' && cap.hasNextYear === false, JSON.stringify(cap));
-tOk('往前能一直翻（最老那月远早于当月）', cap.oldest < Y + '-' + pad(M + 1), cap.oldest);
+  var heat = document.getElementById('stHeat');
+  var cells = [].slice.call(heat.querySelectorAll('.st-cell'));
+  return { last: cells[cells.length-1].dataset.day, title: document.getElementById('stYm').textContent,
+    nextYear: !!heat.querySelector('.st-cell[data-day="' + (today0().getFullYear()+1) + '-01-01"]') };`);
+tOk('★ 年份封顶：最后一格是今年 12 月 31 日（2027 不存在）',
+  cap.last === Y + '-12-31' && cap.nextYear === false, JSON.stringify(cap));
 const early = await ev(`
-  var before = document.querySelectorAll('#stHeat .st-m').length;
-  /* 跳到三年前的 1 月：那时还没渲染 -> 自动往前延再重画（用户要的"往前无限"） */
+  var before = document.querySelectorAll('#stHeat .st-cell').length;
   stGoMonth(today0().getFullYear() - 3, 1);
   return new Promise(function(resolve){ setTimeout(function(){
-    /* ⚠️ 这一步会整块重画 -> 必须重新取元素（stale 引用会读到已被换掉的旧 DOM） */
     var h2 = document.getElementById('stHeat');
-    resolve({ before: before, after: h2.querySelectorAll('.st-m').length,
-      has: !!h2.querySelector('.st-m[data-month="${Y - 3}-01"]') }); }, 1500); });`);
-tOk('★ 跳到更早的年份时，月历自动往前延（"往前无限"）', early.has === true, JSON.stringify(early));
+    resolve({ before: before, after: h2.querySelectorAll('.st-cell').length,
+      has: !!h2.querySelector('.st-cell[data-day="${Y - 3}-01-01"]') }); }, 1500); });`);
+tOk('★ 跳到更早的年份时自动往前延（"往前无限"）', early.has === true, JSON.stringify(early));
 
-console.log('\n[7] 深色主题：四档反过来（越完成越亮），对比度仍达标');
+console.log('\n[6] 深色主题：四档反过来（越完成越亮），对比度仍达标');
 await ev('applyTheme("dark", false); return 1;'); await sleep(500);
 const dark = await ev(`
-  var heat = document.getElementById('stHeat');
-  function cell(d){ return heat.querySelector('.st-cell[data-day="' + heat.dataset.cur + '-' + String(d).padStart(2,'0') + '"]'); }
+  var heat = document.getElementById('stHeat'); var cur = heat.dataset.cur;
+  function cell(d){ return heat.querySelector('.st-cell[data-day="' + cur + '-' + String(d).padStart(2,'0') + '"]'); }
   function rgb(s){ var m = s.match(/[\\d.]+/g).map(Number); return { r:m[0], g:m[1], b:m[2] }; }
   function lum(c){ var a=[c.r,c.g,c.b].map(function(v){ v/=255; return v<=0.03928? v/12.92 : Math.pow((v+0.055)/1.055,2.4); }); return 0.2126*a[0]+0.7152*a[1]+0.0722*a[2]; }
-  function ratio(a,b){ var x=lum(rgb(a)), y=lum(rgb(b)); return +((Math.max(x,y)+0.05)/(Math.min(x,y)+0.05)).toFixed(2); }
   var out = {};
-  [4,5,7,8].forEach(function(d){ var c = cell(d); var cs = getComputedStyle(c);
-    out[d] = { lv:+c.dataset.lv, bg: cs.backgroundColor, r: ratio(cs.backgroundColor, cs.color) }; });
+  [4,5,7,8].forEach(function(d){ var c = cell(d); if (!c) return; var cs = getComputedStyle(c);
+    var A = rgb(cs.backgroundColor), B = rgb(cs.color);
+    out[d] = { bg: cs.backgroundColor, r: +((Math.max(lum(A),lum(B))+0.05)/(Math.min(lum(A),lum(B))+0.05)).toFixed(2) }; });
   return out;`);
 tOk('深色主题下 0 次那档与背景分得开', dark[4].bg !== 'rgba(0, 0, 0, 0)', dark[4].bg);
-tOk('★ 深色主题四档对比度都 ≥ 4.5', [5, 7, 8].every(d => dark[d].r >= 4.5),
-  JSON.stringify([dark[5].r, dark[7].r, dark[8].r]));
-await shot('heat-dark');
+tOk('★ 深色主题四档对比度都 ≥ 4.5', [5,7,8].every(d => dark[d].r >= 4.5), JSON.stringify([dark[5].r, dark[7].r, dark[8].r]));
+await shot('cal-dark');
 
 console.log('\n══ 运行时异常：' + (errors.length ? errors.join(' | ') : '无') + ' ══');
 tOk('全程没有未捕获异常', errors.length === 0, errors.join(' | '));
