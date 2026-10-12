@@ -125,12 +125,13 @@ console.log('[1] 五张卡：左边那列原样 + 右边灰色小字');
     JSON.stringify(r.map(x => [x.asideSize, x.asideColor])));
   /* ★ 用户口径：左右留白一致 —— 也就是"卡片左内沿到左边内容" = "卡片右内沿到右边内容"。
      （左边那列的宽度是内容撑的，不能拿两个元素的 left 直接比。） */
-  tOk('★ 左右留白一致（左字形 18px == 右字形 18px）',
-    r.every(x => Math.abs((x.pcolLeft - x.padLeft) - (x.padRight - x.lineTextRight)) <= 6),
-    JSON.stringify(r.map(x => [x.k, x.pcolLeft - x.padLeft, x.padRight - x.lineTextRight])));
-  /* 上下也要一致：右侧第一行的上边缘 = 卡片上边缘 + padding */
-  tOk('★ 右侧内容的上边缘也与卡片上留白一致',
-    r.every(x => Math.abs(x.asideTop - x.cardTop - parseFloat(x.asideSize)) <= 34),
+  /* ★ 7.2.6：说明改成**整行**排在卡片下半部（原来挤在右列 —— 真机上卡片只有 217~364px 宽，
+     实测把左边「作业未交」压成竖排）。所以留白口径也改：左边缘对齐左边内容的左边缘。 */
+  tOk('★ 7.2.6：说明整行铺开，左边缘与左边内容对齐（不再挤右列）',
+    r.every(x => Math.abs(x.asideLeft - x.pcolLeft) <= 2),
+    JSON.stringify(r.map(x => [x.k, x.asideLeft, x.pcolLeft])));
+  tOk('★ 7.2.6：说明排在左边内容**下面**（不是并排）',
+    r.every(x => x.asideTop > x.cardTop + 20),
     JSON.stringify(r.map(x => [x.k, x.asideTop - x.cardTop])));
   await shot('stat-cards');
   globalThis.__cards = r;
@@ -172,9 +173,15 @@ console.log('\n[2] 今日完成 / 历史完成：各分区完成数');
   tOk('★ 两列三行的网格 + 行距列距都是 18px（与左右留白同一个数）',
     r.history && r.history.rowGap === r.history.colGap && parseFloat(r.history.rowGap) > 0,
     JSON.stringify([r.history && r.history.rowGap, r.history && r.history.colGap]));
-  tOk('★ 右侧区块的右边缘比"卡片右内沿"再进去 18px（与左边字形留白一致）',
-    r.history && Math.abs((r.history.cardRightInner - r.history.rightEdge) - 18) <= 2,
-    JSON.stringify([r.history && r.history.rightEdge, r.history && r.history.cardRightInner]));
+  /* ★ 7.2.8：说明的落位分两档 —— 窄卡片（<520px）整行铺开、左对齐；宽卡片右对齐两列。
+     两档都不许"贴边越界"：内容必须落在卡片内沿之内。 */
+  const stacked = await ev('return window.innerWidth < 520;');
+  tOk(stacked ? '★ 7.2.8：窄卡片下说明整行铺开（左对齐、不越界）' : '★ 7.2.8：宽卡片下说明靠右对齐（右边缘=卡片右内沿）',
+    r.history && (stacked
+      ? (r.history.rects[0][0] >= 0 && Math.max.apply(null, r.history.rects.map(x => x[0])) < r.history.cardRightInner)
+      : Math.abs(r.history.rightEdge - r.history.cardRightInner) <= 2),
+    JSON.stringify({ stacked: stacked, rects: r.history && r.history.rects,
+      rightEdge: r.history && r.history.rightEdge, inner: r.history && r.history.cardRightInner }));
 }
 
 console.log('\n[3] 连续打勾：两行（累计天数 + 最长连打）');
