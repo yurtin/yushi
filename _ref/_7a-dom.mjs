@@ -19,13 +19,23 @@ const PORT = 8906, CDP = 9446;
 const html = fs.readFileSync(path.join(ROOT, '鱼事.html'), 'utf8');
 
 const MIN = 60000;
+/* 想法（种子）—— [B2] 要验"卡片页多选改成点整张卡"，得先有卡可点。 */
+const mkSeed = (id, title) => ({
+  id, raw: title, title, kind: 'seed', date: null, dateEnd: null, monthOnly: false,
+  time: null, repeat: null, zone: 'idea', tags: [], done: false, doneAt: null,
+  createdAt: Date.now() - 86400000, hw: null, pri: 0, parent: null,
+  sparks: [], bornFrom: null, promoted: null, suggest: [], reviewedAt: null, aiUse: null,
+});
 const seed = {
-  items: [],
+  items: [
+    Object.assign(mkSeed('s1', '第一条想法'), { sparks: [{ at: '2026-10-01', text: '一句续写' }] }),
+    mkSeed('s2', '第二条想法'),
+  ],
   notes: [
     { id: 'n1', title: '会议纪要', text: '今天讨论了排期。\n第二行内容。', createdAt: Date.now() - 86400000, updatedAt: Date.now() - 3600000 },
     { id: 'n2', title: '', text: '没有标题的一条\n它应该拿这一行当标题', createdAt: Date.now() - 2 * 86400000, updatedAt: Date.now() - 2 * 86400000 },
   ],
-  noteMode: false, noteTipSeen: false,
+  noteMode: false, noteTipSeen: false, ideaGestureSeen: true,
   tags: [], statLayout: 'card', hintOpen: false, showHelp: true, theme: 'light',
   lastBackup: Date.now(),
 };
@@ -73,6 +83,10 @@ const ev = async expr => {
 };
 await send('Runtime.enable'); await send('Page.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 400, height: 888, deviceScaleFactor: 3, mobile: true });
+/* ★ 必须仿真 `no-preference`：headless Chrome 默认是 `prefers-reduced-motion: reduce`，
+   而 CSS 那条全局 `*{animation:none!important}` 会把所有入场动画掐掉 ——
+   本脚本要验"详情页有没有换屏动画"，不设这一条就永远是假红（0G / 7D 追加都踩过）。 */
+await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
 await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/a.html` });
 for (let i = 0; i < 120; i++){ if (await ev('return document.readyState;') === 'complete') break; await sleep(120); }
 await sleep(1400);
@@ -146,6 +160,18 @@ console.log('[A] 首次进想法页：气泡在「想法」按钮上方，关掉
   await clickTab('list'); await sleep(200);
   await clickTab('idea'); await sleep(200);
   t('离开再回来：气泡不再出现', await ev("return document.getElementById('noteTip').hidden;"), true);
+  /* ★ 用户 2026-10-12："底部提示……的弹窗显示得太久了" —— 现在 3 秒自动收掉。
+     验一遍完整路径：忘掉"见过" → 再进想法页 → 气泡出现 → 等过 3 秒 → 自己没了、也算见过。 */
+  await clickTab('list'); await sleep(200);
+  await ev('S.noteTipSeen = false; save(); return 1;');
+  await clickTab('idea'); await sleep(260);
+  t('[自动消失] 重新进想法页，气泡又出现了', await ev("return document.getElementById('noteTip').hidden;"), false);
+  await sleep(3400);
+  t('[自动消失] 3 秒后自己收掉，并记下"见过"',
+    await ev("return [document.getElementById('noteTip').hidden, S.noteTipSeen];"), [true, true]);
+  await clickTab('list'); await sleep(160);
+  await clickTab('idea'); await sleep(200);
+  t('[自动消失] 之后再也不弹', await ev("return document.getElementById('noteTip').hidden;"), true);
 }
 
 /* ================= [B] 单击 vs 双击 ================= */
@@ -158,8 +184,23 @@ console.log('\n[B] 单击 = 进想法页（立即）· 300ms 内第二下 = 切�
   await dblReset();
   t('双击「想法」→ 切到长文', (await dblTab('idea'), await sleep(220), await ev('return S.noteMode;')), true);
   t('长文页渲染出列表卡', await ev("return [document.querySelectorAll('.note-card').length, !!document.querySelector('.note-detail')];"), [2, false]);
-  t('工具条上有「录入」与「卡片」两个出口',
-    await ev("return [!!document.querySelector('[data-note=\"new\"]'), !!document.querySelector('[data-note=\"card\"]')];"), [true, true]);
+  t('工具条上有「录入」与问号「操作提示」（「卡片」键已删）',
+    await ev("return [!!document.querySelector('[data-note=\"new\"]'), !!document.querySelector('[data-note=\"help\"]'), !!document.querySelector('.note-mode-back')];"),
+    [true, true, false]);
+  /* ★ 用户 2026-10-12 第 3 条：长文页也要有「想法」主标题 */
+  t('长文页顶部有与卡片页同款的「想法」主标题',
+    await ev("return [!!document.querySelector('.section-intro h2'), document.querySelector('.section-intro h2') ? document.querySelector('.section-intro h2').textContent : ''];"),
+    [true, '想法']);
+  /* ★ 用户 2026-10-12 第 5 条：右上角是操作提示，点开是一列说明 */
+  t('点问号 → 打开操作提示面板', await click('[data-note="help"]'), 'ok');
+  await sleep(220);
+  t('面板标题与内容（含"双击底栏想法"这条唯一入口）',
+    await ev(`var rows = [].map.call(document.querySelectorAll('#modal .gh-row'), function(r){ return r.textContent; });
+      return [document.getElementById('mask').classList.contains('on'), document.getElementById('modalTitle').textContent,
+        rows.length, rows.join('|').indexOf('双击底栏') >= 0];`),
+    [true, '长文页的操作', 6, true]);
+  await click('#nh_ok'); await sleep(240);
+  t('「知道了」关掉面板', await ev("return document.getElementById('mask').classList.contains('on');"), false);
   await dblReset();
   t('双击再切回卡片流', (await dblTab('idea'), await sleep(220),
     await ev("return [S.noteMode, !!document.querySelector('.idea-toolbar'), !!document.querySelector('.note-card')];")), [false, true, false]);
@@ -178,6 +219,48 @@ console.log('\n[B] 单击 = 进想法页（立即）· 300ms 内第二下 = 切�
   await dblTab('idea'); await sleep(220);
   t('回到长文页继续下面几段', await ev('return S.noteMode;'), true);
 }
+
+/* ================= [B2] 卡片想法页的多选：点整张卡 ================= */
+console.log('\n[B2] 卡片页多选改成「点整张卡」（用户第 4 条）');
+{
+  await dblReset();
+  await dblTab('idea'); await sleep(240);       // 回卡片流
+  t('回到卡片流（两张想法卡）',
+    await ev("return [S.noteMode, document.querySelectorAll('.idea-card').length];"), [false, 2]);
+  t('点右上角「多选」', await click('[data-act="mergestart"]'), 'ok');
+  await sleep(220);
+  t('进入多选态', await ev('return ideaUI.mergeMode;'), true);
+  t('卡片左边**不再**插勾选圆钮（.pick / .lead 一个都没有）',
+    await ev("return [document.querySelectorAll('.pick').length, document.querySelectorAll('.idea-card .lead').length];"), [0, 0]);
+  await ev(`var c = document.querySelector('.idea-card');
+    c.dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true })); return 1;`);
+  await sleep(220);
+  t('点整张卡 → 选中一条，卡片带 picked 描边',
+    await ev("return [ideaUI.mergeSel.size, !!document.querySelector('.idea-card.picked')];"), [1, true]);
+  await ev(`var c = document.querySelector('.idea-card');
+    c.dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true })); return 1;`);
+  await sleep(220);
+  t('再点一下 → 取消', await ev("return [ideaUI.mergeSel.size, !!document.querySelector('.idea-card.picked')];"), [0, false]);
+  /* 点卡片里的**子想法那一行**（.sp-tx[data-sparkedit]）也应当算"点整张卡" ——
+     多选态下不能把这一下抢去开"编辑子想法"。 */
+  await ev(`var t = document.querySelector('.idea-card .sp-tx[data-sparkedit]');
+    if (!t) return 'no-el';
+    t.dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true })); return 1;`);
+  await sleep(220);
+  t('点卡片里的子想法行同样算勾选（没被"编辑子想法"抢走）',
+    await ev("return [ideaUI.mergeSel.size, ideaUI.sparkOpen === null, !!document.querySelector('.idea-card.picked')];"),
+    [1, true, true]);
+  t('底部批次动作条还在（7 个动作，一个都没少）',
+    await ev("return document.querySelectorAll('.batch-bar .bb-acts .btn').length;"), 7);
+  t('退出多选', await click('[data-act="mergecancel"]'), 'ok');
+  await sleep(200);
+  t('多选态关掉后 picked 也没了',
+    await ev("return [ideaUI.mergeMode, ideaUI.mergeSel.size, !!document.querySelector('.idea-card.picked')];"), [false, 0, false]);
+  await dblReset();
+  await dblTab('idea'); await sleep(240);
+  t('回到长文页继续下面几段', await ev('return S.noteMode;'), true);
+}
+
 
 /* ================= [C] 列表卡的两行几何 ================= */
 console.log('\n[C] 列表卡两行 · 标题再长也不许把日期挤没');
@@ -225,6 +308,13 @@ console.log('\n[D] 详情页三段 · 共 N 字与实际字数一致');
   await sleep(240);
   t('还在想法页，只是多了一屏（S.view 没变、也没新增值）', await ev('return S.view;'), 'idea');
   t('详情页出现了', await ev("return !!document.querySelector('.note-detail');"), true);
+  /* ★ 用户 2026-10-12："点击长文本卡片的详情页时，它就直接跳转了，没有动画" ——
+     现在详情页带 `.pane from-right`，动画名与 7D 的二级页是同一条 logInRight。 */
+  t('详情页带换屏动画（.pane.from-right + logInRight）',
+    await ev(`var d = document.querySelector('.note-detail');
+      return [d.classList.contains('pane'), d.classList.contains('from-right'),
+        getComputedStyle(d).animationName, getComputedStyle(d).animationDuration];`),
+    [true, true, 'logInRight', '0.34s']);
   const order = await ev(`var a = document.querySelector('.nd-title'), b = document.querySelector('.nd-meta'), c = document.querySelector('.nd-text');
     if (!a || !b || !c) return 'missing';
     return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? ((b.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING) ? 'title-meta-text' : 'bad2') : 'bad1';`);
@@ -282,16 +372,27 @@ console.log('\n[E] 详情 → 全屏编辑 → 「返回」回长文页（不是
 }
 
 /* ================= [F] 保存 / 新建 ================= */
-console.log('\n[F] 「完成」保存改动 ·「录入」新建一条');
+console.log('\n[F] 「完成」= 存一下停在详情页 ·「录入」新建一条');
 {
   await click('.note-card'); await sleep(220);
   await click('.nd-title'); await sleep(160);
   await ev(`var t = document.getElementById('neTitle'); t.value = '改过的标题'; return 1;`);
   t('点「完成」', await click('#neSave'), 'ok');
-  await sleep(240);
-  t('编辑器关了、回到长文页',
-    await ev("return [document.getElementById('noteEdit').hidden, !!document.querySelector('.note-list')];"), [true, true]);
-  t('数据里标题已改', await ev(`var n = S.notes.filter(function(x){ return x.id === 'n1'; })[0]; return n.title;`), '改过的标题');
+  await sleep(300);
+  /* ★ 用户 2026-10-12 定稿：点「完成」**停在刚才那条的详情页**（不是退出到列表）。 */
+  t('编辑器关了，停在**详情页**（不是列表）',
+    await ev("return [document.getElementById('noteEdit').hidden, !!document.querySelector('.note-detail'), !!document.querySelector('.note-list')];"),
+    [true, true, false]);
+  t('详情页显示的就是刚改完的标题',
+    await ev("return document.querySelector('.nd-title').textContent;"), '改过的标题');
+  t('数据里标题也已改', await ev(`var n = S.notes.filter(function(x){ return x.id === 'n1'; })[0]; return n.title;`), '改过的标题');
+  /* 想接着写就再点一次标题 —— 这就是"完成不退出"留下的口子 */
+  t('再点标题又能进编辑（没被锁在只读态）', await click('.nd-title'), 'ok');
+  await sleep(160);
+  t('编辑器又开了', await ev("return document.getElementById('noteEdit').hidden;"), false);
+  t('点「返回」回列表', await click('#neBack'), 'ok');
+  await sleep(260);
+  t('回到长文列表', await ev("return [document.getElementById('noteEdit').hidden, !!document.querySelector('.note-list'), !!document.querySelector('.note-detail')];"), [true, true, false]);
   t('列表卡上也是新标题', await ev(`var c = document.querySelector('.note-card'); return c.querySelector('.nc-title').textContent;`), '改过的标题');
 
   const before2 = await ev('return S.notes.length;');
@@ -301,12 +402,19 @@ console.log('\n[F] 「完成」保存改动 ·「录入」新建一条');
   await ev(`document.getElementById('neTitle').value = '第一条草稿';
     document.getElementById('neText').value = '随手写的一行。\\n再一行。'; return 1;`);
   t('点「完成」落库', await click('#neSave'), 'ok');
-  await sleep(240);
+  await sleep(300);
   t('笔记数 +1', await ev('return S.notes.length;'), before2 + 1);
-  t('新笔记排在最前（按最近修改倒序）', await ev("return S.notes[0].title;"), '第一条草稿');
-  t('列表第一张卡就是它', await ev("return document.querySelector('.note-card .nc-title').textContent;"), '第一条草稿');
-  t('它**没有**进 S.items（B 方案的好处：提醒/统计都看不见它）', await ev('return S.items.length;'), 0);
+  t('新建的这条也直接停在它的详情页',
+    await ev("return [!!document.querySelector('.note-detail'), document.querySelector('.nd-title').textContent];"), [true, '第一条草稿']);
+  t('它**没有**进 S.items（B 方案的好处：提醒/统计都看不见它）', await ev('return S.items.length;'), 2);
   t('确认框没有残留', await ev("return document.getElementById('mask').classList.contains('on');"), false);
+  /* 回列表，[G] 段要按"重开还停在长文页"验 */
+  t('点返回回列表', await click('[data-note="back"]'), 'ok');
+  await sleep(280);
+  t('[返回] 列表带 from-left 换屏动画',
+    await ev(`var p = document.querySelector('#view > .pane');
+      return [!!p, p ? getComputedStyle(p).animationName : ''];`), [true, 'logInLeft']);
+  t('列表第一张卡是刚新建的那条', await ev("return document.querySelector('.note-card .nc-title').textContent;"), '第一条草稿');
 }
 
 /* ================= [G] 模式记住（重开还停在长文） ================= */

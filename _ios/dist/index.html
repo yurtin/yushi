@@ -3315,14 +3315,8 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
 }
 .sp-ok{background:var(--accent);color:#fff}
 .sp-cancel{background:var(--pill);color:var(--muted)}
-/* 多选态：勾选圆钮。与待办的 .tick 同尺寸同位置，只是语义是"选中"不是"完成"。 */
-.pick{
-  width:22px;height:22px;border-radius:50%;flex:0 0 auto;
-  border:1.5px solid var(--line,var(--pill));background:transparent;
-  color:transparent;font-size:12px;line-height:1;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;font-family:inherit;
-}
-.pick.on{background:var(--accent);border-color:var(--accent);color:#fff}
+/* ★ 7A 改：多选态下卡片左边那枚勾选圆钮（`.pick` / `.pick.on`）两条规则删除 ——
+   卡片流现在跟树状图、长文页同一条语义（点整张卡即勾选），没有任何元素再吃这两条。 */
 /* ★ 第 4 波：`.seed-acts`（长按说明那一行的外框）与 `.seed-acts .mini`（早期的 5 枚小按钮）
    两条规则一起删除 —— 元素已经从卡片模板里拿掉了，不留空转样式。 */
 /* ★ v5.0：时间轴上每步的两个小动作。
@@ -3373,13 +3367,16 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
    不新造一套视觉语言。 */
 
 /* 列表卡：两行。第一行 = 标题（flex:1 + 省略号）+ 日期（flex:0 0 auto）。
+   ★ 用户 2026-10-12 反馈："这个卡片有点难看，跟整体的 UI 风格不太适配" ——
+   上一版是自造的一套几何（圆角 20 / 内边距 14·16 / 自加 1px 描边），与全站卡片对不上。
+   现在**只复用项目自己的卡片语言**（照 `.zone` 那套）：圆角 32、左右内边距 20、
+   不画描边（`.glass` 的材质自己带边缘）、列表间距 14（同 `.idea-list`）。
    ⚠️ 这里**刻意不加** `font-variant-numeric:tabular-nums` —— 日期里有中文（9月30日），
    给含 CJK 的选择器加这条会触发字形回退，看着像"某一个字换了字体"（本项目踩过这个坑）。 */
-.note-list{display:grid;gap:12px;width:100%;margin:0 auto}
+.note-list{display:grid;gap:14px;width:100%;margin:0 auto}
 .note-card{
-  display:flex;flex-direction:column;gap:6px;width:100%;text-align:left;
-  padding:14px 16px;border-radius:20px;cursor:pointer;
-  border:1px solid var(--line,var(--pill));
+  display:flex;flex-direction:column;gap:7px;width:100%;text-align:left;
+  padding:16px 20px;border-radius:32px;cursor:pointer;
   color:var(--fg);font:inherit;
 }
 .note-card .nc-line1{display:flex;align-items:baseline;gap:10px;min-width:0;width:100%}
@@ -3395,10 +3392,20 @@ body[data-view="entry"] .capture-wrap{top:env(safe-area-inset-top)}
   font-size:12px;color:var(--muted);line-height:1.5;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-.note-card.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
-/* 工具条右端那枚「卡片」键（切回卡片流）。双击能切、但双击是**隐性**的，
-   没有可见出口的话，进长文后想回去就只能靠记得那个手势 —— 所以补一枚显式入口。 */
-.note-mode-back{margin-left:auto}
+/* 多选态选中：用 outline 而不是描边类 —— **不占布局、不改卡片几何**
+   （本项目在 6D 定过：卡内的投影/描边不许把布局撑歪）。offset 取负值画在内侧，
+   圆角跟卡片走，不会被任何 overflow 裁掉。 */
+.note-card.on{outline:2px solid var(--accent);outline-offset:-2px}
+/* ★ 7A 改（用户 2026-10-12："长文本页的多选功能，我觉得可以沿用到短文本页"）：
+   卡片想法页的多选与树状图 / 长文页统一 —— **点整张卡**即勾选。
+   原来卡片左边会插一枚 22px 勾选圆钮（`.pick`），它把卡片内部排版整体右移；
+   用户的原话是"这样既不会改变卡片内内容的先后顺序，也能更好地多选"。
+   那两条 `.pick` 规则随之删除（不留空转样式）。 */
+.idea-card.picked{outline:2px solid var(--accent);outline-offset:-2px}
+/* 工具条右端那枚问号键（长文页的操作提示，形状照想法页右上角那颗「手势说明」）。
+   ★ 用户 2026-10-12："那个『卡片』按钮就不要了……直接弄成长文页的操作提示，
+   就像『想法』卡片页右上角的问号按钮一样" —— 显式的切换键已删。 */
+.note-help{margin-left:auto}
 
 /* 详情页：三段 —— 标题 / 一行灰字（时间 + 共多少字）/ 全文（正常换行、不截断）。 */
 .note-detail{width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px}
@@ -6477,8 +6484,7 @@ function seedHTML(it, info){
     + (it.id === justAdded.id && Date.now() - justAdded.t < 1200 ? ' just-added' : '')
     + (it.id === aiSwapped.id && Date.now() - aiSwapped.t < 1600 ? ' ai-swapped' : '')
     /* ★ 3B：焦点落在想法上时卡片同样要有高亮（遥控器不只对着待办） */
-    + (aiIsFocused(it.id) ? ' ai-focus' : '');
-  /* 时间轴：一条竖脊 + 每步一个点。第一步是"种子本身"（记进来的那天），
+    + (aiIsFocused(it.id) ? ' ai-focus' : '');  /* 时间轴：一条竖脊 + 每步一个点。第一步是"种子本身"（记进来的那天），
      后面的都是它长出来的。日期用 createdAt 兜底 —— 老数据没有 at 也不会露出空标签。 */
   const first = it.createdAt ? ymd(new Date(it.createdAt)) : '';
   /* ★ v5.1.2：日期段按设置里的年/月/日拼（见 dateText）；**三段全关就不渲染这一格** ——
@@ -6522,11 +6528,11 @@ function seedHTML(it, info){
      但想法卡默认既没有勾选框、多数也没有子想法，于是每张卡左边都白留 22px + 11px 间隔，
      日期和那个蓝点被推到离边框 45px 外。现在**没有可放的东西就整列不渲染**：
      左边留给正文。折角键搬去线上之后，.lead 只剩"多选勾选键"这一种用途。 */
-  const lead = ideaUI.mergeMode
-    ? `<div class="lead"><button type="button" class="pick${ideaUI.mergeSel.has(it.id) ? ' on' : ''}" data-act="pick" data-id="${esc(it.id)}" role="checkbox" aria-checked="${ideaUI.mergeSel.has(it.id) ? 'true' : 'false'}" title="选中以合并">✓</button></div>`
-    : '';
+  /* ★ 7A 改（用户 2026-10-12）：多选态下**不再**在卡片左边插那枚 22px 勾选圆钮 ——
+     勾选改成"点整张卡"（与树状图 `.tree-node.picked`、长文页 `.note-card` 同一条语义），
+     卡片内部的排版因此一个字都不动。选中态由 `.idea-card.picked`（外框 outline）表达，
+     那个类在 renderIdeas 的 card() 里挂 —— 这里连 .lead 整块都不再产出。 */
   return `<div class="${cls}" data-id="${esc(it.id)}" data-fk="i:${esc(it.id)}" data-u="0">
-    ${lead}
     <div class="body">
       ${spine}
       <div class="meta">
@@ -7870,7 +7876,7 @@ function renderIdeas(){
      缩进最多 4 层、16px 一步；第 5 层起不再缩进 —— 400px 手机上再缩就把卡片压成一条，
      改在卡上显示「第 N 层」小标，层级信息不丢。 */
   const card = (it, depth, kidCount, folded) =>
-    `<div class="glass zone zone-wide idea-card${it.done ? ' used' : ''}${isSleeping(it) ? ' sleep' : ''}${rv()}" data-z="idea">
+    `<div class="glass zone zone-wide idea-card${it.done ? ' used' : ''}${isSleeping(it) ? ' sleep' : ''}${ideaUI.mergeSel.has(it.id) ? ' picked' : ''}${rv()}" data-z="idea">
       <div class="ic-body">${seedHTML(it, { depth, kidCount, folded })}</div>
     </div>`;
   function treeHTML(list){
@@ -12203,10 +12209,16 @@ let refreshSeq = 0;
    ------------------------------------------------------------------ */
 
 /* 会话级状态（与 statPage 同一套生命周期：**故意不进 S、不进备份**，换页就回到列表）。
-   ⚠️ S.noteMode / S.noteTipSeen 在 S 里（要跨启动记住），这里这两个不进。 */
+   ⚠️ S.noteMode / S.noteTipSeen 在 S 里（要跨启动记住），这里这三个不进。 */
 let notePage = null;                      // 详情页正在看哪一条（null = 在列表）
 let noteEditId = null;                    // 全屏编辑器正在编辑哪一条（null = 新建）
 let noteTabAt = 0;                        // 底栏「想法」上一次点击的时刻（双击判定）
+let noteTipT = 0;                         // 首次气泡的自动消失定时器
+/* ★ 用户 2026-10-12："点击长文本卡片的详情页时，它就直接跳转了，没有动画" ——
+   换屏方向记在这里，由 renderNotes 写给那一屏的 `.pane` 类。
+   口径与 7D 追加的二级页**完全一致**：前进（列表→详情）从右滑入、返回从左滑入，
+   0.34s 同一条缓出曲线 + 位移 30px + 淡入（复用 .pane.from-right / from-left）。 */
+let noteDir = 'from-right';
 const noteUI = { selMode: false, sel: new Set() };
 
 function noteById(id){ return S.notes.find(n => n.id === id) || null; }
@@ -12272,7 +12284,18 @@ function notesToolbarHTML(){
       : `<button type="button" class="btn key" data-note="multi" aria-label="多选" title="多选：勾几条一起删"${has ? '' : ' disabled'}>
            <svg class="btn-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
          </button>`}
-    <button type="button" class="btn note-mode-back" data-note="card">卡片</button>
+    <!-- ★ 用户 2026-10-12："那个『卡片』按钮就不要了，因为正常情况下也没有这个切换功能。
+         我觉得可以直接弄成长文页的操作提示，就像『想法』卡片页右上角的问号按钮一样。"
+         → 显式的模式切换键删除（切回卡片仍然是双击底栏「想法」），
+           这里换成与想法页同款、同位置（右端）的问号「操作提示」。 -->
+    <button type="button" class="bar-ico idea-help note-help" data-note="help"
+            aria-label="长文页的操作提示" title="操作提示">
+      <svg class="np-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="9.2"/>
+        <path d="M9.4 9.5a2.7 2.7 0 1 1 3.5 2.55c-.9.32-1.4 1.05-1.4 2v.35"/>
+        <path d="M11.5 17.3h.01"/>
+      </svg>
+    </button>
   </div>`;
 }
 function notesListHTML(){
@@ -12300,25 +12323,43 @@ function notesListHTML(){
   return h;
 }
 /* 详情页：**三段** —— 标题 / 一行灰字（时间 + 共多少字）/ 全文（正常换行、不截断）。
-   点标题或点内容都进编辑（两个元素都挂 data-note="edit:<id>"）。 */
+   点标题或点内容都进编辑（两个元素都挂 data-note="edit:<id>"）。
+   ★ 用户 2026-10-12："点击长文本卡片的详情页时，它就直接跳转了，没有动画" ——
+   根节点带上 `.pane from-right/from-left`（与 7D 追加的二级页同一套换页动画）。 */
 function noteDetailHTML(id){
+  const pane = 'pane ' + (noteDir === 'from-left' ? 'from-left' : 'from-right');
   const bar = `<div class="nd-bar"><button type="button" class="btn" data-note="back">← 想法</button></div>`;
   const n = noteById(id);
-  if (!n) return `<div class="note-detail">${bar}<div class="empty">这条笔记已经不在了。</div></div>`;
+  if (!n) return `<div class="note-detail ${pane}">${bar}<div class="empty">这条笔记已经不在了。</div></div>`;
   const eid = esc(n.id);
   const body = n.text
     ? esc(n.text)
     : `<span class="nd-empty" style="color:var(--faint)">还没有正文 —— 点这里开始写</span>`;
-  return `<div class="note-detail">
+  return `<div class="note-detail ${pane}">
     ${bar}
     <h2 class="nd-title" data-note="edit:${eid}">${esc(noteTitle(n))}</h2>
     <p class="nd-meta">${esc(noteTimeText(n))} · 共 ${noteCharCount(n)} 字</p>
     <div class="nd-text" data-note="edit:${eid}">${body}</div>
   </div>`;
 }
+/* ★ 用户 2026-10-12："就算切换到长文本页，卡片界面上方『想法』的主标题是不变的，
+   只是底下的展示内容变了而已。" —— 长文页顶部补上与卡片页同款的标题区
+   （同一个 .section-intro / .section-kicker / h2 结构，说明文字改成长文页自己的）。
+   只长文列表有；详情页不加（那是子屏，有自己的返回键与标题）。 */
+function notesIntroHTML(){
+  return `<div class="section-intro${rv()}">
+    <p class="section-kicker">Idea</p>
+    <h2>想法</h2>
+    <p class="intro-note">这里是<b>草稿纸</b>：一大段原样贴进来就行，不用拆、不用整理。右上角 <b>?</b> 写着这一页的全部操作。</p>
+  </div>`;
+}
 /* 长文页的唯一渲染入口。与 renderIdeas 分工：谁在渲染由 refresh() 按 S.noteMode 决定。 */
 function renderNotes(){
-  view.innerHTML = notePage ? noteDetailHTML(notePage) : notesToolbarHTML() + notesListHTML();
+  const pane = 'pane ' + (noteDir === 'from-left' ? 'from-left' : 'from-right');
+  if (notePage){ view.innerHTML = noteDetailHTML(notePage); return; }
+  /* 列表整块包一个 `.pane`：换屏动画作用在容器上（滑进），
+     里面的标题/工具条/卡片各自还带 rv() 逐块淡入 —— 与 7D 的二级页同一套叠法。 */
+  view.innerHTML = `<div class="${pane}">` + notesIntroHTML() + notesToolbarHTML() + notesListHTML() + `</div>`;
 }
 
 /* 列表 ↔ 详情 ↔ 模式切换。全部走 refresh()（rAF 收口，同项目既有做法）。 */
@@ -12329,20 +12370,26 @@ function noteOpen(id){
   }
   const n = noteById(id);
   if (!n){ toast('这条笔记已经删掉了'); refresh(); return; }
+  /* ★ 用户 2026-10-12："它就直接跳转了，没有动画" —— 两处一起改：
+     ① 换屏方向（`.pane.from-right`，从右滑入 30px + 淡入）；
+     ② 回顶改成**平滑**滚动（原来是无动画的瞬时跳，那一下也是"直接跳转"的来源）。 */
+  noteDir = 'from-right';
   notePage = id; ANIM = true; refresh();
-  window.scrollTo({ top: 0 });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function noteClose(){
+  noteDir = 'from-left';
   notePage = null; ANIM = true; refresh();
-  window.scrollTo({ top: 0 });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function noteSetMode(on){
   S.noteMode = !!on;
+  noteDir = 'from-right';
   notePage = null;
   noteUI.selMode = false; noteUI.sel.clear();
   save();
   ANIM = true; refresh();
-  window.scrollTo({ top: 0 });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
   hideNoteTip();
 }
 function noteBatchDel(){
@@ -12393,13 +12440,19 @@ function noteEditDirty(){
 }
 /* 「完成」= 保存并回**长文页**；「返回」= 有改动先问一句，确认后**逐字段零变化**地回长文页。
    两条出口都会清掉 notePage（需求 1.4：编辑里返回要去长文页，不是回详情页）。 */
-function noteEditExit(){
+/* 两条出口（用户 2026-10-12 定稿）：
+   · 「完成」= **存一下，停在刚才那条的详情页**（只读看全文那页），不退出到列表；
+     新建的那条也直接进它的详情页 —— 刚写完就想看一眼。
+   · 「返回」= 回**长文页**（列表）；有改动先问一句，确认后逐字段零变化。
+   ⚠️ 区别只在 stayId：传了就是"停在详情"，没传就是回列表。 */
+function noteEditExit(stayId){
   const box = document.getElementById('noteEdit');
   if (box) box.hidden = true;
   noteEditId = null;
-  notePage = null;
+  notePage = stayId || null;
+  noteDir = stayId ? 'from-right' : 'from-left';
   ANIM = true; refresh();
-  window.scrollTo({ top: 0 });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function noteEditSave(){
   const box = document.getElementById('noteEdit');
@@ -12409,15 +12462,18 @@ function noteEditSave(){
   const title = ti ? ti.value.trim() : '';
   const text = tx ? tx.value : '';
   const now = Date.now();
+  let stay = noteEditId;
   if (noteEditId){
     const n = noteById(noteEditId);
     if (n){ n.title = title; n.text = text; n.updatedAt = now; }
   } else if (title || text.trim()){
-    S.notes.unshift({ id: uid(), title, text, createdAt: now, updatedAt: now });
+    const nn = { id: uid(), title, text, createdAt: now, updatedAt: now };
+    S.notes.unshift(nn);
+    stay = nn.id;
   }
   noteEditId = null;
   save();
-  noteEditExit();
+  noteEditExit(stay);
   toast('已保存');
 }
 function noteEditBack(){
@@ -12427,7 +12483,10 @@ function noteEditBack(){
 
 /* 首次进想法页的气泡：「双击可切换至长文本」。
    位置按「想法」按钮的**实测矩形**算（底栏高度、安全区都会变，写死必然错位）。
-   记录口径：**关掉才算见过**（S.noteTipSeen）—— 用户没点掉就走开，下次进来还该提醒他。 */
+   记录口径：**关掉才算见过**（S.noteTipSeen）—— 用户没点掉就走开，下次进来还该提醒他。
+   ★ 用户 2026-10-12："底部提示『双击即可进入长文本页』的弹窗显示得太久了" ——
+   上一版是"不点就一直在"；现在**3 秒自动收掉**（收掉等于关掉，同样算见过，不再重复打扰）。 */
+const NOTE_TIP_MS = 3000;
 function maybeNoteTip(){
   const tip = document.getElementById('noteTip');
   if (!tip) return;
@@ -12442,8 +12501,12 @@ function maybeNoteTip(){
   tip.style.left = Math.round(left) + 'px';
   tip.style.top = Math.round(Math.max(12, r.top - th - 10)) + 'px';
   tip.style.setProperty('--tip-x', Math.round(cx - left) + 'px');
+  /* 自动收掉。每次重新显示都会重排一次定时器（用户在这一屏里点别的不会把它取消）。 */
+  if (noteTipT) clearTimeout(noteTipT);
+  noteTipT = setTimeout(() => { noteTipT = 0; noteTipClose(); }, NOTE_TIP_MS);
 }
 function hideNoteTip(){
+  if (noteTipT){ clearTimeout(noteTipT); noteTipT = 0; }
   const tip = document.getElementById('noteTip');
   if (tip) tip.hidden = true;
 }
@@ -12452,11 +12515,32 @@ function noteTipClose(){
   S.noteTipSeen = true; save();
 }
 
+/* ★ 长文页的操作提示（右上角那枚问号）。形状照 openGestureHelp：
+   同一个 .mask/.modal + 同一套 .gh-list/.gh-row，只是内容是长文页自己的。 */
+function openNoteHelp(){
+  mask.classList.remove('sheet-mode');
+  modal.innerHTML =
+    `<h3 id="modalTitle">长文页的操作</h3>
+     <div class="gh-list">
+       <div class="gh-row"><b>双击底栏的「想法」</b><span>在长文页和卡片（想法）页之间切换</span></div>
+       <div class="gh-row"><b>点一张卡</b><span>看它的全文</span></div>
+       <div class="gh-row"><b>点标题 / 点正文</b><span>进全屏编辑（像备忘录那样）</span></div>
+       <div class="gh-row"><b>右上角「完成」</b><span>存一下，停在刚才那条的全文页；想接着写就再点一次标题</span></div>
+       <div class="gh-row"><b>左上角「返回」</b><span>回长文列表（有没存的改动会先问你一句）</span></div>
+       <div class="gh-row"><b>左上「＋」/「多选」</b><span>新建一条 / 点几张卡勾起来一起删</span></div>
+     </div>
+     <div class="foot"><div class="spacer"></div>
+       <button class="btn primary" id="nh_ok">知道了</button></div>`;
+  openMask();
+  document.getElementById('nh_ok').onclick = closeModal;
+}
+
 /* 长文页里的所有动作都从 #view 的委托进来（data-note="动词[:参数]"）。
    返回 true = 已处理（委托那边据此 return）。 */
 function noteAct(el){
   const v = String((el && el.dataset && el.dataset.note) || '');
   if (v === 'new'){ noteEditOpen(null); return true; }
+  if (v === 'help'){ openNoteHelp(); return true; }
   if (v === 'card'){ noteSetMode(false); return true; }
   if (v === 'back'){ noteClose(); return true; }
   if (v === 'multi'){ noteUI.selMode = true; noteUI.sel.clear(); refresh(); return true; }
@@ -13614,6 +13698,25 @@ view.addEventListener('click', e => {
      不去挤 data-act 那一长串 if（那串里还挂着种子/待办的动作语义）。 */
   const noteEl = e.target.closest ? e.target.closest('[data-note]') : null;
   if (noteEl && noteAct(noteEl)) return;
+  /* ★ 7A 改（用户 2026-10-12："长文本页的多选功能，我觉得可以沿用到短文本页"）：
+     卡片流的多选现在是**点整张卡**即勾选 —— 与树状图（`.tree-node` 那段监听）、
+     长文页（`.note-card` 走 noteOpen）完全同一套语义。
+     ⚠️ 必须留在下面 `if (!el) return;` **之前**：卡片本身没有 data-act，
+     多选态下点它时 `el` 是 null，放在后面就永远轮不到这里。
+     长按手势在多选态本来就被禁用（见卡片 pointerdown 里那句 `ideaUI.mergeMode` 守卫），
+     所以这里不必再防"长按松手补发的 click"（那一发只在手势态成立后才有）。 */
+  if (ideaUI.mergeMode){
+    const mc = e.target.closest ? e.target.closest('.idea-card') : null;
+    if (mc && !(e.target.closest && e.target.closest('button, [data-act], a, input'))){
+      const seedEl = mc.querySelector('.item.seed[data-id]');
+      const mid = seedEl ? seedEl.dataset.id : null;
+      if (mid){
+        if (ideaUI.mergeSel.has(mid)) ideaUI.mergeSel.delete(mid);
+        else ideaUI.mergeSel.add(mid);
+        refresh(); return;
+      }
+    }
+  }
   /* ★ 7B：卡片右下那枚「在哪一栏」的 chip —— 点它换一栏（= 一次教学信号）。
      必须**留在上面那串选择器之外**：它一旦挂 data-act，长按手势的排除名单就会把它吃掉
      （与 5I 给 .sp-tx 留的那条口子同一个理由）。 */
@@ -13885,11 +13988,8 @@ view.addEventListener('click', e => {
   /* ---- 随手记 / 种子（v3.50）----
      这一组 action 全部只可能出现在想法页或编辑器里，和待办的 tick/del/edit 不冲突。
      顺序放在待办那几行之前：seeduse 与 tick 长得像，先拦住，免得种子误入待办的 CRT 退场。 */
-  if (act === 'pick' && it){
-    if (ideaUI.mergeSel.has(it.id)) ideaUI.mergeSel.delete(it.id);
-    else ideaUI.mergeSel.add(it.id);
-    refresh(); return;
-  }
+  /* ★ 7A 改：`data-act="pick"` 那条分支删了 —— 那是卡片左边勾选圆钮的动作，
+     现在卡片流的多选是"点整张卡"（见上面那段 .idea-card 的委托）。 */
   if (act === 'mergestart'){ ideaUI.mergeMode = true; ideaUI.mergeSel.clear(); refresh(); return; }
   if (act === 'mergecancel'){ ideaUI.mergeMode = false; ideaUI.mergeSel.clear(); refresh(); return; }
   /* ---------------- ★ v5.0 多选批量的动作（第 2 批第 1 块） ----------------
@@ -17132,13 +17232,13 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '7.0.0';
+const APP_VERSION = '7.1.0';
 /* ★ 7D：「更新日志」面板的数据源。**由 _sync-build.mjs 从仓库根目录的 `更新日志.md` 注入**，
    跟 APP_VERSION 同一套机制（"恰好一处否则拒绝改"）。
    ⚠️ 这一行是**构建产物**：手改会被下次 `node _ref/_sync-build.mjs` 覆盖；
    要改更新说明就改 `更新日志.md`（它是唯一真相源）。这里留一个空数组占位，
    让没跑过 sync-build 的页面也能正常渲染（面板会显示"这一版没有更新说明"）。 */
-const CHANGELOG = [{"v":"7.0.0","items":["「想法」多了一张**草稿纸**：双击底栏最左边那个「想法」，就能在「卡片」和「长文」之间切换","长文里可以原样贴一大段，不用拆、不用整理，也不用先想清楚 —— 列表上只显示标题、日期和开头那一行，全文点进去才看","点标题或点正文都能进全屏编辑，左上角「返回」直接回长文列表","它跟待办、想法是分开的：不提醒、不进统计，所以不会打扰你已经理好的那些事（笔记会跟着备份一起走，换手机不会丢）"]},{"v":"6.3.1","items":["更新日志和「AI 连接」这两个面板补上了出入场动画：换页会横向滑进滑出，展开条目也是慢慢撑开，和页面其它地方一致"]},{"v":"6.3.0","items":["设置页重新分组了：功能 / AI / 外观与体感 / 数据，跟 AI 有关的都在「AI」这一栏","每一栏都要自己点开，不再假装知道哪一栏最常用","「数据」最底下那行版本号，点开就能看这一版改了什么，翻到下面还能看以前每一版"]},{"v":"6.2.0","items":["分区可以自己建、改名、删除、上下移了","删掉某个分区时，里面的待办会进「未分组」，一条都不会丢","时间识别补齐一批：`月底`、`月初`、`年底`、`下个月这个时候`","全角数字也能认了（`３号` 和 `3号` 一样）","只有钟点、没写日期的待办，现在落在「短期」而不是「长期」"]},{"v":"6.1.1","items":["修复了一些问题"]},{"v":"6.1.0","items":["设置页重新分组了：常用的排前面，不常用的折叠起来","AI 的配置（key、接口地址、模型名）收进了一个二级页，主列表清爽了","「关于」不再单独占一栏，收进了「数据」","「点一下执行一次」的按钮（试连接、备份这些）变得更好认了"]},{"v":"6.0.0","items":["清单页的分区从固定的三个，变成**你自己定义**的：想要「学习 / 工作 / 生活」就自己加","把一条待办挪到某个分区，挪两次它就学会了：以后同类内容直接归到那儿","想精细控制，可以在设置里写给 AI 的规则说明（不写也能用）"]},{"v":"5.17.2","items":["修复了一些问题"]},{"v":"5.17.1","items":["子想法现在可以直接点着改（每一层都能改）","下滑续写不再被旁边的卡片抢走"]},{"v":"5.17.0","items":["时间识别大补齐：`昨天`、`今晚`、`明早`、`9月15号`、`14号到19号`、`三天后`、`下下周三` 这些以前不认的说法，现在都能认"]},{"v":"5.16.3","items":["正在进行的日期区间现在显示绿色（以前显示成还没开始的灰）","收起分区时不再削掉卡片一块"]},{"v":"5.16.2","items":["逾期改成看截止日（一个 10/8~10/11 的区间，过了 10/11 才算逾期）","`17号 开会` 这种写法能认了","删掉了卡片左边那条蓝色竖条"]},{"v":"5.16.1","items":["修复了一些问题"]},{"v":"5.16.0","items":["把 AI 关掉之后，本地也能认一批时间说法（`17号 开会`、`大后天` 这些）"]},{"v":"5.15.1","items":["删一个有子任务的待办时，会先问一句「一起删还是只删这条」","撤销能把父子关系一起还原"]},{"v":"5.15.0","items":["提醒更准了（改用系统闹钟那一档）","设置页多了一行「上次提醒：排 xx:xx · 实际 xx:xx」，能看出到底准不准","晚得多的话，多一个「去放行」的入口（省电限制会让闹钟晚几分钟）"]},{"v":"5.14.1","items":["`1分钟后`、`三天后` 这类相对时间，本地也能认了"]},{"v":"5.14.0","items":["到点提醒改成横幅 + 响铃（不再只有全屏）","通知上多了两枚按钮：「知道了」和「稍后 5 分钟」","响铃页可以上滑取消"]},{"v":"5.13.0","items":["汉字钟点也能认了（`晚上九点五十一 看书`）","图片识别出来的条目，可以逐条点开改"]},{"v":"5.12.0","items":["加了「锁屏时全屏响铃」开关（默认关）"]},{"v":"5.11.1","items":["修复了一些问题"]},{"v":"5.11.0","items":["录入条左边多了一个图片键：拍照或截图，能直接识别成待办"]},{"v":"5.10.1","items":["修复了一些问题"]},{"v":"5.10.0","items":["循环支持「每周三」「每月1号」这种写法了"]},{"v":"5.9.0","items":["可以对着已有的待办说「改成明天下午三点」，它自己找那一条改"]},{"v":"5.8.0","items":["底层改进（这一版没有界面上能直接看到的变化）"]},{"v":"5.7.1","items":["修复了一些问题"]},{"v":"5.7.0","items":["AI 会判断一句话该记成待办还是想法","语音的两条路（直接记 / 先编辑）都会先让 AI 纠正一遍"]},{"v":"5.6.1","items":["修复了一些问题"]},{"v":"5.5.3","items":["修复了一些问题"]},{"v":"5.5.2","items":["修复了一些问题"]},{"v":"5.5.1","items":["修复了一些问题"]},{"v":"5.5.0","items":["到点提醒（通知）上线"]},{"v":"5.4.1","items":["修复了一些问题"]},{"v":"5.4.0","items":["统计页的数字可以点进去看明细了"]},{"v":"5.3.3","items":["修复了一些问题"]},{"v":"5.3.2","items":["修复了一些问题"]},{"v":"5.3.1","items":["修复了一些问题"]},{"v":"5.3.0","items":["父子任务的显示和勾选闭环了（父任务完成时子任务不再散架）"]},{"v":"5.2.4","items":["数据安全加固：存档坏掉时不再把整个 app 弄崩"]},{"v":"5.2.0","items":["修复了一些问题"]},{"v":"5.1.1","items":["设置页从 8 栏收成 5 栏","树状图：打开不再缩到看不清，竖向也能滑了"]},{"v":"5.0.0","items":["想法系统（把想法记下来、拆成子想法、再立项成待办）"]},{"v":"4.x","items":["长按手势（右滑立项 / 左滑编辑 / 下滑续写 / 拖到另一条上合并）","多选批量操作","想法页的树状图视图","默认落点设置"]},{"v":"3.x","items":["想法系统上线（缩进树、回顾抽屉、立项三步走）"]},{"v":"2.x","items":["最初的单文件待办应用"]}]; /* CHANGELOG-INJECT-POINT */
+const CHANGELOG = [{"v":"7.1.0","items":["长文页顶部现在也有「想法」这个大标题了 —— 切到长文只是换了下半截内容，不是换了一个页面","长文页右上角那枚「卡片」换成了 **?**：点开写着这一页的全部操作（怎么切回卡片、怎么进编辑、两个出口各去哪）","点「完成」不再一脚踢回列表：它会**停在刚才那条的全文页**，想接着写就再点一次标题；只有左上「返回」才是回列表","卡片页的「多选」改成**点整张卡**就勾上（和长文页、树状图一致），卡片里面的排版不会再因为多选而挪位置","列表卡换成了和全站一样的圆角与留白；点进全文、点回列表都补上了滑动淡入的动画","首次那个「双击可切换至长文本」的提示会自己收掉，不用手动点"]},{"v":"7.0.0","items":["「想法」多了一张**草稿纸**：双击底栏最左边那个「想法」，就能在「卡片」和「长文」之间切换","长文里可以原样贴一大段，不用拆、不用整理，也不用先想清楚 —— 列表上只显示标题、日期和开头那一行，全文点进去才看","点标题或点正文都能进全屏编辑，左上角「返回」直接回长文列表","它跟待办、想法是分开的：不提醒、不进统计，所以不会打扰你已经理好的那些事（笔记会跟着备份一起走，换手机不会丢）"]},{"v":"6.3.1","items":["更新日志和「AI 连接」这两个面板补上了出入场动画：换页会横向滑进滑出，展开条目也是慢慢撑开，和页面其它地方一致"]},{"v":"6.3.0","items":["设置页重新分组了：功能 / AI / 外观与体感 / 数据，跟 AI 有关的都在「AI」这一栏","每一栏都要自己点开，不再假装知道哪一栏最常用","「数据」最底下那行版本号，点开就能看这一版改了什么，翻到下面还能看以前每一版"]},{"v":"6.2.0","items":["分区可以自己建、改名、删除、上下移了","删掉某个分区时，里面的待办会进「未分组」，一条都不会丢","时间识别补齐一批：`月底`、`月初`、`年底`、`下个月这个时候`","全角数字也能认了（`３号` 和 `3号` 一样）","只有钟点、没写日期的待办，现在落在「短期」而不是「长期」"]},{"v":"6.1.1","items":["修复了一些问题"]},{"v":"6.1.0","items":["设置页重新分组了：常用的排前面，不常用的折叠起来","AI 的配置（key、接口地址、模型名）收进了一个二级页，主列表清爽了","「关于」不再单独占一栏，收进了「数据」","「点一下执行一次」的按钮（试连接、备份这些）变得更好认了"]},{"v":"6.0.0","items":["清单页的分区从固定的三个，变成**你自己定义**的：想要「学习 / 工作 / 生活」就自己加","把一条待办挪到某个分区，挪两次它就学会了：以后同类内容直接归到那儿","想精细控制，可以在设置里写给 AI 的规则说明（不写也能用）"]},{"v":"5.17.2","items":["修复了一些问题"]},{"v":"5.17.1","items":["子想法现在可以直接点着改（每一层都能改）","下滑续写不再被旁边的卡片抢走"]},{"v":"5.17.0","items":["时间识别大补齐：`昨天`、`今晚`、`明早`、`9月15号`、`14号到19号`、`三天后`、`下下周三` 这些以前不认的说法，现在都能认"]},{"v":"5.16.3","items":["正在进行的日期区间现在显示绿色（以前显示成还没开始的灰）","收起分区时不再削掉卡片一块"]},{"v":"5.16.2","items":["逾期改成看截止日（一个 10/8~10/11 的区间，过了 10/11 才算逾期）","`17号 开会` 这种写法能认了","删掉了卡片左边那条蓝色竖条"]},{"v":"5.16.1","items":["修复了一些问题"]},{"v":"5.16.0","items":["把 AI 关掉之后，本地也能认一批时间说法（`17号 开会`、`大后天` 这些）"]},{"v":"5.15.1","items":["删一个有子任务的待办时，会先问一句「一起删还是只删这条」","撤销能把父子关系一起还原"]},{"v":"5.15.0","items":["提醒更准了（改用系统闹钟那一档）","设置页多了一行「上次提醒：排 xx:xx · 实际 xx:xx」，能看出到底准不准","晚得多的话，多一个「去放行」的入口（省电限制会让闹钟晚几分钟）"]},{"v":"5.14.1","items":["`1分钟后`、`三天后` 这类相对时间，本地也能认了"]},{"v":"5.14.0","items":["到点提醒改成横幅 + 响铃（不再只有全屏）","通知上多了两枚按钮：「知道了」和「稍后 5 分钟」","响铃页可以上滑取消"]},{"v":"5.13.0","items":["汉字钟点也能认了（`晚上九点五十一 看书`）","图片识别出来的条目，可以逐条点开改"]},{"v":"5.12.0","items":["加了「锁屏时全屏响铃」开关（默认关）"]},{"v":"5.11.1","items":["修复了一些问题"]},{"v":"5.11.0","items":["录入条左边多了一个图片键：拍照或截图，能直接识别成待办"]},{"v":"5.10.1","items":["修复了一些问题"]},{"v":"5.10.0","items":["循环支持「每周三」「每月1号」这种写法了"]},{"v":"5.9.0","items":["可以对着已有的待办说「改成明天下午三点」，它自己找那一条改"]},{"v":"5.8.0","items":["底层改进（这一版没有界面上能直接看到的变化）"]},{"v":"5.7.1","items":["修复了一些问题"]},{"v":"5.7.0","items":["AI 会判断一句话该记成待办还是想法","语音的两条路（直接记 / 先编辑）都会先让 AI 纠正一遍"]},{"v":"5.6.1","items":["修复了一些问题"]},{"v":"5.5.3","items":["修复了一些问题"]},{"v":"5.5.2","items":["修复了一些问题"]},{"v":"5.5.1","items":["修复了一些问题"]},{"v":"5.5.0","items":["到点提醒（通知）上线"]},{"v":"5.4.1","items":["修复了一些问题"]},{"v":"5.4.0","items":["统计页的数字可以点进去看明细了"]},{"v":"5.3.3","items":["修复了一些问题"]},{"v":"5.3.2","items":["修复了一些问题"]},{"v":"5.3.1","items":["修复了一些问题"]},{"v":"5.3.0","items":["父子任务的显示和勾选闭环了（父任务完成时子任务不再散架）"]},{"v":"5.2.4","items":["数据安全加固：存档坏掉时不再把整个 app 弄崩"]},{"v":"5.2.0","items":["修复了一些问题"]},{"v":"5.1.1","items":["设置页从 8 栏收成 5 栏","树状图：打开不再缩到看不清，竖向也能滑了"]},{"v":"5.0.0","items":["想法系统（把想法记下来、拆成子想法、再立项成待办）"]},{"v":"4.x","items":["长按手势（右滑立项 / 左滑编辑 / 下滑续写 / 拖到另一条上合并）","多选批量操作","想法页的树状图视图","默认落点设置"]},{"v":"3.x","items":["想法系统上线（缩进树、回顾抽屉、立项三步走）"]},{"v":"2.x","items":["最初的单文件待办应用"]}]; /* CHANGELOG-INJECT-POINT */
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：

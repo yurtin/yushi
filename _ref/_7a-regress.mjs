@@ -308,8 +308,15 @@ console.log('\n[7] 红线 · 双击入口、层序、两条出口');
   tOk('气泡位置是按按钮实测矩形算的（不是写死的 top）', /r\.top - th - 10/.test(html));
 
   const exit = extractFn(html, 'noteEditExit');
-  tOk('「返回」回的是**长文页**（notePage 清空），不是详情页', /notePage = null;/.test(exit));
-  tOk('「完成」= 保存（写 S.notes 后走同一个 exit）', /noteEditId = null;\s*save\(\);\s*noteEditExit\(\);/.test(extractFn(html, 'noteEditSave')));
+  tOk('「返回」回的是**长文页**（不传 stayId → notePage 清空）', /notePage = stayId \|\| null;/.test(exit));
+  /* ★ 用户 2026-10-12 定稿：「完成」= 保存后**停在详情页**（不是退出到列表）。
+     实现靠 noteEditExit(stayId)：保存那条 id 传进去 → notePage 停在它身上。 */
+  tOk('「完成」保存后把那条 id 交给 exit（= 停在详情页）',
+    /noteEditExit\(stay\)/.test(extractFn(html, 'noteEditSave'))
+    && /stay = noteEditId;/.test(extractFn(html, 'noteEditSave'))
+    && /stay = nn\.id;/.test(extractFn(html, 'noteEditSave')));
+  tOk('exit 传了 stayId 就停在详情、不传就回列表（同一个出口两个分支）',
+    /noteDir = stayId \? 'from-right' : 'from-left';/.test(exit));
   tOk('有改动时「返回」先问一句（取消 = 逐字段零变化）', /uiConfirm\('放弃这次的修改？'/.test(extractFn(html, 'noteEditBack')));
   tOk('「完成」的保存按钮在编辑器里（#neSave）', /id="neSave"/.test(html) && /id="neBack"/.test(html));
 
@@ -320,6 +327,67 @@ console.log('\n[7] 红线 · 双击入口、层序、两条出口');
     tOk('noteAct 认 "' + v + '"', new RegExp("v === '" + v + "'").test(extractFn(html, 'noteAct')));
   }
   tOk('noteAct 认 open:<id> 与 edit:<id>', /v\.indexOf\('open:'\) === 0/.test(extractFn(html, 'noteAct')) && /v\.indexOf\('edit:'\) === 0/.test(extractFn(html, 'noteAct')));
+
+  /* ---- ★ 7A 第一轮反馈（用户 2026-10-12）---- */
+  /* ① 卡片样式对齐全站（用户："这个卡片有点难看，跟整体的 UI 风格不太适配"） */
+  tOk('列表卡圆角与 .zone 一致（32px），不再自造 20px',
+    /\.note-card\{[^}]*border-radius:32px/.test(html.replace(/\n/g, '')));
+  tOk('列表卡左右内边距与 .zone 一致（20px）',
+    /\.note-card\{[^}]*padding:16px 20px/.test(html.replace(/\n/g, '')));
+  tOk('列表卡不再自加 1px 描边（材质交给 .glass）',
+    !/\.note-card\{[^}]*border:1px solid/.test(html.replace(/\n/g, '')));
+  tOk('列表间距与 .idea-list 一致（14px）', /\.note-list\{[^}]*gap:14px/.test(html.replace(/\n/g, '')));
+  /* ② 长文页补上「想法」主标题（用户："卡片界面上方『想法』的主标题是不变的"） */
+  const intro = extractFn(html, 'notesIntroHTML');
+  tOk('长文页有 .section-intro / section-kicker / h2·想法（与卡片页同一套结构）',
+    /section-intro/.test(intro) && /section-kicker/.test(intro) && /<h2>想法<\/h2>/.test(intro));
+  tOk('renderNotes 把标题区挂在列表那一屏（详情页不加）',
+    /notesIntroHTML\(\) \+ notesToolbarHTML\(\) \+ notesListHTML\(\)/.test(extractFn(html, 'renderNotes'))
+    && !/notesIntroHTML/.test(extractFn(html, 'noteDetailHTML')));
+  /* ③ 右上角「卡片」键删掉，改成问号「操作提示」 */
+  tOk('工具条上不再有「卡片」切换键', !/note-mode-back/.test(html) && !/data-note="card"[^>]*>卡片</.test(html));
+  tOk('工具条右端是问号键（data-note="help"，形状照想法页的 .idea-help）',
+    /data-note="help"/.test(html) && /class="bar-ico idea-help note-help"/.test(html));
+  tOk('noteAct 认 help → openNoteHelp()', /v === 'help'\)\{ openNoteHelp\(\); return true; \}/.test(extractFn(html, 'noteAct')));
+  tOk('操作提示面板复用 .gh-list/.gh-row（与想法页手势说明同一种形状）',
+    /gh-list/.test(extractFn(html, 'openNoteHelp')) && /gh-row/.test(extractFn(html, 'openNoteHelp')));
+  tOk('提示里写明"双击底栏想法切回卡片"（显式切换键删了，这是唯一入口）',
+    /双击底栏的「想法」/.test(extractFn(html, 'openNoteHelp')));
+  /* ④ 首次气泡自动消失（用户："显示得太久了"） */
+  tOk('气泡有 3 秒自动收掉的常量与定时器', /NOTE_TIP_MS = 3000/.test(html) && /noteTipT = setTimeout\(/.test(extractFn(html, 'maybeNoteTip')));
+  tOk('hideNoteTip 会清掉那个定时器（不留悬着的 timer）',
+    /clearTimeout\(noteTipT\)/.test(extractFn(html, 'hideNoteTip')));
+  /* ⑤ 换屏动画（用户："点击长文本卡片的详情页时，它就直接跳转了，没有动画"） */
+  tOk('详情页带换屏动画类（.pane from-right / from-left）',
+    /note-detail \$\{pane\}/.test(extractFn(html, 'noteDetailHTML'))
+    && /from-left' : 'from-right'/.test(extractFn(html, 'noteDetailHTML')));
+  tOk('长文列表整块也包一个 .pane（换屏滑入）',
+    /<div class="\$\{pane\}">/.test(extractFn(html, 'renderNotes')));
+  tOk('前进从右、返回从左（与 7D 二级页同一条口径）',
+    /noteDir = 'from-right';/.test(extractFn(html, 'noteOpen'))
+    && /noteDir = 'from-left';/.test(extractFn(html, 'noteClose')));
+  tOk('回顶改成平滑滚动（原来那一下瞬时跳也是"直接跳转"的来源）',
+    /scrollTo\(\{ top: 0, behavior: 'smooth' \}\)/.test(extractFn(html, 'noteOpen')));
+  /* ⑥ 卡片页多选改成"点整张卡"（用户第 4 条） */
+  /* ⚠️ 判据要用**去注释后的 code** —— 改动说明里提到 `.pick` / `data-act="pick"`，
+     直接扫原文会被自己的注释骗到（本项目的老坑：源码级断言必须 stripComments）。 */
+  tOk('卡片流不再渲染勾选圆钮（.pick 的 CSS 与模板都没了）',
+    !/\n\.pick\{/.test(code) && !/class="pick/.test(code) && !/data-act="pick"/.test(code));
+  tOk('选中态由 .idea-card.picked 表达（outline，不占布局）',
+    /\.idea-card\.picked\{outline:2px solid var\(--accent\)/.test(html.replace(/\n/g, '')));
+  tOk('renderIdeas 的 card() 会给选中的卡挂 picked 类',
+    /ideaUI\.mergeSel\.has\(it\.id\) \? ' picked' : ''/.test(html));
+  {
+    /* ⚠️ 不能用 "view.addEventListener('click'" 当起点 —— 文件里另有一条注释提到同一串，
+       会把起点定到很前面（第一版就是这么假红的）。用那句唯一的 selected 语句当锚。 */
+    const mcIdx = html.indexOf("e.target.closest('.idea-card') : null;");
+    const elGuard = html.indexOf('if (!el) return;', mcIdx);
+    tOk('#view 委托里有"多选态点整张卡即勾选"这一段，且排在 if (!el) return 之前',
+      mcIdx > 0 && elGuard > mcIdx, 'mc@' + mcIdx + ' guard@' + elGuard);
+  }
+  tOk('批次动作条与勾选逻辑一个字没动（还有 7 个动作）',
+    ['batchmerge', 'batchpromote', 'batchedit', 'batchspark', 'batchgrow', 'batchuse', 'batchdel']
+      .every(a => html.indexOf('data-act="' + a + '"') > 0));
 
   /* 列表卡两行 + 标题不许把日期挤没 */
   tOk('卡片第一行是 .nc-line1（标题 + 日期）', /class="nc-line1"/.test(html));
