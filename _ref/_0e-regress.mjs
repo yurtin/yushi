@@ -98,6 +98,8 @@ const FN_NAMES = ['statPageHits', 'statTreeOf', 'statRootHits', 'statPageCount',
   /* ★ 7.2.2：renderStat 现在还要拼"卡片右侧的拓展说明"——
      这几个取数/拼 HTML 的函数必须一起切进隔离环境，否则 ReferenceError（本轮踩到）。 */
   'zoneDoneCounts', 'statTotalDays', 'streakBest', 'statAsideHTML', 'overdueLines', 'hwLines', 'itemDue',
+  /* ★ 7.3.0：连续打勾子页换成月历热力图滚轮 —— 这几只要一起切进来（renderStatSub 调它们）。 */
+  'statDayCounts', 'heatLevel', 'statMonthList', 'statHeatHTML', 'stYmLabel',
   'ymd', 'pad2', 'dateFrom', 'today0', 'daysFromToday', 'teDateLabelFromStr'];
 const appSrc = FN_NAMES.map(n => extractFn(html, n)).join('\n\n');
 
@@ -142,6 +144,8 @@ function makeEnv(items){
     'save', 'refresh', 'refreshAfterChange', 'toast', 'Date',
     STAT_PAGES_SRC + '\n' + statPageDecl + '\n' + statFromDecl + '\n'
       + 'let BASEDAY = null;\n'      // today0() 读它（导入历史笔记的基准日）；测试里恒为 null
+      /* ★ 7.3.0：热力图滚轮的两个模块级状态（真页面里也是 let），隔离环境里要一并声明 */
+      + 'let stBack = 0; let stJumpTo = null;\n'
       + appSrc + '\n'
       + 'return { statPageHits, statTreeOf, statRootHits, statPageCount, statItemsHTML, statStreakDays, renderStatSub, statGo,'
       + ' renderStat, renderZoneBody, statDoneItems, streak, isSeed, itemHTML,'
@@ -357,8 +361,15 @@ console.log('\n[3] 0E  子页骨架：← 返回 + 标题 + 共 N 条');
   e2.renderStat();
   tOk('连续打勾子页写着「共 2 天」', v2.innerHTML.includes('共 2 天'),
     (v2.innerHTML.match(/共 \d+ 天/) || [''])[0]);
-  tOk('连续打勾子页按天列出「当天完成 N 条」',
-    /当天完成 2 条/.test(v2.innerHTML) && /当天完成 1 条/.test(v2.innerHTML), '');
+  /* ★ 7.3.0（用户 2026-10-13）：这一屏从"按天列出、当天完成 N 条"换成月历热力图滚轮。
+     断言随之改成新形态：有滚轮容器、有月历块、每格带档位、仍不是条目列表。 */
+  tOk('连续打勾子页是月历热力图滚轮（.st-heat + .st-m + .st-cell）',
+    /class="st-heat"/.test(v2.innerHTML) && /class="st-m"/.test(v2.innerHTML) && /class="st-cell"/.test(v2.innerHTML), '');
+  tOk('★ 格子带四档档位（data-lv），0 次不写数字',
+    /data-lv="1"/.test(v2.innerHTML) && /data-lv="2"/.test(v2.innerHTML)
+    && /data-lv="1"[^>]*><\/span>/.test(v2.innerHTML), '');
+  tOk('★ 每格带自己的日期（data-day），一天一格',
+    (v2.innerHTML.match(/data-day="/g) || []).length >= 28, (v2.innerHTML.match(/data-day="/g) || []).length);
   tOk('连续打勾子页**不是**条目列表（没有 .item）', !/<div class="item/.test(v2.innerHTML), '');
 }
 

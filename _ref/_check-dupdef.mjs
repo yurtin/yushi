@@ -178,6 +178,8 @@ const NAMES = [
   /* ★ 7.2.2 统计卡右侧拓展说明：两个取数函数 + 各栏完成数 + 右侧 HTML + 逾期/作业两串文案
      + itemDue（"哪一天算截止日"的唯一实现，给新代码用；那 4 处历史实现不动） */
   'statTotalDays', 'streakBest', 'zoneDoneCounts', 'statAsideHTML', 'overdueLines', 'hwLines', 'itemDue',
+  /* ★ 7.3.0 月历热力图 + 月份滚轮 */
+  'statDayCounts', 'heatLevel', 'statMonthList', 'statHeatHTML', 'stHeatCenter', 'stParseYM', 'statHeatWire', 'stYmLabel',
   'aiZoneAsk', 'zoneAdvisorLocal', 'zoneAdvisorAsk',
   /* ================= 6B 设置页信息架构重做 ================= */
   /* 新增五个：那一行 AI 状态的文案（aiEntryText / aiEntryLabel）、
