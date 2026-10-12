@@ -120,10 +120,11 @@ console.log('[1] 搬迁清单逐项：新结构里找得到（集合相等，不
   /* ★ 6C 起多的一处是设置行那枚"当前值 + ›"的按钮（data-act="capzoneopen"）；
      新增的还有面板自己的取消键（data-act="sheetclose"）与"不进任何分区"那一项的
      空值属性（data-capzone=""）—— 面板本身住在 openCapZoneSheet() 里，不在本段内。
-     ★ 7D：「数据」栏最底下那行版本号多了一枚可点入口（data-act="changelogopen"）。 */
-  t('data-* 只多了面板入口 + 面板取消键 + 空值那一项 + 更新日志入口',
+     ★ 7D：「数据」栏最底下那行版本号多了一枚可点入口（data-act="changelogopen"）。
+     ★ 8A（改断言不改代码）：设置页「功能」栏末尾多了一行作业总开关（data-set="hwOn"）。 */
+  t('data-* 只多了面板入口 + 面板取消键 + 空值那一项 + 更新日志入口 + 作业开关',
     added, ['data-act="aipanel"', 'data-act="capzoneopen"', 'data-act="changelogopen"',
-      'data-act="sheetclose"', 'data-capzone=""']);
+      'data-act="sheetclose"', 'data-capzone=""', 'data-set="hwOn"']);
 
   const ids = new Set((regionCode.match(/\bid="[A-Za-z0-9_]+"/g) || []).map(s => s.slice(4, -1)));
   /* ★ 7.2.0：「对 AI 的规范设置」那个 id 随功能搬进分区管理弹窗，从基线里摘掉。 */
@@ -229,11 +230,13 @@ console.log('\n[3] 红线 · 数据一个字节没动');
      save / snapshot / load 三处**有意**各多了 notes（以及 noteMode / noteTipSeen）。
      所以比对之前先把这几行、以及它们自带的那段 ★ 7A 说明注释摘掉 ——
      基线（6.0.0 快照）里没有它们，摘掉之后两边仍然应当逐字符一致，
-     "既有字段一个字节没动"这条红线因此照旧成立。 */
+     "既有字段一个字节没动"这条红线因此照旧成立。
+     ★ 8A（同一套办法）：作业总开关 hwOn 也是有意新加的字段，
+     save / snapshot / load 三处各多一行 + 一段 ★ 8A 说明，一起摘掉再比。 */
   const strip7A = s => String(s)
-    .replace(/\/\*[^\n]*★ 7A[\s\S]*?\*\//g, '')                                  // 行首带 ★ 7A 的块注释
-    .replace(/^[^\n]*★ 7A[^\n]*\n?/gm, '')                                       // 行注释 / 行尾注释
-    .replace(/^\s*(notes: S\.notes[^\n]*|noteMode: !![^\n]*|noteTipSeen: !![^\n]*|S\.notes = sanitizeNotes[^\n]*|S\.noteMode = o\.noteMode[^\n]*|S\.noteTipSeen = o\.noteTipSeen[^\n]*)\n?/gm, '')
+    .replace(/\/\*[^\n]*★ (7A|8A)[\s\S]*?\*\//g, '')                             // 行首带 ★ 7A/8A 的块注释
+    .replace(/^[^\n]*★ (7A|8A)[^\n]*\n?/gm, '')                                  // 行注释 / 行尾注释
+    .replace(/^\s*(notes: S\.notes[^\n]*|noteMode: !![^\n]*|noteTipSeen: !![^\n]*|S\.notes = sanitizeNotes[^\n]*|S\.noteMode = o\.noteMode[^\n]*|S\.noteTipSeen = o\.noteTipSeen[^\n]*|hwOn: S\.hwOn !== false[^\n]*|S\.hwOn = o\.hwOn !== false[^\n]*)\n?/gm, '')
     /* 上面那几行接在 autoDoneParent 后面，于是它多了一个尾逗号 —— 基线里没有 */
     .replace(/(autoDoneParent: !!S\.autoDoneParent),/, '$1')
     .replace(/\n{2,}/g, '\n');
