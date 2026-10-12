@@ -182,6 +182,32 @@ console.log('\n[2] 分区菜单：只剩四枚动作，没有「这一栏有 N �
   t('四枚动作齐全', m.acts, ['rename', 'up', 'down', 'del']);
   tOk('「这一栏有 N 条」那一行没了（节点与文案都不在）',
     m.note === false && !/这一栏有/.test(m.text), JSON.stringify(m.text));
+  /* ★ 用户 2026-10-12 追加："这个和总体风格还是不搭，把灰框去掉" ——
+     真凶是 `border:1px solid var(--line2)`（16% 黑 = 一圈明显灰框），改用 .glass 那套材质。 */
+  const st = await ev(`
+    var p = document.getElementById('zmenuPop');
+    var cs = getComputedStyle(p), r = p.getBoundingClientRect();
+    var bg = cs.backgroundColor;
+    var alpha = 1;
+    var mm = bg.match(/rgba?\\(([^)]+)\\)/);
+    if (mm){ var parts = mm[1].split(',').map(function(v){ return parseFloat(v); }); if (parts.length === 4) alpha = parts[3]; }
+    return { border: cs.borderStyle + ' ' + cs.borderWidth, radius: cs.borderRadius,
+      bg: bg, alpha: alpha, shadow: cs.boxShadow,
+      shadowHas46: cs.boxShadow.indexOf('46px') >= 0,
+      shadowRings: (cs.boxShadow.match(/inset/g) || []).length,
+      rect: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)],
+      vw: window.innerWidth, vh: window.innerHeight,
+      hitSelf: (function(){ var t = document.elementFromPoint(Math.round(r.left + r.width / 2), Math.round(r.top + 10)); return !!(t && (t === p || p.contains(t))); })() };`);
+  tOk('灰框去掉了（border 0）', st.border === 'none 0px', JSON.stringify(st.border));
+  tOk('底色仍是实底（浮层不许半透明 —— 本项目硬规矩）', st.alpha === 1, st.bg);
+  tOk('圆角 20px（比卡片 32 小一档，但不再是小圆角方框）', st.radius === '20px', st.radius);
+  tOk('外投影换成 .glass 同款配方（0 14px 46px + 三条 inset 高光/描边）',
+    st.shadowHas46 === true && st.shadowRings === 3, JSON.stringify([st.shadowHas46, st.shadowRings]));
+  tOk('面板没有越出视口（右/下都不出界）',
+    st.rect[0] >= 0 && st.rect[1] >= 0 && st.rect[0] + st.rect[2] <= st.vw && st.rect[1] + st.rect[3] <= st.vh,
+    JSON.stringify([st.rect, st.vw, st.vh]));
+  tOk('面板内容能被命中（不是被透明层盖住的假面板）', st.hitSelf === true);
+  await shot('zone-menu');
   await ev('closeZoneMenu(); return 1;');
 }
 
