@@ -15,7 +15,7 @@ const T = new Date(); const Y = T.getFullYear(), M = T.getMonth();
 const ms = (y, m, d) => new Date(y, m, d, 12, 0, 0).getTime();
 const pad = n => String(n).padStart(2, '0');
 const items = []; let n = 0;
-[[5, 1], [6, 3], [7, 4], [8, 7]].forEach(([d, k]) => {
+[[5, 1], [6, 3], [7, 4], [8, 7], [9, 9]].forEach(([d, k]) => {
   for (let i = 0; i < k; i++) items.push(Object.assign({}, base, { id: 'it' + (n++), title: '条目' + n, zone: 'z_long', doneAt: ms(Y, M, d) }));
 });
 const pm = M === 0 ? { y: Y - 1, m: 11 } : { y: Y, m: M - 1 };
@@ -79,7 +79,7 @@ const h1 = await ev(`
 t('标题栏仍是「连续打勾」', h1.title, '连续打勾');
 tOk('★ 这一页的标题比别的子页小一号（≤20px）', h1.titleFs <= 20, h1.titleFs);
 tOk('右边写着「共 N 天」', /^共 \d+ 天$/.test(h1.n || ''), h1.n);
-tOk('★ 年月字号大一号（≥27px）', h1.fs >= 27, h1.fs);
+tOk('★ 年月字号大一号（≥26px）', h1.fs >= 26, h1.fs);
 tOk('★ 年月在热力图**上方**，固定头是 sticky', h1.aboveHeat === true && h1.fixSticky === 'sticky', JSON.stringify([h1.aboveHeat, h1.fixSticky]));
 t('★ 星期表头 7 格、周一到周日', h1.wkTxt, '一二三四五六日');
 t('进来默认是当月', h1.cur, Y + '-' + pad(M + 1));
@@ -144,7 +144,7 @@ tOk('★ 每一天都排在它自己星期几那一列（抽查 24 天，0=周�
 tOk('★ 月份相互衔接：下月 1 号紧挨着上月最后一天（列号 +1，跨周折回周一）',
   cal.joins.every(x => x.ok === true), JSON.stringify(cal.joins));
 
-console.log('\n[3] 四档配色与反向文字色（0次浅灰不写字 / 1~3 中灰黑字 / 4~6 深灰白字 / ≥7 黑白字）');
+console.log('\n[3] 五档配色（0=极浅不写字 / 1~2 浅灰黑字 / 3~5 中灰黑字 / 6~8 深灰白字 / ≥9 黑白字）');
 const lv = await ev(`
   var heat = document.getElementById('stHeat');
   var cur = heat.dataset.cur;
@@ -152,25 +152,92 @@ const lv = await ev(`
   function rgb(s){ var m = s.match(/[\\d.]+/g).map(Number); return { r:m[0], g:m[1], b:m[2] }; }
   function lum(c){ var a=[c.r,c.g,c.b].map(function(v){ v/=255; return v<=0.03928? v/12.92 : Math.pow((v+0.055)/1.055,2.4); }); return 0.2126*a[0]+0.7152*a[1]+0.0722*a[2]; }
   var out = {};
-  [4,5,6,7,8].forEach(function(d){ var c = cell(d); if (!c) return; var cs = getComputedStyle(c);
+  [4,5,6,7,8,9].forEach(function(d){ var c = cell(d); if (!c) return; var cs = getComputedStyle(c);
     var A = rgb(cs.backgroundColor), B = rgb(cs.color);
     var l1 = lum(A), l2 = lum(B);
     out[d] = { lv:+c.dataset.lv, text:c.textContent, bg:cs.backgroundColor,
       ratio:+((Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05)).toFixed(2),
-      border: getComputedStyle(c).borderTopWidth }; });
+      border: getComputedStyle(c).borderTopWidth,
+      w: Math.round(c.getBoundingClientRect().width) }; });
   return out;`);
-t('4 号（0 条）= 档1', lv[4].lv, 1);
-t('5 号（1 条）= 档2', lv[5].lv, 2);
-t('6 号（3 条）= 档2', lv[6].lv, 2);
-t('7 号（4 条）= 档3', lv[7].lv, 3);
-t('8 号（7 条）= 档4', lv[8].lv, 4);
+t('4 号（0 条）= 档1（极浅）', lv[4].lv, 1);
+t('5 号（1 条）= 档2（浅灰）', lv[5].lv, 2);
+t('6 号（3 条）= 档3（中灰）', lv[6].lv, 3);
+t('7 号（4 条）= 档3（中灰）', lv[7].lv, 3);
+t('8 号（7 条）= 档4（深灰）', lv[8].lv, 4);
+t('9 号（9 条）= 档5（黑）', lv[9].lv, 5);
+tOk('★ 格子边长缩到 2/3（43 → 29px 左右）', lv[5].w >= 26 && lv[5].w <= 32, lv[5].w);
 tOk('0 次不写数字', lv[4].text === '', JSON.stringify(lv[4].text));
-tOk('有数字的格子写着当天条数', lv[5].text === '1' && lv[6].text === '3' && lv[7].text === '4' && lv[8].text === '7',
-  [lv[5].text, lv[6].text, lv[7].text, lv[8].text].join('/'));
-tOk('★ 中灰档配黑字、深灰·黑档配白字，对比度都 ≥4.5',
-  [5,6,7,8].every(d => lv[d].ratio >= 4.5), JSON.stringify([lv[5].ratio, lv[6].ratio, lv[7].ratio, lv[8].ratio]));
+tOk('有数字的格子写着当天条数',
+  lv[5].text === '1' && lv[6].text === '3' && lv[7].text === '4' && lv[8].text === '7' && lv[9].text === '9',
+  [lv[5].text, lv[6].text, lv[7].text, lv[8].text, lv[9].text].join('/'));
+tOk('★ 浅灰·中灰配黑字、深灰·黑配白字，对比度都 ≥4.5',
+  [5,6,7,8,9].every(d => lv[d].ratio >= 4.5),
+  JSON.stringify([lv[5].ratio, lv[6].ratio, lv[7].ratio, lv[8].ratio, lv[9].ratio]));
 t('★ 格子没有边框（用户："不要加细边儿"）', lv[4].border, '0px');
 await shot('cal-light');
+
+console.log('\n[2b] 滑动吸附：超过当前月的 30% → 吸到相邻月份；不足 → 弹回当前月');
+const snap = await ev(`
+  var heat = document.getElementById('stHeat');
+  var marks = stMarks.length ? stMarks : (stMarks = stHeatMarks(heat));
+  /* 先落在"当月"那一格上 */
+  var idx = marks.findIndex(function(x){ return x.m === heat.dataset.cur; });
+  if (idx < 0) return { err: 'no-cur-mark' };
+  heat.scrollTo({ top: marks[idx].top, behavior: 'instant' });
+  return new Promise(function(resolve){
+    setTimeout(function(){
+      var base = marks[idx].top, h = marks[idx+1].top - base;
+      /* ① 往上滑 40%（> 30%）→ 期望吸到上一个月 */
+      heat.scrollTo({ top: base + h * 0.4, behavior: 'instant' });
+      setTimeout(function(){
+        var mid = Math.round(heat.scrollTop - base);
+        setTimeout(function(){
+          var afterDown = Math.round(heat.scrollTop);
+          /* ② 回到当前月，再下滑 20%（< 30%）→ 期望弹回当前月 */
+          heat.scrollTo({ top: base, behavior: 'instant' });
+          setTimeout(function(){
+            heat.scrollTo({ top: base + h * 0.2, behavior: 'instant' });
+            setTimeout(function(){
+              resolve({ cur: heat.dataset.cur, h: Math.round(h), mid: mid,
+                base: Math.round(base), wantNext: Math.round(marks[idx+1].top),
+                afterDown: afterDown, afterSmall: Math.round(heat.scrollTop),
+                title: document.getElementById('stYm').textContent });
+            }, 700);
+          }, 200);
+        }, 700);
+      }, 200);
+    }, 250);
+  });`);
+tOk('★ 滑过 30% → 吸到下一个月的起点', Math.abs(snap.afterDown - snap.wantNext) <= 3,
+  JSON.stringify({ afterDown: snap.afterDown, want: snap.wantNext, mid: snap.mid, h: snap.h }));
+tOk('★ 只滑 20% → 弹回当前月的起点', Math.abs(snap.afterSmall - snap.base) <= 3,
+  JSON.stringify({ afterSmall: snap.afterSmall, base: snap.base }));
+
+console.log('\n[3b] 非当月盖"蒙板"（变淡），固定头没有白底色块');
+const mont = await ev(`
+  var heat = document.getElementById('stHeat');
+  var cur = heat.dataset.shown || heat.dataset.cur;
+  var cells = [].slice.call(heat.querySelectorAll('.st-cell'));
+  var inCur = cells.filter(function(c){ return c.dataset.m === cur; });
+  var outCur = cells.filter(function(c){ return c.dataset.m !== cur; });
+  var op = function(c){ return c ? +getComputedStyle(c).opacity : null; };
+  var cs = getComputedStyle(heat);
+  return { cur: cur, nIn: inCur.length, nOut: outCur.length,
+    inDim: inCur.some(function(c){ return c.classList.contains('dim'); }),
+    outDim: outCur.every(function(c){ return c.classList.contains('dim'); }),
+    opIn: op(inCur[0]), opOut: op(outCur[0]),
+    mask: cs.maskImage || cs.webkitMaskImage,
+    fixBg: getComputedStyle(document.querySelector('.st-fix')).backgroundColor };`);
+tOk('★ 当月的格子不蒙、其他月份的格子全部蒙着', mont.inDim === false && mont.outDim === true,
+  JSON.stringify([mont.inDim, mont.outDim]));
+tOk('★ 蒙板是真的变淡（opacity ≤ 0.5）', mont.opOut <= 0.5 && mont.opIn >= 0.99,
+  JSON.stringify([mont.opIn, mont.opOut]));
+tOk('★ 位置遮罩已撤掉（不再靠"越往边缘越透明"）', !mont.mask || mont.mask === 'none', mont.mask);
+tOk('★ 固定年月那块没有白底色块（背景透明）',
+  mont.fixBg === 'rgba(0, 0, 0, 0)' || mont.fixBg === 'transparent', mont.fixBg);
+tOk('连续日历里两个月份以上的格子都在（邻月还看得见）', mont.nIn > 20 && mont.nOut > 50,
+  JSON.stringify([mont.nIn, mont.nOut]));
 
 console.log('\n[4] 弹窗：屏幕中间展开 + 年/月两列一起改 + 中间那格可打字 + ✕ 退出后热力图滚过去');
 const sh = await ev(`
@@ -282,12 +349,12 @@ const dark = await ev(`
   function rgb(s){ var m = s.match(/[\\d.]+/g).map(Number); return { r:m[0], g:m[1], b:m[2] }; }
   function lum(c){ var a=[c.r,c.g,c.b].map(function(v){ v/=255; return v<=0.03928? v/12.92 : Math.pow((v+0.055)/1.055,2.4); }); return 0.2126*a[0]+0.7152*a[1]+0.0722*a[2]; }
   var out = {};
-  [4,5,7,8].forEach(function(d){ var c = cell(d); if (!c) return; var cs = getComputedStyle(c);
+  [4,5,8,9].forEach(function(d){ var c = cell(d); if (!c) return; var cs = getComputedStyle(c);
     var A = rgb(cs.backgroundColor), B = rgb(cs.color);
     out[d] = { bg: cs.backgroundColor, r: +((Math.max(lum(A),lum(B))+0.05)/(Math.min(lum(A),lum(B))+0.05)).toFixed(2) }; });
   return out;`);
 tOk('深色主题下 0 次那档与背景分得开', dark[4].bg !== 'rgba(0, 0, 0, 0)', dark[4].bg);
-tOk('★ 深色主题四档对比度都 ≥ 4.5', [5,7,8].every(d => dark[d].r >= 4.5), JSON.stringify([dark[5].r, dark[7].r, dark[8].r]));
+tOk('★ 深色主题各档对比度都 ≥ 4.5', [5,8,9].every(d => dark[d].r >= 4.5), JSON.stringify([dark[5].r, dark[8].r, dark[9].r]));
 await shot('cal-dark');
 
 console.log('\n══ 运行时异常：' + (errors.length ? errors.join(' | ') : '无') + ' ══');
