@@ -191,6 +191,20 @@ console.log('\n[B] 单击 = 进想法页（立即）· 300ms 内第二下 = 切�
   t('长文页顶部有与卡片页同款的「想法」主标题',
     await ev("return [!!document.querySelector('.section-intro h2'), document.querySelector('.section-intro h2') ? document.querySelector('.section-intro h2').textContent : ''];"),
     [true, '想法']);
+  /* ★ 用户 2026-10-12（真机截图）："把问号放右边" */
+  const tg = await ev(`var bar = document.querySelector('.idea-toolbar');
+    var h = document.querySelector('.note-help');
+    var plus = document.querySelector('[data-note="new"]');
+    if (!bar || !h || !plus) return null;
+    var rb = bar.getBoundingClientRect(), rh = h.getBoundingClientRect(), rp = plus.getBoundingClientRect();
+    return { barRight: Math.round(rb.right), helpRight: Math.round(rh.right),
+      helpLeft: Math.round(rh.left), barLeft: Math.round(rb.left), barMid: Math.round(rb.left + rb.width / 2),
+      plusRight: Math.round(rp.right) };`);
+  tOk('问号键贴最右（右边缘与工具条右边缘对齐，≤2px）',
+    !!tg && Math.abs(tg.barRight - tg.helpRight) <= 2,
+    tg ? `bar.right=${tg.barRight} help.right=${tg.helpRight}` : 'no-el');
+  tOk('问号确实在右半边（不是挤在 ＋ / 多选 后面）', !!tg && tg.helpLeft > tg.barMid,
+    tg ? `help.left=${tg.helpLeft} bar.mid=${tg.barMid} plus.right=${tg.plusRight}` : 'no-el');
   /* ★ 用户 2026-10-12 第 5 条：右上角是操作提示，点开是一列说明 */
   t('点问号 → 打开操作提示面板', await click('[data-note="help"]'), 'ok');
   await sleep(220);
@@ -232,21 +246,27 @@ console.log('\n[B2] 卡片页多选改成「点整张卡」（用户第 4 条）
   t('进入多选态', await ev('return ideaUI.mergeMode;'), true);
   t('卡片左边**不再**插勾选圆钮（.pick / .lead 一个都没有）',
     await ev("return [document.querySelectorAll('.pick').length, document.querySelectorAll('.idea-card .lead').length];"), [0, 0]);
-  await ev(`var c = document.querySelector('.idea-card');
-    c.dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true })); return 1;`);
-  await sleep(220);
-  t('点整张卡 → 选中一条，卡片带 picked 描边',
-    await ev("return [ideaUI.mergeSel.size, !!document.querySelector('.idea-card.picked')];"), [1, true]);
-  await ev(`var c = document.querySelector('.idea-card');
-    c.dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true })); return 1;`);
-  await sleep(220);
-  t('再点一下 → 取消', await ev("return [ideaUI.mergeSel.size, !!document.querySelector('.idea-card.picked')];"), [0, false]);
+  /* ★ 用户 2026-10-12（真机）："卡片页选择时整个页面会闪烁" ——
+     根因是点选走 refresh() 整页重画、每张卡重播一遍入场动画。
+     判据：点完卡片，**DOM 节点还是原来那一个**（没被重建），底部条数字就地更新。 */
+  t('点第一张：选中 + picked 描边 + **不重画整页**（节点还是同一个）+ 底部数字就地变',
+    await ev(`var c = document.querySelectorAll('.idea-card')[0];
+      var before = c;
+      c.dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true }));
+      return [before === document.querySelectorAll('.idea-card')[0] && before.isConnected === true,
+        ideaUI.mergeSel.size, !!document.querySelector('.idea-card.picked'),
+        document.querySelector('.batch-bar .mb-n b').textContent];`), [true, 1, true, '1']);
+  t('再点同一张 → 取消 + 数字回到 0',
+    await ev(`var c = document.querySelector('.idea-card.picked');
+      c.dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true }));
+      return [ideaUI.mergeSel.size, !!document.querySelector('.idea-card.picked'),
+        document.querySelector('.batch-bar .mb-n b').textContent];`), [0, false, '0']);
   /* 点卡片里的**子想法那一行**（.sp-tx[data-sparkedit]）也应当算"点整张卡" ——
      多选态下不能把这一下抢去开"编辑子想法"。 */
   await ev(`var t = document.querySelector('.idea-card .sp-tx[data-sparkedit]');
     if (!t) return 'no-el';
     t.dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true })); return 1;`);
-  await sleep(220);
+  await sleep(160);
   t('点卡片里的子想法行同样算勾选（没被"编辑子想法"抢走）',
     await ev("return [ideaUI.mergeSel.size, ideaUI.sparkOpen === null, !!document.querySelector('.idea-card.picked')];"),
     [1, true, true]);
@@ -261,6 +281,40 @@ console.log('\n[B2] 卡片页多选改成「点整张卡」（用户第 4 条）
   t('回到长文页继续下面几段', await ev('return S.noteMode;'), true);
 }
 
+
+/* ================= [B3] 长文页的多选：批量条不许闪 + 点卡不重画 ================= */
+console.log('\n[B3] 长文页多选（用户真机："操作选择栏会闪到上面"）');
+{
+  t('点左上「多选」', await click('[data-note="multi"]'), 'ok');
+  await sleep(200);
+  t('批量条出现，而且**不在 .pane 里面**（fixed 不能住在带 transform 的换屏容器里）',
+    await ev("return [!!document.querySelector('.batch-bar'), document.querySelector('.pane .batch-bar') === null, document.querySelectorAll('.batch-bar .bb-acts .btn').length];"),
+    [true, true, 1]);
+  t('点第一张卡：勾上 + **不重画整页**（节点还是同一个）+ 数字就地变',
+    await ev(`var c = document.querySelector('.note-card');
+      var before = c;
+      c.dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true }));
+      return [before === document.querySelector('.note-card') && before.isConnected === true,
+        noteUI.sel.size, !!document.querySelector('.note-card.on'),
+        document.querySelector('.batch-bar .mb-n b').textContent];`), [true, 1, true, '1']);
+  await sleep(120);
+  await shot('04-长文页多选');   // 取证：批量条必须在**屏幕底部**，不能闪到工具条那儿
+  /* 顺手量一下它到底在哪：贴底才对（bottom 距屏底 ≈ 84px），跑到上面就是老 bug */
+  const barPos = await ev(`var b = document.querySelector('.batch-bar');
+    var r = b.getBoundingClientRect();
+    return { top: Math.round(r.top), bottom: Math.round(r.bottom), vh: window.innerHeight };`);
+  tOk('批量条在屏幕下缘（贴底），不在页面上面',
+    barPos && barPos.top > barPos.vh * 0.6, JSON.stringify(barPos));
+  t('再点一次 → 取消 + 数字回到 0',
+    await ev(`var c = document.querySelector('.note-card.on');
+      c.dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true }));
+      return [noteUI.sel.size, !!document.querySelector('.note-card.on'),
+        document.querySelector('.batch-bar .mb-n b').textContent];`), [0, false, '0']);
+  t('退出多选', await click('[data-note="multicancel"]'), 'ok');
+  await sleep(180);
+  t('批量条收掉了',
+    await ev("return [noteUI.selMode, !!document.querySelector('.batch-bar')];"), [false, false]);
+}
 
 /* ================= [C] 列表卡的两行几何 ================= */
 console.log('\n[C] 列表卡两行 · 标题再长也不许把日期挤没');
@@ -349,6 +403,46 @@ console.log('\n[E] 详情 → 全屏编辑 → 「返回」回长文页（不是
   t('编辑器里填的是这条的标题与正文',
     await ev("return [document.getElementById('neTitle').value, document.getElementById('neText').value];"),
     ['会议纪要', '今天讨论了排期。\n第二行内容。']);
+  /* ★ 用户 2026-10-12（真机截图 1/2）："编辑层和详情层的样式要一样，不要这样换" ——
+     1) 顶栏左边那颗必须和详情页同一款（同类名同类样式）2) 灰色那行必须在 3) 三段的排版逐属性一致。 */
+  const parity = await ev(`var b1 = document.querySelector('.note-detail .nd-bar .btn');
+    var b2 = document.getElementById('neBack');
+    var m = document.getElementById('neMeta');
+    var d = document.querySelector('.note-detail');
+    var dtitle = d ? getComputedStyle(d.querySelector('.nd-title')) : null;
+    var eTitleEl = document.getElementById('neTitle');
+    var eTextEl = document.getElementById('neText');
+    var dm = d ? getComputedStyle(d.querySelector('.nd-meta')) : null;
+    var dtx = d ? getComputedStyle(d.querySelector('.nd-text')) : null;
+    var ct = getComputedStyle(eTitleEl), cx = getComputedStyle(eTextEl);
+    return { b1cls: b1 ? b1.className : '', b2cls: b2.className,
+      sameBtnStyle: !!(b1 && b2) && getComputedStyle(b1).borderRadius === getComputedStyle(b2).borderRadius
+        && getComputedStyle(b1).fontSize === getComputedStyle(b2).fontSize
+        && getComputedStyle(b1).padding === getComputedStyle(b2).padding,
+      hasMeta: !!m, metaText: m ? m.textContent : '',
+      titleSize: dtitle && ct ? [dtitle.fontSize, ct.fontSize] : null,
+      titleWeight: dtitle && ct ? [dtitle.fontWeight, ct.fontWeight] : null,
+      metaSize: dm ? [dm.fontSize, getComputedStyle(m).fontSize] : null,
+      textSize: dtx && cx ? [dtx.fontSize, cx.fontSize] : null,
+      textLh: dtx && cx ? [dtx.lineHeight, cx.lineHeight] : null };`);
+  tOk('顶栏左边那颗与详情页同款同文案（都是 .btn / 「← 想法」）',
+    (parity.b1cls || '').indexOf('btn') >= 0 && parity.b2cls.indexOf('btn') >= 0 && parity.b2cls.indexOf('ne-btn') < 0,
+    JSON.stringify(parity).slice(0, 80));
+  tOk('两颗键的盒模型逐项相同（圆角 / 字号 / 内边距）', parity.sameBtnStyle === true);
+  tOk('编辑器里也有那行灰字（.nd-meta#neMeta）', parity.hasMeta === true);
+  tOk('灰字内容与详情页同款：时间 · 共 N 字', /共 \d+ 字/.test(parity.metaText), parity.metaText);
+  t('编辑器标题字号 == 详情页标题字号', parity.titleSize, [parity.titleSize && parity.titleSize[0], parity.titleSize && parity.titleSize[0]]);
+  t('编辑器标题字重 == 详情页标题字重', parity.titleWeight, [parity.titleWeight && parity.titleWeight[0], parity.titleWeight && parity.titleWeight[0]]);
+  t('灰字字号与详情页一致', parity.metaSize, [parity.metaSize && parity.metaSize[0], parity.metaSize && parity.metaSize[0]]);
+  t('正文字号 / 行距与详情页一致', [parity.textSize && parity.textSize[0], parity.textLh && parity.textLh[0]],
+    [parity.textSize && parity.textSize[1], parity.textLh && parity.textLh[1]]);
+  /* 「共 N 字」要随输入实时走 */
+  const live = await ev(`var t = document.getElementById('neText');
+    t.value = '一二三'; t.dispatchEvent(new Event('input', { bubbles:true }));
+    return document.getElementById('neMeta').textContent;`);
+  tOk('打字时灰字里的字数实时更新（改成「一二三」→ 共 3 字）', /共 3 字/.test(live), live);
+  await ev(`var t = document.getElementById('neText');
+    t.value = '今天讨论了排期。\\n第二行内容。'; t.dispatchEvent(new Event('input', { bubbles:true })); return 1;`);
   t('没改任何东西，点「返回」', await click('#neBack'), 'ok');
   await sleep(200);
   t('编辑器关了', await ev("return document.getElementById('noteEdit').hidden;"), true);

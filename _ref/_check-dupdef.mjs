@@ -207,7 +207,7 @@ const NAMES = [
   'noteEditOpen', 'noteEditDirty', 'noteEditExit', 'noteEditSave', 'noteEditBack',
   'maybeNoteTip', 'hideNoteTip', 'noteTipClose',
   /* ---- 7A 第一轮反馈（用户 2026-10-12）：长文页补「想法」标题 + 右上角改操作提示 ---- */
-  'notesIntroHTML', 'openNoteHelp',
+  'notesIntroHTML', 'openNoteHelp', 'noteEditMeta', 'notesBatchHTML', 'batchBarSync',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }

@@ -360,6 +360,50 @@ console.log('\n[7] 红线 · 双击入口、层序、两条出口');
   tOk('noteAct 认 help → openNoteHelp()', /v === 'help'\)\{ openNoteHelp\(\); return true; \}/.test(extractFn(html, 'noteAct')));
   tOk('操作提示面板复用 .gh-list/.gh-row（与想法页手势说明同一种形状）',
     /gh-list/.test(extractFn(html, 'openNoteHelp')) && /gh-row/.test(extractFn(html, 'openNoteHelp')));
+  /* ★ 用户 2026-10-12（真机截图）："把问号放右边" ——
+     贴右那条必须比 `.idea-toolbar .idea-help{margin-left:4px}` 特异性高（(0,3,0) > (0,2,0)），
+     否则被它盖掉、三颗键挤在左边（第一版就是这么错的）。 */
+  tOk('长文页问号键贴右（.idea-toolbar .idea-help.note-help → margin-left:auto）',
+    /\.idea-toolbar \.idea-help\.note-help\{margin-left:auto\}/.test(html.replace(/\n/g, '')));
+  tOk('贴右那条写在 `.idea-toolbar .idea-help{margin-left:4px}` 之后（同特异性才算数）',
+    html.indexOf('.idea-toolbar .idea-help.note-help{margin-left:auto}')
+      > html.indexOf('.idea-toolbar .idea-help{margin-left:4px}'));
+  /* ★ 用户 2026-10-12（真机截图 1/2）："编辑层和详情层的样式要一样，不要这样换" */
+  tOk('详情页与编辑器共用同一套排版类（.nd-title / .nd-meta / .nd-text 都不带 .note-detail 前缀）',
+    /^\.nd-title\{/m.test(code) && /^\.nd-meta\{/m.test(code) && /^\.nd-text\{/m.test(code));
+  tOk('编辑器直接挂 .ndt 那几个类（标题 ne-title nd-title、正文 ne-text nd-text）',
+    /class="ne-title nd-title"/.test(html) && /class="ne-text nd-text"/.test(html));
+  tOk('编辑器有与详情页同款的灰字行（.nd-meta#neMeta）', /id="neMeta"/.test(html) && /class="nd-meta" id="neMeta"/.test(html));
+  tOk('灰字行随输入实时更新（noteEditMeta 挂了 input）',
+    /noteEditMeta/.test(extractFn(html, 'noteEditOpen'))
+    && /addEventListener\('input', noteEditMeta\)/.test(html));
+  tOk('编辑器顶栏两颗键改用项目通用 .btn（不再自造 .ne-btn）',
+    /class="btn" id="neBack"/.test(html) && /class="btn primary ne-save" id="neSave"/.test(html)
+    && !/ne-btn/.test(code));
+  tOk('编辑器左上那颗的文案与详情页一致（← 想法）', /id="neBack">← 想法</.test(html));
+  /* ★ 用户 2026-10-12（真机）两条闪烁类反馈的**源码级护栏**：
+     ① "点多选/点卡片时，长文页的操作选择栏会闪到上面" —— 根因是贴底的 `.merge-bar`
+        是 `position:fixed`，而 `.pane` 播换屏动画时带 transform，transform 会把 fixed 的
+        定位基准从视口改成那个祖先。所以批量条必须渲染在 `.pane` **外面**。
+     ② "卡片页选择时整个页面会闪烁" —— 根因是点选走 `refresh()` 整页重画，每张卡都会
+        重播一遍入场动画。现在两页点选都是就地改类 + 就地更新底部条。 */
+  {
+    const rn = extractFn(html, 'renderNotes');
+    tOk('多选条渲染在 .pane 外面（fixed 元素不能住在带 transform 的换屏容器里）',
+      /<\/div>`\s*\+ notesBatchHTML\(\)/.test(rn.replace(/\s+/g, ' ')) || /\+ notesBatchHTML\(\)/.test(rn));
+    tOk('长文页点卡勾选不再 refresh（就地改类 + batchBarSync）',
+      !/refresh\(\)/.test(extractFn(html, 'noteOpen').split('if (noteUI.selMode)')[1].split('const n = noteById')[0] || '')
+      && /batchBarSync\(noteUI\.sel\)/.test(extractFn(html, 'noteOpen')));
+    tOk('卡片页点卡勾选不再 refresh（就地改类 + batchBarSync）',
+      /batchBarSync\(ideaUI\.mergeSel\)/.test(html)
+      && !/refresh\(\); return;/.test(html.slice(html.indexOf("const mc = e.target.closest ? e.target.closest('.idea-card')"), html.indexOf("const mc = e.target.closest ? e.target.closest('.idea-card')") + 700)));
+    tOk('batchBarSync 只改数字与禁用，不碰 innerHTML',
+      /querySelector\('\.mb-n b'\)/.test(extractFn(html, 'batchBarSync'))
+      && !/innerHTML/.test(extractFn(html, 'batchBarSync')));
+  }
+  /* ★ 用户 2026-10-12："想法卡片页里的问号内容怎么没有双击切换的提示。这种提示要全面一些" */
+  tOk('卡片页的手势说明里有"双击底栏切长文"这条（那扇门原来一个字没提）',
+    /双击底栏「想法」/.test(extractFn(html, 'openGestureHelp')));
   tOk('提示里写明"双击底栏想法切回卡片"（显式切换键删了，这是唯一入口）',
     /双击底栏的「想法」/.test(extractFn(html, 'openNoteHelp')));
   /* ④ 首次气泡自动消失（用户："显示得太久了"） */
@@ -407,7 +451,7 @@ console.log('\n[7] 红线 · 双击入口、层序、两条出口');
   tOk('摘要只有一行（nowrap + ellipsis）', /\.note-card \.nc-sum\{[^}]*white-space:nowrap/.test(html.replace(/\n/g, '')));
   tOk('详情三段：nd-title → nd-meta → nd-text 的 DOM 顺序',
     /class="nd-title"[^]*?class="nd-meta"[^]*?class="nd-text"/.test(extractFn(html, 'noteDetailHTML')));
-  tOk('详情正文正常换行、不截断（white-space:pre-wrap）', /\.note-detail \.nd-text\{[^}]*white-space:pre-wrap/.test(html.replace(/\n/g, '')));
+  tOk('详情正文正常换行、不截断（white-space:pre-wrap）', /\.nd-text\{[^}]*white-space:pre-wrap/.test(html.replace(/\n/g, '')));
   tOk('详情灰字含"共 N 字"', /共 \$\{noteCharCount\(n\)\} 字/.test(extractFn(html, 'noteDetailHTML')));
 
   /* 明确不做：图片 / 录音 / 富文本。判据只看**编辑器与详情页这一块 DOM**，
