@@ -162,70 +162,134 @@ tOk('★ 滚轮有上下渐隐遮罩，上下对称（两段百分比加起来 =
     return a + b === 100 && (b - a) >= 50; })(), fade.mask);
 tOk('滚轮内容比可视区高（真的能滑）', fade.scrollable, fade.scrollable);
 
-console.log('\n[5] 点中心那行字 → 打字 → 滚轮自动滚过去');
-const jump = await ev(`
-  return new Promise(function(resolve){
-    var heat = document.getElementById('stHeat');
-    var ym = heat.querySelector('.st-ym[data-k="' + heat.dataset.cur + '"]');
-    ym.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    var editable = ym.contentEditable;
-    ym.textContent = '${pm.y}年${pm.m + 1}月';
-    ym.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    setTimeout(function(){
-      var target = heat.querySelector('.st-m[data-month="${pm.y}-${pad(pm.m + 1)}"]');
-      var tr = target.getBoundingClientRect(), hr = heat.getBoundingClientRect();
-      resolve({ editable: editable, restored: ym.textContent,
-        text: target.querySelector('.st-ym').textContent,
-        diff: Math.round((tr.top + tr.height/2) - (hr.top + hr.height/2)),
-        scrollTop: Math.round(heat.scrollTop) });
-    }, 1400);
-  });`);
-t('点一下中心那行字会变成可编辑（出光标）', jump.editable, 'true');
-t('滚轮滚到了打字的那个月', jump.text, pm.y + '年' + (pm.m + 1) + '月');
-tOk('★ 停稳后那个月整块居中（滚轮吸附与跳转用同一个算式）', Math.abs(jump.diff) <= 3, jump.diff);
-tOk('滚轮真的滚动了', jump.scrollTop > 0, jump.scrollTop);
-/* ★ 跳转不许改写别的月份的标题（本轮实测踩到：从 10 月跳到 9 月后，10 月那块的标题
-   被写成了"2026年9月"）。标题的唯一真相源必须是它自己的 data-month。 */
-const labels = await ev(`
+console.log('\n[5] 点「年」/「月」弹滑轮 → 弹窗里再点中间那格转打字 → ✕ 退出后月历滚过去');
+/* 5a：点年份 -> 弹年份滑轮，右上角是 ✕（没有保存按钮） */
+const y5 = await ev(`
   var heat = document.getElementById('stHeat');
-  var bad = [];
-  [].slice.call(heat.querySelectorAll('.st-ym')).forEach(function(ym){
-    var b = ym.closest('.st-m');
-    var want = b.dataset.month.replace('-', '年').replace(/^0/, '') ;
-    var y = b.dataset.month.slice(0,4), m = parseInt(b.dataset.month.slice(5),10);
-    if (ym.textContent !== y + '年' + m + '月') bad.push([b.dataset.month, ym.textContent]); });
-  return bad;`);
-t('★ 每一格的标题都跟自己的月份一致（跳转没有篡改别的格）', labels, []);
+  var ys = heat.querySelector('.st-ym[data-k="' + heat.dataset.cur + '"] .st-yl');
+  ys.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  return new Promise(function(resolve){ setTimeout(function(){
+    var sheet = document.querySelector('.wheel-mask .wheel-sheet');
+    if (!sheet) return resolve({ open: false });
+    var col = sheet.querySelector('.wheel-col');
+    var items = [].slice.call(col.querySelectorAll('.wheel-it'));
+    var on = items.filter(function(n){ return n.classList.contains('on'); });
+    resolve({ open: true, cap: sheet.querySelector('.wheel-cap').textContent,
+      hasX: !!sheet.querySelector('.wheel-x'), hasOk: /确定/.test(sheet.textContent),
+      n: items.length, first: items[0].textContent, last: items[items.length-1].textContent,
+      onText: on.length ? on[0].textContent : null, onIdx: items.indexOf(on[0]) });
+  }, 350); });`);
+tOk('点「年」弹出年份滑轮', y5.open === true && y5.cap === '年份', JSON.stringify(y5));
+tOk('★ 弹窗右上角有「✕」、没有「确定」', y5.hasX === true && y5.hasOk === false, JSON.stringify([y5.hasX, y5.hasOk]));
+tOk('年份轮的范围：1970 .. 今年（今年封顶）', y5.first === '1970' && y5.last === String(Y), y5.first + '..' + y5.last);
+tOk('弹窗打开时停在该年份上', y5.onText === String(Y).slice(0, 4), y5.onText);
+await shot('sheet-year');
+
+/* 5b：滚到另一个年份 -> ✕ 退出 -> 月历自动滚到那年 */
+const y6 = await ev(`
+  var sheet = document.querySelector('.wheel-mask .wheel-sheet');
+  var col = sheet.querySelector('.wheel-col');
+  var items = [].slice.call(col.querySelectorAll('.wheel-it'));
+  var want = items.findIndex(function(n){ return n.textContent === '${Y - 2}'; });
+  col.scrollTo({ top: want * 44, behavior: 'instant' });
+  return new Promise(function(resolve){ setTimeout(function(){
+    document.getElementById('ym_x').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    resolve({ sheetGone: !document.querySelector('.wheel-mask'), want: want });
+  }, 400); });`);
+tOk('点「✕」弹窗关掉', y6.sheetGone === true, JSON.stringify(y6));
+const afterY = await ev(`
+  return new Promise(function(resolve){ setTimeout(function(){
+    var heat = document.getElementById('stHeat');
+    var cur = document.querySelector('.st-m[data-month="' + (stCenteredMonth(heat)) + '"]');
+    resolve({ centered: stCenteredMonth(heat), label: cur ? cur.querySelector('.st-ym').textContent : null });
+  }, 1200); });`);
+tOk('★ 退出后月历自动滚到刚才选的年份', String(afterY.centered).slice(0, 4) === String(Y - 2), JSON.stringify(afterY));
+
+/* 5c：点月份 -> 月份轮（1~12 铺三遍做循环）-> 滚到 3 月 -> ✕ -> 月历滚到 3 月 */
+const m5 = await ev(`
+  var heat = document.getElementById('stHeat');
+  var ms = heat.querySelector('.st-ym .st-ml');
+  ms.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  return new Promise(function(resolve){ setTimeout(function(){
+    var sheet = document.querySelector('.wheel-mask .wheel-sheet');
+    var col = sheet.querySelector('.wheel-col');
+    var items = [].slice.call(col.querySelectorAll('.wheel-it'));
+    var on = items.filter(function(n){ return n.classList.contains('on'); });
+    resolve({ cap: sheet.querySelector('.wheel-cap').textContent, n: items.length,
+      onText: on.length ? on[0].textContent : null, onIdx: items.indexOf(on[0]),
+      val3: items.filter(function(n){ return n.textContent === '3'; }).length });
+  }, 350); });`);
+tOk('点「月」弹出月份滑轮', m5.cap === '月份', JSON.stringify(m5));
+t('★ 月份轮 1~12 铺三遍（无限循环的观感）', m5.n, 36);
+tOk('★ 弹窗打开时停在"中间那一遍"的当前月', m5.onIdx >= 12 && m5.onIdx < 24, m5.onIdx);
+const m6 = await ev(`
+  var sheet = document.querySelector('.wheel-mask .wheel-sheet');
+  var col = sheet.querySelector('.wheel-col');
+  var items = [].slice.call(col.querySelectorAll('.wheel-it'));
+  var want = 12 + 2;                       /* 中间那遍的 3 月 */
+  col.scrollTo({ top: want * 44, behavior: 'instant' });
+  return new Promise(function(resolve){ setTimeout(function(){
+    var selBefore = JSON.parse(JSON.stringify(stSel));
+    document.getElementById('ym_x').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    setTimeout(function(){ resolve({ selBefore: selBefore, view: stView, jump: stJumpTo,
+      centered: stCenteredMonth(document.getElementById('stHeat')) }); }, 1500);
+  }, 450); });`);
+tOk('★ 退出后月历滚到 3 月', String(m6.centered).slice(5) === '03', JSON.stringify(m6));
+
+/* 5d：弹窗里再点一次中间那格 -> 转打字 -> 输入 2023 -> 回车 -> 年份轮自己滚过去 */
+const typ = await ev(`
+  var heat = document.getElementById('stHeat');
+  heat.querySelector('.st-ym .st-yl').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  return new Promise(function(resolve){ setTimeout(function(){
+    var sheet = document.querySelector('.wheel-mask .wheel-sheet');
+    var col = sheet.querySelector('.wheel-col');
+    var on = col.querySelector('.wheel-it.on');
+    on.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    setTimeout(function(){
+      var inp = col.querySelector('.wheel-it-in');
+      if (!inp) return resolve({ input: false });
+      inp.value = '2023';
+      inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      setTimeout(function(){
+        var on2 = col.querySelector('.wheel-it.on');
+        resolve({ input: true, typingGone: !col.querySelector('.wheel-it-in'),
+          onText: on2 ? on2.textContent : null,
+          scrollTop: Math.round(col.scrollTop) });
+      }, 900);
+    }, 250);
+  }, 350); });`);
+tOk('★ 弹窗里再点中间那格 → 出现输入框', typ.input === true && typ.typingGone === true, JSON.stringify(typ));
+tOk('★ 输入 2023 回车后：光标消失、滑轮滚到 2023', typ.onText === '2023', JSON.stringify(typ));
+const typEnd = await ev(`
+  document.getElementById('ym_x').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  return new Promise(function(resolve){ setTimeout(function(){
+    resolve({ centered: stCenteredMonth(document.getElementById('stHeat')) }); }, 1300); });`);
+tOk('★ 最终月历停在 2023 年', String(typEnd.centered).slice(0, 4) === '2023', JSON.stringify(typEnd));
 await shot('heat-light');
 
 console.log('\n[6] 边界：年份到今年封顶；过去可以一直往前');
 const cap = await ev(`
-  var heat = document.getElementById('stHeat');
-  var ym = heat.querySelector('.st-ym[data-k="' + heat.dataset.cur + '"]');
-  ym.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  ym.textContent = '${Y + 5}年6月';
-  ym.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-  return new Promise(function(resolve){ setTimeout(function(){
-    var last = heat.querySelectorAll('.st-m');
-    var tail = last[last.length-1].dataset.month;
-    resolve({ tail: tail, tailText: last[last.length-1].querySelector('.st-ym').textContent,
-      oldest: last[0].dataset.month }); }, 900); });`);
-tOk('★ 年底封顶：滑到底也不越过今年 12 月（2027 不存在）', cap.tail === Y + '-12', cap.tail);
+  return new Promise(function(resolve){
+    /* 今年的 12 月存在（往后封顶），明年的任何月份都不存在 */
+    stGoMonth(today0().getFullYear(), 12);
+    setTimeout(function(){
+      var heat = document.getElementById('stHeat');
+      var all = [].slice.call(heat.querySelectorAll('.st-m'));
+      resolve({ tail: all[all.length-1].dataset.month, oldest: all[0].dataset.month,
+        hasNextYear: !!heat.querySelector('.st-m[data-month="' + (today0().getFullYear()+1) + '-01"]') });
+    }, 1500); });`);
+tOk('★ 年份封顶：今年 12 月是最后一块（2027 不存在）', cap.tail === Y + '-12' && cap.hasNextYear === false, JSON.stringify(cap));
 tOk('往前能一直翻（最老那月远早于当月）', cap.oldest < Y + '-' + pad(M + 1), cap.oldest);
 const early = await ev(`
-  var heat = document.getElementById('stHeat');
-  var ym = heat.querySelector('.st-ym[data-k="' + heat.dataset.cur + '"]') || heat.querySelector('.st-ym');
-  var before = heat.querySelectorAll('.st-m').length;
-  ym.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  ym.textContent = '${Y - 3}年1月';
-  ym.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  var before = document.querySelectorAll('#stHeat .st-m').length;
+  /* 跳到三年前的 1 月：那时还没渲染 -> 自动往前延再重画（用户要的"往前无限"） */
+  stGoMonth(today0().getFullYear() - 3, 1);
   return new Promise(function(resolve){ setTimeout(function(){
-    /* ⚠️ 这一步会整块重画 -> 必须重新取元素，不能接着用上面那个 heat
-       （stale 引用会读到已被换掉的旧 DOM，得到"什么都没发生"的假结论） */
+    /* ⚠️ 这一步会整块重画 -> 必须重新取元素（stale 引用会读到已被换掉的旧 DOM） */
     var h2 = document.getElementById('stHeat');
     resolve({ before: before, after: h2.querySelectorAll('.st-m').length,
-      has: !!h2.querySelector('.st-ym[data-k="${Y - 3}-01"]') }); }, 1300); });`);
-tOk('★ 打字跳到更早的年份时滚轮自动往前延（用户要的"往前无限"）', early.has === true, JSON.stringify(early));
+      has: !!h2.querySelector('.st-m[data-month="${Y - 3}-01"]') }); }, 1500); });`);
+tOk('★ 跳到更早的年份时，月历自动往前延（"往前无限"）', early.has === true, JSON.stringify(early));
 
 console.log('\n[7] 深色主题：四档反过来（越完成越亮），对比度仍达标');
 await ev('applyTheme("dark", false); return 1;'); await sleep(500);

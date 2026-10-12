@@ -180,6 +180,8 @@ const NAMES = [
   'statTotalDays', 'streakBest', 'zoneDoneCounts', 'statAsideHTML', 'overdueLines', 'hwLines', 'itemDue',
   /* ★ 7.3.0 月历热力图 + 月份滚轮 */
   'statDayCounts', 'heatLevel', 'statMonthList', 'statHeatHTML', 'stHeatCenter', 'stParseYM', 'statHeatWire', 'stYmLabel',
+  /* ★ 7.3.1 年月滑轮弹窗 */
+  'stCenteredMonth', 'stGoMonth', 'ymBuildCol', 'ymLoop', 'ymType', 'ymSheetHTML', 'openYmSheet', 'closeYmSheet',
   'aiZoneAsk', 'zoneAdvisorLocal', 'zoneAdvisorAsk',
   /* ================= 6B 设置页信息架构重做 ================= */
   /* 新增五个：那一行 AI 状态的文案（aiEntryText / aiEntryLabel）、
