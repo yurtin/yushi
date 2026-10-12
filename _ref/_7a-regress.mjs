@@ -334,8 +334,17 @@ console.log('\n[7] 红线 · 双击入口、层序、两条出口');
     /\.note-card\{[^}]*border-radius:32px/.test(html.replace(/\n/g, '')));
   tOk('列表卡左右内边距与 .zone 一致（20px）',
     /\.note-card\{[^}]*padding:16px 20px/.test(html.replace(/\n/g, '')));
+  /* ⚠️ 判据一律用**去注释后的 code**：改动说明里会写到 `border:1px solid` 这些字面量，
+     扫原文会被自己的注释骗到（本项目老坑）。 */
   tOk('列表卡不再自加 1px 描边（材质交给 .glass）',
-    !/\.note-card\{[^}]*border:1px solid/.test(html.replace(/\n/g, '')));
+    !/\.note-card\{[^}]*border:1px solid/.test(code.replace(/\n/g, '')));
+  /* ★ 2026-10-12 第二次反馈的真凶：`.note-card` 是 `<button>`，不写 border 就会露出
+     UA 的 `2px outset` 立体边（想法卡/清单卡都是 div，没有这层）。
+     这条断言就是为了别让它回来 —— 必须**显式** border:0。 */
+  tOk('列表卡显式清了 UA 的按钮边框（border:0）',
+    /\.note-card\{[^}]*border:0/.test(code.replace(/\n/g, '')));
+  tOk('列表卡也清了按钮的默认底色（background:transparent，材质交给 .glass）',
+    /\.note-card\{[^}]*background:transparent/.test(code.replace(/\n/g, '')));
   tOk('列表间距与 .idea-list 一致（14px）', /\.note-list\{[^}]*gap:14px/.test(html.replace(/\n/g, '')));
   /* ② 长文页补上「想法」主标题（用户："卡片界面上方『想法』的主标题是不变的"） */
   const intro = extractFn(html, 'notesIntroHTML');
