@@ -95,6 +95,9 @@ const FN_NAMES = ['statPageHits', 'statTreeOf', 'statRootHits', 'statPageCount',
   'originCounts', 'originRowHTML', 'jumpButtonHTML',
   /* ★ 7B：renderZoneBody / originCounts 现在按分区表分栏与计数，这三个辅助要一起切进来。 */
   'zlist', 'zoneLongKey', 'zoneShortKey', 'zoneRepeatKey',
+  /* ★ 7.2.2：renderStat 现在还要拼"卡片右侧的拓展说明"——
+     这几个取数/拼 HTML 的函数必须一起切进隔离环境，否则 ReferenceError（本轮踩到）。 */
+  'zoneDoneCounts', 'statTotalDays', 'streakBest', 'statAsideHTML', 'overdueLines', 'hwLines', 'itemDue',
   'ymd', 'pad2', 'dateFrom', 'today0', 'daysFromToday', 'teDateLabelFromStr'];
 const appSrc = FN_NAMES.map(n => extractFn(html, n)).join('\n\n');
 

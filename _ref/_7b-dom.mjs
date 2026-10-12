@@ -172,7 +172,8 @@ await openList();
   t('每栏标题用的是分区表里的名字', cols.map(c => c.name), ['长期', '短期', '循环', '学习']);
   t('条目归到了正确的栏（学习那栏两条）', cols[3].ids, ['x1', 'x2']);
   t('每个普通分区都有「⋯」，未分组没有', cols.map(c => c.menu), [true, true, true, true]);
-  tOk('末尾有「+ 新建分区」', !!(await ev('return !!document.querySelector("#view .zone-add");')));
+  tOk('★ 7.2.1：清单页末尾**不再**有「+ 新建分区」（只留弹窗底部那一枚）',
+    !(await ev('return !!document.querySelector("#view .zone-add");')));
   tOk('卡片上那枚「哪一栏」的 chip 在', (await ev('return document.querySelectorAll("#view .zchip").length;')) > 0);
 }
 
@@ -280,9 +281,16 @@ console.log('\n[4] 7.2.0 排序：标题栏聚焦时 Ctrl/⌘ + ←/→ 换位�
 /* ══════════ [5] 新建分区 ══════════ */
 console.log('\n[5] 7B 新建分区：建完立刻出现，能往里放条目');
 {
-  const hAdd = await hitClick('#view .zone-add');
-  await sleep(200);
-  tOk('「+ 新建分区」也是按真路径点到的', hAdd.inSelf === true, JSON.stringify(hAdd));
+  /* ★ 7.2.1：清单页脚下那枚虚线「+ 新建分区」已删除（用户："把这个清单页面的这个新建分区取消"），
+     新建分区只留「分区管理」弹窗底部那一枚 —— 这里改成走那条真路径。 */
+  tOk('清单页上不再有「+ 新建分区」按钮（真路径的旧入口已撤）',
+    await ev('return !document.querySelector(".board > .zone-add, [data-zoneadd]");') === true);
+  const hOpen = await hitClick('#zoneManagerBtn');
+  tOk('「分区管理」图标按真路径点得到', hOpen.inSelf === true, JSON.stringify(hOpen));
+  await sleep(250);
+  const hAdd = await hitClick('#zm_new');
+  await sleep(220);
+  tOk('弹窗底部那枚虚线「+ 新建分区」也是按真路径点到的', hAdd.inSelf === true, JSON.stringify(hAdd));
   t('新建弹层开了', await ev('return !!document.getElementById("za_name");'), true);
   await ev('document.getElementById("za_name").value="工作"; return 1;');
   await click('#za_ok');

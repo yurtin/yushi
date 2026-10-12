@@ -515,7 +515,7 @@ console.log('\n[11] 重复定义体检（本卡新增的函数名）');
   const extras = ['zoneTeach', 'zoneTeachPick', 'zoneTeachFromEditor', 'openZoneManager', 'closeZoneManager',
     'zoneManagerDelete', 'zoneRenameOpen', 'zoneAddOpen', 'zoneChipHTML', 'aiZoneAsk',
     'zmPanelSync', 'zmRuleEdit', 'zmRuleCommit', 'zmSave', 'zoneRulesText',
-    'zoneReorderCommit', 'zdApply', 'zdEnd', 'zdCancelLift', 'zoneStep'];
+    'zoneReorderCommit', 'zdApply', 'zdEnd', 'zdCancelLift', 'zoneSlotStep', 'zdCleanClone'];
   const dup2 = [];
   for (const n of extras){
     const c = (html.match(new RegExp('function ' + n + '\\(', 'g')) || []).length;

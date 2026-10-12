@@ -130,7 +130,10 @@ console.log('\n[2] 逾期谓词同源（统计卡数字必须和卡片红标题�
 const DUE_LINE = 'const due = (it.dateEnd && (!it.date || daysFromToday(it.dateEnd) >= daysFromToday(it.date))) ? it.dateEnd : it.date;';
 {
   const n = html.split(DUE_LINE).length - 1;
-  t('那一行 due 表达式逐字符相同的处数（itemHTML / statPageHits / chipDate / 时间轴）', n, 4);
+  /* ★ 7.2.2：第 5 处是统计卡「已逾期」右侧那串文案（overdueLines）。
+     它**故意**再抄一份那行表达式而不是调 itemDue()：itemDue() 本身是"不想再抄第 6 份"用的，
+     而这条断言问的是"逐字符相同的那行有几个实现点" —— 实现点变多了就如实写进断言。 */
+  t('那一行 due 表达式逐字符相同的处数（itemHTML / statPageHits / chipDate / 时间轴 / 7.2.2 逾期文案）', n, 5);
   tOk('卡片染色用 due 而不是 it.date',
     /const overdue = !it\.done && due && daysFromToday\(due\) < 0;/.test(htmlNC));
   tOk('统计子页的 overdue 用 due',

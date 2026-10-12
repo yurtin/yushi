@@ -158,10 +158,10 @@ console.log('\n[1b] 单日条目：chip 逐字段不变（三条）');
 /* ══════════════════════════════════════════════════════════════
    [2] due 同源 + started 判据
    ══════════════════════════════════════════════════════════════ */
-console.log('\n[2] due 表达式仍四处逐字符相同 / started 在三处同源');
+console.log('\n[2] due 表达式五处逐字符相同（7.2.2 起多了逾期文案那一处）/ started 在三处同源');
 const DUE_LINE = 'const due = (it.dateEnd && (!it.date || daysFromToday(it.dateEnd) >= daysFromToday(it.date))) ? it.dateEnd : it.date;';
 {
-  t('那一行 due 表达式逐字符相同的处数', html.split(DUE_LINE).length - 1, 4);
+  t('那一行 due 表达式逐字符相同的处数（7.2.2 新增 overdueLines）', html.split(DUE_LINE).length - 1, 5);
   tOk('卡片染色用 due 而不是 it.date',
     /const overdue = !it\.done && due && daysFromToday\(due\) < 0;/.test(htmlNC));
   tOk('旧的「只看起始日」写法一处不剩',

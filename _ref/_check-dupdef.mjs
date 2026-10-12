@@ -163,7 +163,7 @@ const NAMES = [
        新建 / 改名 / 删除 / 写规则搬进分区管理弹窗；排序改成长按拖动。名字同步换新。
      openZoneManager closeZoneManager zmPanelSync zmRuleEdit zmRuleCommit zmSave
      zoneManagerDelete zoneRenameOpen zoneAddOpen zoneRulesText
-     排序：zoneReorderCommit zdApply zdEnd zdCancelLift zdStep zoneStep
+     排序：zoneReorderCommit zdApply zdEnd zdCancelLift zdCleanClone zoneSlotStep
      AI 落点：aiZoneAsk zoneAdvisorLocal zoneAdvisorAsk
      ⚠️ 常量 ZONE_KEY_RE / ZONE_COLORS / ZONE_LEGACY / AI_ZONE_SYS / zoneAskBusy / ZONE_DRAG_MS 不是函数声明，不收。 */
   'zlist', 'validZoneKey', 'zoneOptions', 'zoneNameOf', 'zoneLongKey', 'zoneShortKey', 'zoneRepeatKey',
@@ -174,7 +174,10 @@ const NAMES = [
   'zoneChipHTML', 'zoneTeach', 'zoneTeachPick', 'zoneTeachFromEditor',
   'openZoneManager', 'closeZoneManager', 'zmPanelSync', 'zmRuleEdit', 'zmRuleCommit', 'zmSave',
   'zoneManagerDelete', 'zoneRenameOpen', 'zoneAddOpen', 'zoneRulesText',
-  'zoneReorderCommit', 'zdApply', 'zdEnd', 'zdCancelLift', 'zoneStep',
+  'zoneReorderCommit', 'zdApply', 'zdEnd', 'zdCancelLift', 'zoneSlotStep', 'zdCleanClone',
+  /* ★ 7.2.2 统计卡右侧拓展说明：两个取数函数 + 各栏完成数 + 右侧 HTML + 逾期/作业两串文案
+     + itemDue（"哪一天算截止日"的唯一实现，给新代码用；那 4 处历史实现不动） */
+  'statTotalDays', 'streakBest', 'zoneDoneCounts', 'statAsideHTML', 'overdueLines', 'hwLines', 'itemDue',
   'aiZoneAsk', 'zoneAdvisorLocal', 'zoneAdvisorAsk',
   /* ================= 6B 设置页信息架构重做 ================= */
   /* 新增五个：那一行 AI 状态的文案（aiEntryText / aiEntryLabel）、
