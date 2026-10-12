@@ -295,13 +295,14 @@ console.log('\n[3] 二级「更新日志」：当前版本的条目一眼看到'
 console.log('\n[4] 三级「历史版本」：按大版本分组、默认只展开当前大版本');
 {
   await hitClick('[data-log="history"]'); await sleep(260);
-  /* ★ 7D 追加：换页是整块横向滑入（前进从右），不是瞬跳。 */
-  t('切到三级：整块横向滑入（.pane.from-right + 有动画），不是直接跳', await ev(`
+  /* ★ 7D 追加：换页不是瞬跳。2026-10-12 用户把方向统一了 —— 现在两个方向类都走 paneUpIn
+     （自下而上淡入），不再分左右。 */
+  t('切到三级：整块自下而上淡入（.pane.from-right + paneUpIn），不是直接跳', await ev(`
     var pg = document.querySelector('#log_panel .pane');
     if (!pg) return null;
     var cs = getComputedStyle(pg);
     return [pg.className, cs.animationName, cs.animationDuration];`),
-    ['pane from-right', 'logInRight', '0.34s']);
+    ['pane from-right', 'paneUpIn', '0.34s']);
   const r = await ev(`
     var p = document.getElementById('log_panel');
     var majs = [].slice.call(p.querySelectorAll('.log-maj'));
@@ -390,13 +391,13 @@ console.log('\n[6] Escape 逐层退：三级 → 二级 → 关闭');
     panel: !!document.getElementById('log_panel') };`);
   tOk('第一下 Escape：三级 → 回到二级「更新日志」，弹层还开着',
     a.title === '更新日志' && a.maskOn === true && a.panel === true, JSON.stringify(a));
-  /* ★ 7D 追加：退回二级也带动效（从左侧滑回），与点「‹ 更新日志」同一条。 */
-  t('退回来是横向滑入（.pane.from-left + 有动画），不是瞬跳', await ev(`
+  /* ★ 7D 追加：退回二级也带动效。2026-10-12 起方向统一 —— from-left 也走 paneUpIn。 */
+  t('退回来也带自下而上淡入（.pane.from-left + paneUpIn），不是瞬跳', await ev(`
     var pg = document.querySelector('#log_panel .pane');
     if (!pg) return null;
     var cs = getComputedStyle(pg);
     return [pg.className, cs.animationName, cs.animationDuration];`),
-    ['pane from-left', 'logInLeft', '0.34s']);
+    ['pane from-left', 'paneUpIn', '0.34s']);
   await esc();
   const b = await ev(`return { maskOn: document.getElementById('mask').classList.contains('on'),
     panel: !!document.getElementById('log_panel') };`);

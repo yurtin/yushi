@@ -363,12 +363,13 @@ console.log('\n[D] 详情页三段 · 共 N 字与实际字数一致');
   t('还在想法页，只是多了一屏（S.view 没变、也没新增值）', await ev('return S.view;'), 'idea');
   t('详情页出现了', await ev("return !!document.querySelector('.note-detail');"), true);
   /* ★ 用户 2026-10-12："点击长文本卡片的详情页时，它就直接跳转了，没有动画" ——
-     现在详情页带 `.pane from-right`，动画名与 7D 的二级页是同一条 logInRight。 */
-  t('详情页带换屏动画（.pane.from-right + logInRight）',
+     现在详情页带 `.pane from-right`；2026-10-12 追加（"都改成从下往上淡入淡出"）
+     后动画名是全站统一的 paneUpIn，不再是与 7D 二级页共用的 logInRight。 */
+  t('详情页带换屏动画（.pane.from-right + paneUpIn）',
     await ev(`var d = document.querySelector('.note-detail');
       return [d.classList.contains('pane'), d.classList.contains('from-right'),
         getComputedStyle(d).animationName, getComputedStyle(d).animationDuration];`),
-    [true, true, 'logInRight', '0.34s']);
+    [true, true, 'paneUpIn', '0.34s']);
   const order = await ev(`var a = document.querySelector('.nd-title'), b = document.querySelector('.nd-meta'), c = document.querySelector('.nd-text');
     if (!a || !b || !c) return 'missing';
     return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? ((b.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING) ? 'title-meta-text' : 'bad2') : 'bad1';`);
@@ -505,9 +506,9 @@ console.log('\n[F] 「完成」= 存一下停在详情页 ·「录入」新建�
   /* 回列表，[G] 段要按"重开还停在长文页"验 */
   t('点返回回列表', await click('[data-note="back"]'), 'ok');
   await sleep(280);
-  t('[返回] 列表带 from-left 换屏动画',
+  t('[返回] 列表带换屏动画（from-left → paneUpIn）',
     await ev(`var p = document.querySelector('#view > .pane');
-      return [!!p, p ? getComputedStyle(p).animationName : ''];`), [true, 'logInLeft']);
+      return [!!p, p ? getComputedStyle(p).animationName : ''];`), [true, 'paneUpIn']);
   t('列表第一张卡是刚新建的那条', await ev("return document.querySelector('.note-card .nc-title').textContent;"), '第一条草稿');
 }
 

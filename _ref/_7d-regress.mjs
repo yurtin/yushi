@@ -229,9 +229,13 @@ console.log('\n[4] B 部分：面板形态（不新增浮层 / Escape 逐层退�
   tOk('两个二级页共用同一个入场壳（更新日志 + AI 连接都是 .pane.stagger）',
     /class="pane stagger"/.test(extractFn(html, 'openChangelogPanel'))
     && /class="pane stagger"/.test(extractFn(html, 'openAiPanel')));
-  tOk('换页/折叠的动效都指向站内既有实现（横向滑入两条 keyframes + revealAnim），没有第二套补间',
-    /\.pane\.from-right\{animation:logInRight/.test(html)
-    && /\.pane\.from-left\{animation:logInLeft/.test(html)
+  /* ★ 2026-10-12（用户："切换卡片与长文页动画都改成从下往上淡入淡出"）：
+     换页动画**全站统一成一条自下而上**的 paneUpIn —— 两个方向类都指向它。
+     旧的两条左右 keyframes 仍留在 CSS 里（想改回方向时不用重写），所以只断言"指向 paneUpIn"。 */
+  tOk('换页/折叠的动效都指向站内既有实现（统一 paneUpIn + revealAnim），没有第二套补间',
+    /\.pane\.from-right\{animation:paneUpIn/.test(html)
+    && /\.pane\.from-left\{animation:paneUpIn/.test(html)
+    && /@keyframes paneUpIn\{/.test(html)
     && /revealAnim\(body, open, h, '0px'\)/.test(extractFn(html, 'toggleLogMaj'))
     && /revealAnim\(body, open, h, '0px'\)/.test(extractFn(html, 'toggleLogVer')));
   tOk('折叠的收起态是"可补间的高度"而不是 display:none（否则永远补不了间）',

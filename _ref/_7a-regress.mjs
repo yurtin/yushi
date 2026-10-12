@@ -416,7 +416,10 @@ console.log('\n[7] 红线 · 双击入口、层序、两条出口');
     && /from-left' : 'from-right'/.test(extractFn(html, 'noteDetailHTML')));
   tOk('长文列表整块也包一个 .pane（换屏滑入）',
     /<div class="\$\{pane\}">/.test(extractFn(html, 'renderNotes')));
-  tOk('前进从右、返回从左（与 7D 二级页同一条口径）',
+  /* ★ 2026-10-12 口径变更（用户："切换卡片与长文页动画都改成从下往上淡入淡出"）：
+     noteDir 仍按前进/返回写 from-right / from-left（那是状态），但 CSS 里两个类
+     现在都映射到同一条 paneUpIn，所以这里只断言"有没有值"，不再断言方向语义。 */
+  tOk('noteOpen / noteClose 仍按前进 / 返回写 noteDir（值保留，动画已统一）',
     /noteDir = 'from-right';/.test(extractFn(html, 'noteOpen'))
     && /noteDir = 'from-left';/.test(extractFn(html, 'noteClose')));
   tOk('回顶改成平滑滚动（原来那一下瞬时跳也是"直接跳转"的来源）',
