@@ -169,7 +169,7 @@ console.log('\n[3] A 部分：分组集合（最终四栏 = 功能 / AI / 外观
   const TABLE = {
     '功能': ['data-set="notify"', 'data-set="alarmfull"', 'data-set="voice"',
       'data-set="ideaReview"', 'data-set="autoDoneParent"', 'id="notifyLast"'],
-    'AI': ['data-act="aipanel"', '发多少内容', '常用词', 'id="zoneRulesInput"', 'data-act="capzoneopen"',
+    'AI': ['data-act="aipanel"', '发多少内容', '常用词', 'data-act="capzoneopen"',
       'data-act="aiprune"'],
     '外观与体感': ['data-theme="light"', 'data-set="help"', 'data-set="lite"',
       'data-datepart="y"', 'data-haptic="std"'],
@@ -213,9 +213,10 @@ console.log('\n[4] B 部分：面板形态（不新增浮层 / Escape 逐层退�
     /data-log="back"/.test(html) && /function logPanelSync\(/.test(html) && c(/log_panel/g) >= 2,
     'log_panel 出现 ' + c(/log_panel/g) + ' 处');
   tOk('不新增浮层机制（没有 .mask2 / #mask2 / newMask）', !/\.mask2|#mask2|newMask/.test(code));
-  /* ★ 7A：新增两个常驻浮层（.note-edit 全屏编辑器 / .note-tip 首次气泡）→ 14 + 2 = 16 */
-  tOk('CSS 里 position:fixed 的数量 = 基线 14 + 7A 的 2（共 16）', c(/position:\s*fixed/g) === 16,
-    String(c(/position:\s*fixed/g)));
+  /* ★ 7A：新增两个常驻浮层（.note-edit 全屏编辑器 / .note-tip 首次气泡）→ 14 + 2 = 16。
+     ★ 7.2.0：旧的「⋯」下拉菜单（.zmenu-pop，position:fixed）整块删除 → 16 - 1 = 15。 */
+  tOk('CSS 里 position:fixed 的数量 = 基线 14 + 7A 的 2 - 7.2.0 删掉的 1（共 15）',
+    c(/position:\s*fixed/g) === 15, String(c(/position:\s*fixed/g)));
   tOk('打开态是会话级（logView / logOpenMaj / logOpenVer）**不进 S**',
     !/S\.logView|S\.logOpenMaj|S\.logOpenVer/.test(code));
   tOk('入口挂在「数据」栏底部那行版本号上（data-act="changelogopen"）',

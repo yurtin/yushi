@@ -510,8 +510,12 @@ console.log('\n[11] 重复定义体检（本卡新增的函数名）');
     if (c !== 1) dup.push(n + '=' + c);
   }
   t('所有 7B 函数各只有一份定义', dup, []);
-  const extras = ['zoneTeach', 'zoneTeachPick', 'zoneTeachFromEditor', 'openZoneMenu', 'closeZoneMenu',
-    'zoneRenameOpen', 'zoneDeleteConfirm', 'zoneAddOpen', 'zoneChipHTML', 'aiZoneAsk'];
+  /* ★ 7.2.0：交互层改版 —— 旧的「⋯」菜单三个函数（openZoneMenu / closeZoneMenu /
+     zoneDeleteConfirm）整块删除，换成分区管理弹窗那一组；排序改成长按拖动。 */
+  const extras = ['zoneTeach', 'zoneTeachPick', 'zoneTeachFromEditor', 'openZoneManager', 'closeZoneManager',
+    'zoneManagerDelete', 'zoneRenameOpen', 'zoneAddOpen', 'zoneChipHTML', 'aiZoneAsk',
+    'zmPanelSync', 'zmRuleEdit', 'zmRuleCommit', 'zmSave', 'zoneRulesText',
+    'zoneReorderCommit', 'zdApply', 'zdEnd', 'zdCancelLift', 'zoneStep'];
   const dup2 = [];
   for (const n of extras){
     const c = (html.match(new RegExp('function ' + n + '\\(', 'g')) || []).length;

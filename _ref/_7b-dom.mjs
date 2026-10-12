@@ -128,7 +128,8 @@ const zoneCols = async () => ev(`
   return [].slice.call(document.querySelectorAll('#view .board > .zone')).map(function(z){
     return { k: z.dataset.z, name: (z.querySelector('h3')||{}).textContent,
       ids: [].slice.call(z.querySelectorAll('.item[data-id]')).map(function(i){ return i.dataset.id; }),
-      menu: !!z.querySelector('.zmenu'), fold: z.hasAttribute('data-zfold') === false ? false : true,
+      /* ★ 7.2.0：判据从"有没有 ⋯ 按钮"换成"能不能排序"（可排序 = 标题栏带 data-zfold）。 */
+      menu: !!z.querySelector('header[data-zfold]'), fold: !!z.querySelector('header[data-zfold]'),
       folded: z.classList.contains('folded') };
   });
 `);
@@ -186,17 +187,23 @@ console.log('\n[2] 7B.2「未分组」空时不渲染');
 console.log('\n[3] 7B 红线1（DOM）：改「学习」的名字 → 条目还在这一栏');
 {
   const before = await zoneCols();
-  /* ★ 真机修回归：先按**真手指**点 ⋯（elementFromPoint 命中 + 派发冒泡 click）。 */
-  const h = await hitClick('[data-zmenu="z1"]');
-  tOk('⋯ 是按真路径点到的（中心命中它自己，没被别的层盖住）', h.inSelf === true, JSON.stringify(h));
-  t('⋯ 面板开了', await ev('return !!document.getElementById("zmenuPop");'), true);
-  t('★ 点 ⋯ **不会**把这一栏折叠（真机 bug 的回归位）',
+  /* ★★ 7.2.0：改名搬进了「分区管理」弹窗（清单页左端那枚圆形图标）——
+     先按**真手指**点那枚图标（elementFromPoint 命中 + 派发冒泡 click），再在弹窗里改名。 */
+  const h = await hitClick('#zoneManagerBtn');
+  tOk('分区管理图标是按真路径点到的（中心命中它自己，没被别的层盖住）', h.inSelf === true, JSON.stringify(h));
+  t('分区管理弹窗开了', await ev('return !!document.getElementById("zm_panel");'), true);
+  t('★ 开弹窗 **不会**把任何一栏折叠（真机 bug 的回归位）',
     (await zoneCols())[3].folded, false);
-  await ev('var b=document.querySelector(\'#zmenuPop [data-zoneopt="rename"]\'); b.click(); return 1;');
+  await ev('document.querySelector(\'[data-zmtoggle="z1"]\').click(); return 1;');
   await sleep(200);
-  t('改名弹层开了（输入框里有原名）', await ev('return (document.getElementById("zr_name")||{}).value;'), '学习');
+  await ev('document.querySelector(\'[data-zmrename="z1"]\').click(); return 1;');
+  await sleep(200);
+  t('改名那一屏开了（输入框里有原名）', await ev('return (document.getElementById("zr_name")||{}).value;'), '学习');
   await ev('var i=document.getElementById("zr_name"); i.value="课业"; return 1;');
   await click('#zr_ok');
+  await sleep(400);
+  t('改完回到分区列表（面板还在）', await ev('return !!document.getElementById("zm_panel") && !document.getElementById("zr_name");'), true);
+  await click('#zm_save');
   await sleep(400);
   const after = await zoneCols();
   t('名字改了', after[3].name, '课业');
@@ -205,25 +212,25 @@ console.log('\n[3] 7B 红线1（DOM）：改「学习」的名字 → 条目还�
   t('分区表里的 k 也没变', await ev('return S.zones.map(function(z){return z.k;});'), ['z_long', 'z_short', 'z_repeat', 'z1']);
 }
 
-/* ══════════ [3b] 「⋯」与「折叠」互不干扰（真机 bug 的正面清单） ══════════ */
-console.log('\n[3b] 真机修：⋯ 不会被折叠分支抢走；标题栏照旧能折叠');
+/* ══════════ [3b] 分区管理图标与「折叠」互不干扰 ══════════ */
+console.log('\n[3b] 7.2.0：分区管理图标不会被折叠分支抢走；标题栏照旧能折叠');
 {
   await openList();
   const open0 = await zoneCols();
   t('起始四栏都是展开的', open0.map(c => c.folded), [false, false, false, false]);
 
-  /* ① 点 ⋯ → 只出面板，不折叠 */
-  await hitClick('[data-zmenu="z_short"]');
-  t('① 点 ⋯：面板开了', await ev('return !!document.getElementById("zmenuPop");'), true);
-  t('① 点 ⋯：这一栏仍然展开（没有被折叠）',
-    (await zoneCols()).filter(c => c.k === 'z_short')[0].folded, false);
-  t('① 点 ⋯：S.foldedZones 里没被写进东西',
+  /* ① 点图标 → 弹窗开，且不折叠任何一栏 */
+  await hitClick('#zoneManagerBtn');
+  t('① 点图标：弹窗开了', await ev('return !!document.getElementById("zm_panel");'), true);
+  t('① 点图标：没有哪一栏被折叠',
+    (await zoneCols()).map(c => c.folded), [false, false, false, false]);
+  t('① 点图标：S.foldedZones 里没被写进东西',
     await ev('return S.foldedZones.slice();'), []);
-  /* 关掉面板 */
-  await ev('closeZoneMenu(); return 1;');
-  await sleep(160);
+  /* 关掉弹窗 */
+  await click('#zm_save');
+  await sleep(300);
 
-  /* ② 点标题栏本体（不是 ⋯）→ 照旧折叠 */
+  /* ② 点标题栏本体（不是图标）→ 照旧折叠 */
   await ev(`
     var h = document.querySelector('.zone[data-z="z_short"] > header');
     var b = h.getBoundingClientRect();
@@ -243,30 +250,31 @@ console.log('\n[3b] 真机修：⋯ 不会被折叠分支抢走；标题栏照�
   `);
   await sleep(700);
   t('② 再点一下：展开了', (await zoneCols()).filter(c => c.k === 'z_short')[0].folded, false);
-
-  /* ③ ⋯ 连点两次 = 开 → 关，且不折叠 */
-  await hitClick('[data-zmenu="z_short"]');
-  const open1 = await ev('return !!document.getElementById("zmenuPop");');
-  await hitClick('[data-zmenu="z_short"]');
-  const open2 = await ev('return !!document.getElementById("zmenuPop");');
-  t('③ ⋯ 连点：先开后关（不是"先开再叠一个"）', [open1, open2], [true, false]);
-  t('③ ⋯ 连点也没折叠这一栏',
-    (await zoneCols()).filter(c => c.k === 'z_short')[0].folded, false);
 }
 
-/* ══════════ [4] 上移 / 下移 ══════════ */
-console.log('\n[4] 7B「⋯」里的上移 / 下移');
+/* ══════════ [4] 排序：键盘替代（Ctrl/⌘ + ←/→）══════════ */
+console.log('\n[4] 7.2.0 排序：标题栏聚焦时 Ctrl/⌘ + ←/→ 换位（拖拽的键盘等价物）');
 {
-  await hitClick('[data-zmenu="z1"]');
-  await ev('var b=document.querySelector(\'#zmenuPop [data-zoneopt="up"]\'); b.click(); return 1;');
-  await sleep(400);
-  t('上移一格', await ev('return S.zones.map(function(z){return z.k;});'), ['z_long', 'z_short', 'z1', 'z_repeat']);
+  const k = await ev(`
+    var head = document.querySelector('.zone[data-z="z1"] > header');
+    head.focus();
+    head.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', ctrlKey: true, bubbles: true, cancelable: true }));
+    return S.zones.map(function(z){ return z.k; });`);
+  t('Ctrl+← 左移一格', k, ['z_long', 'z_short', 'z1', 'z_repeat']);
   await openList();
   t('渲染顺序跟着变', (await zoneCols()).map(c => c.k), ['z_long', 'z_short', 'z1', 'z_repeat']);
-  await hitClick('[data-zmenu="z1"]');
-  await ev('var b=document.querySelector(\'#zmenuPop [data-zoneopt="down"]\'); b.click(); return 1;');
-  await sleep(400);
-  t('下移回去', await ev('return S.zones.map(function(z){return z.k;});'), ['z_long', 'z_short', 'z_repeat', 'z1']);
+  const k2 = await ev(`
+    var head = document.querySelector('.zone[data-z="z1"] > header');
+    head.focus();
+    head.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, bubbles: true, cancelable: true }));
+    return S.zones.map(function(z){ return z.k; });`);
+  t('Ctrl+→ 右移回去', k2, ['z_long', 'z_short', 'z_repeat', 'z1']);
+  const k3 = await ev(`
+    var head = document.querySelector('.zone[data-z="z_long"] > header');
+    head.focus();
+    head.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', ctrlKey: true, bubbles: true, cancelable: true }));
+    return S.zones.map(function(z){ return z.k; });`);
+  t('已经在最前时再左移：不越界（顺序不变）', k3, ['z_long', 'z_short', 'z_repeat', 'z1']);
 }
 
 /* ══════════ [5] 新建分区 ══════════ */
@@ -299,19 +307,22 @@ console.log('\n[6] 7B.2「未分组」有内容时排最后');
   const cols = await zoneCols();
   tOk('未分组那一栏出现了，且排在最后', cols[cols.length - 1].k === '' && cols[cols.length - 1].ids.indexOf('s2') >= 0,
     JSON.stringify(cols.map(c => c.k)));
-  t('它没有「⋯」（不可删不可改名）', cols[cols.length - 1].menu, false);
-  t('它没有 data-zfold（不可折叠）', cols[cols.length - 1].fold, false);
+  t('它没有排序能力（未分组不可拖）', cols[cols.length - 1].menu, false);
+  t('它没有可折叠的标题栏（不可折叠）', cols[cols.length - 1].fold, false);
 }
 
 /* ══════════ [7] 删除分区（红线 2 的 DOM 版） ══════════ */
 console.log('\n[7] 7B 红线2（DOM）：删「课业」→ 里面的条目进未分组，一条都没少');
 {
   const before = await ev('return S.items.length;');
-  await hitClick('[data-zmenu="z1"]');
-  t('删除前：⋯ 面板开了，且没有顺手折叠这一栏',
-    [await ev('return !!document.getElementById("zmenuPop");'),
+  /* ★ 7.2.0：删除搬进分区管理弹窗 —— 展开那一栏的操作行，点「删除」再确认。 */
+  await hitClick('#zoneManagerBtn');
+  await ev('document.querySelector(\'[data-zmtoggle="z1"]\').click(); return 1;');
+  await sleep(200);
+  t('删除前：分区管理弹窗开着，且没有顺手折叠这一栏',
+    [await ev('return !!document.getElementById("zm_panel");'),
       (await zoneCols()).filter(c => c.k === 'z1')[0].folded], [true, false]);
-  await ev('var b=document.querySelector(\'#zmenuPop [data-zoneopt="del"]\'); b.click(); return 1;');
+  await ev('document.querySelector(\'[data-zmdel="z1"]\').click(); return 1;');
   await sleep(250);
   const msg = await ev('return (document.querySelector(".confirm-msg")||{}).textContent || "";');
   tOk('确认文案写清了条数', /2 条/.test(msg) && /未分组/.test(msg), msg.slice(0, 60));
@@ -338,8 +349,8 @@ console.log('\n[8] 7B「退出重进还在」：reload 一次');
   t('条目归属原样', await ev('return S.items.map(function(i){return i.id+"="+i.zone;}).join(",");'), mapBefore);
 }
 
-/* ══════════ [9] 规范设置 + 学到的词 ══════════ */
-console.log('\n[9] 7B.5 规范设置：存得住、重启还在；学到的词列得出来、能清空');
+/* ══════════ [9] 分区规则（每栏一条）+ 学到的词 ══════════ */
+console.log('\n[9] 7.2.0 分区规则：在分区管理弹窗里写、存得住、重启还在；学到的词列得出来、能清空');
 {
   /* 教两次「学会游泳」：第一次 zoneTeach 已经把它挪过去，第二次再挪同一条不会记
      （按设计"没变就不记"），所以这里额外补一刀，模拟"用户第二次又教了一句同类的" */
@@ -354,9 +365,11 @@ console.log('\n[9] 7B.5 规范设置：存得住、重启还在；学到的词�
   const learned = await ev('return Object.keys(S.zoneHints).length;');
   tOk('学习记录存下来了', learned > 0, String(learned));
 
+  /* ★ 7.2.0：规则录入口搬进分区管理弹窗（每栏各写一条，双击灰字 → 无边框输入框）。 */
   await ev('goView("settings"); return 1;');
   await sleep(600);
-  t('设置页有规范设置输入框', await ev('return !!document.getElementById("zoneRulesInput");'), true);
+  t('设置页**不再**有规范设置输入框（已搬走）',
+    await ev('return !document.getElementById("zoneRulesInput");'), true);
   const hintTxt = await ev(`
     var rows = [].slice.call(document.querySelectorAll('.set-row'));
     for (var i = 0; i < rows.length; i++){
@@ -366,16 +379,40 @@ console.log('\n[9] 7B.5 规范设置：存得住、重启还在；学到的词�
     return '';
   `);
   tOk('已学到的词列出来了（有「→ 长期」之类）', /→ 长期/.test(hintTxt), hintTxt.slice(0, 120));
-  await ev('var t=document.getElementById("zoneRulesInput"); t.value="学习的事归课业，买东西归生活"; t.dispatchEvent(new Event("change",{bubbles:true})); return 1;');
+
+  await openList();
+  await hitClick('#zoneManagerBtn');
+  await sleep(200);
+  await ev(`
+    var b = document.querySelector('[data-zmrule="z_long"]');
+    b.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    var ta = document.querySelector('textarea[data-zrule="z_long"]');
+    ta.value = '学习的事归长期';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    zmRuleSubmit('z_long');
+    return 1;`);
   await sleep(300);
-  t('规则写进了 S.zoneRules', await ev('return S.zoneRules;'), '学习的事归课业，买东西归生活');
+  t('规则写进了这一栏（S.zones[i].rule）',
+    await ev('return S.zones.find(function(z){return z.k==="z_long";}).rule;'), '学习的事归长期');
+  t('AI 读得到（zoneRulesText 里有这一条）',
+    await ev('return /「长期」：学习的事归长期/.test(zoneRulesText());'), true);
+  await click('#zm_save');
+  await sleep(300);
 
   /* 重启：规则与学习记录都要还在 */
   await goto();
   await ev('goView("settings"); return 1;');
   await sleep(600);
-  t('重启后规则还在（输入框里能看到）', await ev('return (document.getElementById("zoneRulesInput")||{}).value;'), '学习的事归课业，买东西归生活');
   tOk('重启后学到的词还在', (await ev('return Object.keys(S.zoneHints).length;')) > 0);
+  await openList();
+  await hitClick('#zoneManagerBtn');
+  await sleep(250);
+  t('重启后规则还在（弹窗里那行灰字就是它）',
+    await ev('return (document.querySelector(\'[data-zmrule="z_long"]\')||{}).textContent;'), '学习的事归长期');
+  await click('#zm_save');
+  await sleep(250);
+  await ev('goView("settings"); return 1;');
+  await sleep(500);
 
   /* 一键清空 */
   await ev('var b=document.querySelector(\'[data-act="zonehintclear"]\'); b.click(); return 1;');

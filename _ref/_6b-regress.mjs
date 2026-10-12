@@ -126,8 +126,10 @@ console.log('[1] 搬迁清单逐项：新结构里找得到（集合相等，不
       'data-act="sheetclose"', 'data-capzone=""']);
 
   const ids = new Set((regionCode.match(/\bid="[A-Za-z0-9_]+"/g) || []).map(s => s.slice(4, -1)));
-  const missedIds = base.ids.filter(a => !ids.has(a));
-  t('改动前的 ' + base.ids.length + ' 个 id 一个不少', missedIds, []);
+  /* ★ 7.2.0：「对 AI 的规范设置」那个 id 随功能搬进分区管理弹窗，从基线里摘掉。 */
+  const baseIds = base.ids.filter(x => x !== 'zoneRulesInput');
+  const missedIds = baseIds.filter(a => !ids.has(a));
+  t('改动前的 ' + baseIds.length + ' 个 id 一个不少（7.2.0 摘掉搬走的 zoneRulesInput）', missedIds, []);
   const addedIds = [...ids].filter(a => base.ids.indexOf(a) < 0).sort();
   t('id 只多了二级页那 3 个 + 版本号那一行（#setVer，给探针当抓手）',
     addedIds, ['aiKeyLabel', 'aiPanelClose', 'aiPanelTitle', 'setVer']);
@@ -136,14 +138,18 @@ console.log('[1] 搬迁清单逐项：新结构里找得到（集合相等，不
   t('label 的 for= 三处不变（key / 接口地址 / 模型名）',
     base.fors.filter(a => !fors.has(a)).concat([...fors].filter(a => base.fors.indexOf(a) < 0)), []);
 
-  /* 清单上的每一项，在 markup 里都得有它那一行名字（去注释后，不看长相只看在不在） */
+  /* 清单上的每一项，在 markup 里都得有它那一行名字（去注释后，不看长相只看在不在）。
+     ★ 7.2.0：「对 AI 的规范设置」整块搬进分区管理弹窗（每栏一条规则），设置页不再有它 ——
+     这里从清单里摘掉，并**新增一条反向断言**（下面）钉住"设置页里确实没有这个 id 了"。 */
   const LABELS = ['提醒', '锁屏时全屏响铃', '语音输入', '主题',
-    '没写时间的条目默认去哪', '常用词 ', '发多少内容', '对 AI 的规范设置', '它学到的（分区）',
+    '没写时间的条目默认去哪', '常用词 ', '发多少内容', '它学到的（分区）',
     '想法回顾', '子任务做完就完成父任务',
     '页面说明文字', '流畅模式', '想法卡片时间显示', '震动',
     '备份', '现在有 ', 'AI 写过的话', '版本 v${APP_VERSION}'];
   const missedLabels = LABELS.filter(x => regionCode.indexOf(x) < 0);
   t('搬迁清单上的每一项都还在（' + LABELS.length + ' 项）', missedLabels, []);
+  tOk('7.2.0：设置页里的「对 AI 的规范设置」已搬走（markup 里不再有 zoneRulesInput）',
+    !/id="zoneRulesInput"/.test(regionCode) && !/对 AI 的规范设置/.test(regionCode));
 
   /* 二级页那 5 件 + 隐私说明段 */
   const PANEL = ['API key（只存在这台手机上，不进备份文件）', '接口地址（任意 OpenAI 兼容端点）', '模型名',
@@ -170,13 +176,20 @@ console.log('\n[2b] AI 三格输入的副作用语句（原来在 #view 的 chan
 {
   const body = extractFn(html, 'aiFieldCommit');
   const bodyN = norm(body);
-  const missed = base.aiViews.filter(l => bodyN.indexOf(norm(l)) < 0);
-  t('改动前那 4 条分支的每一条副作用语句都还在', missed, []);
+  /* ★ 7.2.0：基线里那 3 行是 zoneRulesInput 分支（连同它的 save/toast），已随功能搬走 ——
+     比对时摘掉，其余逐字符仍然要比。 */
+  const expViews = base.aiViews.filter(l => !/zoneRulesInput|S\.zoneRules/.test(l));
+  const missed = expViews.filter(l => bodyN.indexOf(norm(l)) < 0);
+  t('改动前的分支副作用语句都还在（7.2.0 摘掉搬走的 zoneRulesInput 那 3 行）', missed, []);
   tOk('key 仍单独存（不进 S / 不进备份）：走 aiSetKey',
     /aiSetKey\(el\.value\)/.test(body) && !/S\.aiKey/.test(code));
   tOk('key 仍不回显明文（存完把输入框清空）', /el\.value = '';/.test(body));
-  tOk('三条仍走 save()（接口地址 / 模型名 / 规范设置）',
-    (body.match(/save\(\);/g) || []).length === 3, String((body.match(/save\(\);/g) || []).length));
+  /* ★ 7.2.0：「对 AI 的规范设置」那个框整块搬进分区管理弹窗（每栏一条规则）——
+     这条分支与它的两行副作用一并删除，所以这里改断言：只剩 2 条走 save()。 */
+  tOk('两条仍走 save()（接口地址 / 模型名）',
+    (body.match(/save\(\);/g) || []).length === 2, String((body.match(/save\(\);/g) || []).length));
+  tOk('7.2.0：zoneRulesInput 那条分支已删（搬进分区管理弹窗）',
+    !/id === 'zoneRulesInput'/.test(body));
   tOk('#view 的 change 代理仍留着（同一处落库口，两条路共用）',
     /view\.addEventListener\('change', e => \{\s*if \(aiFieldCommit\(e\.target\)\) return;\s*\}\);/.test(html));
 }
@@ -261,9 +274,11 @@ console.log('\n[4] 红线 · 不新增浮层机制（二级页住在现有 #mask
   /* ★ 7A：长文本笔记自带**两个**常驻全屏/浮层元素 ——
        `.note-edit`（全屏编辑器）与 `.note-tip`（首次气泡），都是 position:fixed。
      它们不是"第二套遮罩机制"：编辑器的确认框仍走现有 uiConfirm（住 .mask 里），
-     气泡是一次性的提示层。所以基线 14 + 2 = 16。 */
-  t('position:fixed 的出现次数 = 基线 + 2（7A 的全屏编辑器与首次气泡）',
-    c(/position\s*:\s*fixed/g), base.counts.positionFixed + 2);
+     气泡是一次性的提示层。所以基线 14 + 2 = 16。
+     ★ 7.2.0：旧的「⋯」下拉菜单（`.zmenu-pop`，fixed）整块删除 → 16 - 1 = 15；
+      新加的分区管理面板住在 `.modal` 里（absolute，不是 fixed），所以不再 +1。 */
+  t('position:fixed 的出现次数 = 基线 + 2（7A）- 1（7.2.0 删掉的 zmenu-pop）',
+    c(/position\s*:\s*fixed/g), base.counts.positionFixed + 1);
   const panel = extractFn(html, 'openAiPanel');
   tOk('二级页是 modal 里的 absolute 面板（照 openParentPicker 的形态）',
     /position:absolute;inset:0;z-index:2;background:var\(--bg\)/.test(panel) && /modal\.appendChild\(panel\)/.test(panel));
@@ -301,9 +316,9 @@ console.log('\n[5] 新结构本身（7D：功能 / AI / 外观与体感 / 数据
   tOk('「功能」栏里没有主题（它搬回外观了）', fnCard.indexOf('data-theme=') < 0);
   tOk('那一行 AI 状态住在「AI」卡里（.ai-entry 仍是按钮，data-act="aipanel" 没变）',
     /class="glass ai-entry"[^>]*data-act="aipanel"/.test(aiCard));
-  tOk('AI 栏里还有 发多少内容 / 常用词 / 规范设置 / 默认落点 / AI 写过的话',
-    ['发多少内容', '常用词', '对 AI 的规范设置', '没写时间的条目默认去哪', 'AI 写过的话']
-      .every(x => aiCard.indexOf(x) >= 0));
+  tOk('AI 栏里还有 发多少内容 / 常用词 / 落点 / AI 写过的话（规范设置 7.2.0 搬走了）',
+    ['发多少内容', '常用词', 'data-act="capzoneopen"', 'AI 写过的话']
+      .every(x => aiCard.indexOf(x) >= 0) && aiCard.indexOf('对 AI 的规范设置') < 0);
   tOk('主题搬回「外观与体感」（data-theme 三档在里面）',
     lookCard.indexOf('data-theme="light"') >= 0 && lookCard.indexOf('data-theme="dark"') >= 0);
   tOk('「数据」栏只剩 备份 / 示例数据 / 版本号（AI 写过的话已搬走）',

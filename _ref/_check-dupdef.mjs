@@ -159,16 +159,22 @@ const NAMES = [
      sanitizeZones sanitizeZoneHints defaultZones sanitizeZoneKeys sanitizeItemZones
      migrateZones zlist nextZoneKey zoneAdd zoneMove zoneRename zoneDelete zonePruneFolded bucketKeyOf
      渲染与交互：zoneChipHTML zoneTeach zoneTeachPick zoneTeachFromEditor
-     openZoneMenu closeZoneMenu zoneRenameOpen zoneDeleteConfirm zoneAddOpen
+     ★ 7.2.0：旧的「⋯」菜单（openZoneMenu / closeZoneMenu / zoneDeleteConfirm）**整块删除**，
+       新建 / 改名 / 删除 / 写规则搬进分区管理弹窗；排序改成长按拖动。名字同步换新。
+     openZoneManager closeZoneManager zmPanelSync zmRuleEdit zmRuleCommit zmSave
+     zoneManagerDelete zoneRenameOpen zoneAddOpen zoneRulesText
+     排序：zoneReorderCommit zdApply zdEnd zdCancelLift zdStep zoneStep
      AI 落点：aiZoneAsk zoneAdvisorLocal zoneAdvisorAsk
-     ⚠️ 常量 ZONE_KEY_RE / ZONE_COLORS / ZONE_LEGACY / AI_ZONE_SYS / zoneAskBusy 不是函数声明，不收。 */
+     ⚠️ 常量 ZONE_KEY_RE / ZONE_COLORS / ZONE_LEGACY / AI_ZONE_SYS / zoneAskBusy / ZONE_DRAG_MS 不是函数声明，不收。 */
   'zlist', 'validZoneKey', 'zoneOptions', 'zoneNameOf', 'zoneLongKey', 'zoneShortKey', 'zoneRepeatKey',
   'zoneColorOf', 'zonesForPick', 'zoneGrams', 'zoneHintAdd', 'zoneHintGuess', 'zoneHintList',
   'zoneHintText', 'zoneHintClear', 'zoneHintsDropKey', 'sanitizeZones', 'sanitizeZoneHints',
   'defaultZones', 'sanitizeZoneKeys', 'sanitizeItemZones', 'migrateZones', 'nextZoneKey',
   'zoneAdd', 'zoneMove', 'zoneRename', 'zoneDelete', 'zonePruneFolded', 'bucketKeyOf',
   'zoneChipHTML', 'zoneTeach', 'zoneTeachPick', 'zoneTeachFromEditor',
-  'openZoneMenu', 'closeZoneMenu', 'zoneRenameOpen', 'zoneDeleteConfirm', 'zoneAddOpen',
+  'openZoneManager', 'closeZoneManager', 'zmPanelSync', 'zmRuleEdit', 'zmRuleCommit', 'zmSave',
+  'zoneManagerDelete', 'zoneRenameOpen', 'zoneAddOpen', 'zoneRulesText',
+  'zoneReorderCommit', 'zdApply', 'zdEnd', 'zdCancelLift', 'zoneStep',
   'aiZoneAsk', 'zoneAdvisorLocal', 'zoneAdvisorAsk',
   /* ================= 6B 设置页信息架构重做 ================= */
   /* 新增五个：那一行 AI 状态的文案（aiEntryText / aiEntryLabel）、

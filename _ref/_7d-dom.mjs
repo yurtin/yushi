@@ -211,7 +211,7 @@ console.log('\n[2] A3 那张表逐项：都在、而且都在新分组那一栏'
       '没写时间的条目默认去哪': ['[data-act="capzoneopen"]', 'AI'],
       '常用词': ['[data-act="zonehintclear"]', 'AI'],
       '发多少内容': ['[data-aipriv="off"]', 'AI'],
-      '对 AI 的规范设置': ['#zoneRulesInput', 'AI'],
+      /* ★ 7.2.0：「对 AI 的规范设置」整块搬进分区管理弹窗（每栏一条规则），设置页不再有它。 */
       'AI 写过的话': ['[data-act="aiprune"]', 'AI'],
       '主题': ['[data-theme="dark"]', '外观与体感'],
       '页面说明文字': ['[data-set="help"]', '外观与体感'],

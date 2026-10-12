@@ -224,7 +224,7 @@ console.log('\n[3] 搬迁清单逐项：都在、且落在新分组里（7D 的�
       '没写时间的条目默认去哪': ['[data-act="capzoneopen"]', 'AI'],
       '常用词': ['[data-act="zonehintclear"]', 'AI'],
       '发多少内容': ['[data-aipriv="off"]', 'AI'],
-      '对 AI 的规范设置': ['#zoneRulesInput', 'AI'],
+      /* ★ 7.2.0：「对 AI 的规范设置」整块搬进分区管理弹窗（每栏一条规则），设置页不再有它。 */
       'AI 写过的话': ['[data-act="aiprune"]', 'AI'],
       '页面说明文字': ['[data-set="help"]', '外观与体感'],
       '流畅模式': ['[data-set="lite"]', '外观与体感'],

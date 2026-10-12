@@ -614,6 +614,28 @@ body.view-enter .entry-extra{animation:entryIn .62s cubic-bezier(.16,1,.3,1) .12
   /* 材质见 .glass-chip（"跟底下导航栏相似"）；这里只管形状 */
   color:var(--fg);
 }
+/* ★★ 7.2.0（用户 2026-10-12 逐字定的）：清单页标题下这一行最左边的两枚**圆形图标**——
+   ① 粘贴导入：黑底白线，尺寸/线条跟底栏中间那枚「＋」同款（.fab 一直是黑底白线）；
+   ② 分区管理：白底 + 1px 灰细框 + 黑色三条横线。
+   两枚都 44×44（命中区够大）；`.tools-ico` 只画图标，材质交给下面两条。 */
+.tools-ico{
+  width:44px;height:44px;flex:0 0 auto;padding:0;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;cursor:pointer;
+  appearance:none;-webkit-appearance:none;
+  transition:transform var(--mo-quick) ease,opacity var(--mo-quick) ease,background .16s var(--mo-soft);
+}
+.tools-ico svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
+/* ① 黑底白线（粘贴导入）：与 .fab 同源——底色 --fg、图标 --bg，深浅两套主题各自成立。 */
+.tools-ico.paste{background:var(--fg);color:var(--bg)}
+/* ② 白底灰细框（分区管理）：底色 --bg、描边 --line2、图标 --fg。 */
+.tools-ico.zones{background:var(--bg);color:var(--fg);
+  border:1px solid color-mix(in srgb,var(--glass-edge) 32%,transparent);
+  box-shadow:0 1px 3px color-mix(in srgb,var(--glass-edge) 12%,transparent)}
+.tools-ico:active{transform:scale(.92);opacity:.9}
+@media (hover:hover){ .tools-ico:hover{opacity:.86} }
+/* 左端两枚图标挨在一起，用一个 flex 包住（`justify-self:start` 保住它在网格左格）。 */
+.list-top .tools-left{display:flex;align-items:center;gap:10px;justify-self:start;align-self:center}
 .list-top .filter-bar{margin:0}
 .list-top .seg{justify-self:end}
 /* 抽屉收起态的过渡目标（见 .toolbar 的注释）。 */
@@ -775,64 +797,61 @@ body.view-enter .entry-extra{animation:entryIn .62s cubic-bezier(.16,1,.3,1) .12
 .zone header .dot{background:var(--zc,var(--accent));box-shadow:0 0 10px color-mix(in srgb,var(--zc,var(--accent)) 55%,transparent)}
 /* 两个写在 data-z 上的旧点色规则（short / long）已被 --zc 取代，删掉避免"一处两真相"。 */
 
-/* 每栏标题右侧那枚「⋯」。order 排在 z-chev 之后（header 是 flex row），
-   所以「条数 → 三角 → ⋯」从左到右读下来；`.n` 的 margin-left:auto 把它推到最右。
-   ★★ 真机修（2026-10-11）：`position:relative;z-index:1` **不是装饰，是必需的**。
-   标题栏有一条"透明热区"伪元素 `.zone>header::after`（absolute + left/right:-8px，
-   为了把行内空白也算进热区）；绝对定位伪元素画在**静态子元素之上**，于是它把整枚 ⋯ 盖住 ——
-   `document.elementFromPoint(⋯中心)` 返回的是 HEADER，手指那一下根本到不了按钮。
-   实测栈序：`[HEADER(伪元素), BUTTON.zmenu, HEADER]`。加了 z-index:1 之后 `⋯` 才浮到热区之上。
-   症状正是用户报的："⋯ 点不了，一点就把这一栏展开了"（点在最右侧 = 点到 header 热区 = 折叠）。 */
-.zmenu{
-  position:relative;z-index:1;
-  order:4;flex:0 0 auto;width:32px;height:32px;margin-left:2px;padding:0;
-  display:inline-flex;align-items:center;justify-content:center;
-  border:0;background:var(--pill);color:var(--fg);border-radius:10px;
-  font-size:16px;font-weight:900;line-height:1;cursor:pointer;
-  transition:color .16s var(--mo-soft),background .16s var(--mo-soft),transform var(--mo-quick) ease;
+/* ★ 7.2.0（2026-10-12）：每栏标题右边那枚「⋯」按钮 + 它的下拉菜单（.zmenu / .zmenu-pop）
+   整块**删除** —— 新建 / 改名 / 删除 / 写规则都搬进「分区管理」弹窗，排序改成长按拖动。
+   下面这段 7B 真机修的留痕仍然值得记住（以后往标题栏里加任何按钮都会踩同一条）：
+   `.zone>header::after` 是一条 absolute 热区伪元素，画在**静态子元素之上** ——
+   往标题栏塞按钮必须给它 `position:relative;z-index:1`，否则点下去命中的是 header 热区（= 折叠）。
+   判别手法：量 `document.elementFromPoint(按钮中心)`，不要靠肉眼猜层序，也不要再加捕获拦截。 */
+
+/* ---------- ★ 7.2.0：分区**长按拖动排序**的三种态 ----------
+   `.zd-press` = 已按下、还没到长按阈值（长按成立会换成下面的抬升态）；
+   `.zd-ghost` = 抬起来跟手指走的那一份**克隆体**（position:fixed，原地那张留在流里占位）；
+   `body.zd-on` = 拖动中（锁住页面的文字选中/滚动惯性，手型改成抓取）。 */
+.board > .zone.zd-press{transform:scale(.985);transition:transform .14s ease}
+.zd-ghost{
+  z-index:140;pointer-events:none;border-radius:32px;
+  transform-origin:50% 50%;scale:1.03;
+  box-shadow:0 18px 44px color-mix(in srgb,var(--glass-edge) 34%,transparent);
+  opacity:.97;
 }
-/* ★★ 命中区 44×44（用户 2026-10-12："⋯ 命中区域太小了，用户点击困难"）。
-   做法是给按钮自身挂一块**透明外扩层**，不是把按钮本体放大：
-   `::before{inset:-6px}` = 32+6+6 = 44 —— 视觉尺寸不变、行高不变、布局一个字不动。
-   ⚠️ 这块外扩层在 `.z-chev` 那一侧会压住三角（三角本身没有交互，只有 header 热区），
-   但**它自己在按钮之上**，所以点它永远命中 .zmenu，不会穿透到 header 的折叠分支。
-   ⚠️ 别改成 `.zone>header::after` 那种反向做法（给容器挂热区、再用 z-index 抢回来）——
-   7B 真机故障就是那么来的（见上面那段注释）。 */
-.zmenu::before{
-  content:'';position:absolute;inset:-6px;border-radius:14px;background:transparent;
-}
-/* 悬停反馈一律包在 `@media (hover:hover)` 里 —— 触摸端命中 :hover 会**粘住**
-   （v3.38 那条铁律，见文件末尾的中和块）。所以在下面这几条上不加顶层 :hover。 */
-.zmenu:active{background:var(--tap);transform:scale(.92)}
-.zmenu:focus-visible{outline:2px solid var(--zc,var(--accent));outline-offset:1px}
-@media (hover:hover){ .zmenu:hover{background:var(--pill-hover);color:var(--zc,var(--accent))} }
-/* 分区管理面板（挂在 body 上）。position/top/left 由 openZoneMenu 内联写 ——
-   fixed 定位 + 实底，避免被 .zone 的 content-visibility / 层叠上下文吃掉。
-   ★★ 2026-10-12 用户："这个和总体风格还是不搭，把灰框去掉"。
-   真凶是 `border:1px solid var(--line2)` —— 线2 是 16% 的黑，画在浅色实底上就是一圈**明显灰框**；
-   全站卡片用的是 `.glass` 那套材质（没有 border，靠 inset 高光 + 柔和外投影）。
-   这里是一种"没有 blur 的玻璃"版本，四样都对齐 .glass：
-     ① 去掉 border，边界改由 inset 0 0 0 1px 的极淡描边承担（`--glass-edge` 12% —— 比 line2 淡一半以上）；
-     ② 外投影换成 .glass 那条 `0 14px 46px` 的同款配方（原来是写死的 rgba(0,0,0,.22)，和全站不是一套）；
-     ③ 两条 inset 高光（左上亮 / 右下暗）与 .glass 逐条同源；
-     ④ 圆角 14 → 20（卡片是 32，菜单体量小一档），内边距 6 → 5、行高 9px → 11px 收紧一点。 */
-.zmenu-pop{
-  position:fixed;z-index:132;min-width:126px;padding:5px;
-  background:var(--bg);border:0;border-radius:20px;
-  box-shadow:
-    inset 1px -1px .75px -1px color-mix(in srgb,var(--glass-hi) 40%,transparent),
-    inset -1px 1px .75px -1px color-mix(in srgb,var(--glass-hi) 34%,transparent),
-    inset 0 0 0 1px color-mix(in srgb,var(--glass-edge) 12%,transparent),
-    0 14px 46px color-mix(in srgb,var(--glass-edge) 28%,transparent);
-}
-.zmenu-pop .zm{
-  display:block;width:100%;text-align:left;border:0;background:transparent;
-  color:var(--fg);font:inherit;font-size:13px;padding:11px 12px;border-radius:15px;cursor:pointer;
-}
-.zmenu-pop .zm:active{background:var(--tap)}
-@media (hover:hover){ .zmenu-pop .zm:hover{background:var(--pill)} }
-.zmenu-pop .zm.danger{color:var(--danger)}
-.zmenu-pop .zm[disabled]{opacity:.35;cursor:default}
+body.zd-on{user-select:none;-webkit-user-select:none}
+body.zd-on .board > .zone{will-change:transform}
+/* 抬起期间，被拖的原卡留在流里占位但**先隐形**（抬起的是 .zd-ghost 那份克隆体）。 */
+.board > .zone.zd-src{opacity:0}
+.board > .zone.zd-src.zd-press{transform:none}
+
+/* ---------- ★ 7.2.0：分区管理弹窗（面板形态照 openParentPicker / openCapZoneSheet） ----------
+   结构：左上「新建分区」· 右上「保存」· 中间是分区列表（每块 = 标题行 + 规则行 + 展开后的操作）
+   · 底部一行灰字说明。列表自己滚（.ai-holder 撑高 + 面板 inset:0）。 */
+.zm-head{display:flex;align-items:center;gap:10px;margin:0 0 14px}
+.zm-title{font-size:17px;font-weight:900;margin:0;letter-spacing:.01em}
+.zm-head .btn{margin-left:auto}
+.zm-list{display:flex;flex-direction:column;gap:10px;overflow-y:auto;scrollbar-width:none;
+  -ms-overflow-style:none;min-height:0;flex:1 1 auto}
+.zm-list::-webkit-scrollbar{width:0;height:0}
+.zm-item{border-radius:18px;background:var(--pill);padding:2px 0}
+.zm-ihead{display:flex;align-items:center;gap:9px;padding:11px 12px 2px}
+.zm-idot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:var(--zc,var(--accent))}
+.zm-iname{font-size:14px;font-weight:800;color:var(--fg)}
+.zm-ichev{margin-left:auto;flex:0 0 auto;width:20px;height:20px;border:0;background:transparent;
+  color:var(--faint);cursor:pointer;font:inherit;font-size:12px;font-weight:800;line-height:1}
+/* 规则行：一行灰字；双击变成无边框输入框（用户明确要求"不要实色边框"）。 */
+.zm-rule{display:block;width:100%;text-align:left;border:0;background:transparent;
+  color:var(--muted);font:inherit;font-size:12px;line-height:1.55;padding:2px 12px 11px;
+  cursor:text;white-space:pre-wrap;word-break:break-word}
+.zm-rule.empty{color:var(--faint)}
+.zm-rin{display:block;width:calc(100% - 24px);margin:0 12px 11px;padding:2px 0 4px;
+  border:0;border-bottom:1px solid var(--line2);outline:0;background:transparent;
+  color:var(--fg);font:inherit;font-size:12px;line-height:1.55;resize:none;overflow:hidden}
+.zm-acts{display:flex;gap:8px;padding:0 12px 12px}
+.zm-acts .bm{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12.5px;
+  font-weight:700;padding:6px 10px;border-radius:9px;cursor:pointer}
+.zm-acts .bm:active{background:var(--tap)}
+.zm-acts .bm.danger{color:var(--danger)}
+@media (hover:hover){ .zm-acts .bm:hover{background:var(--pill-hover)} }
+.zm-foot{margin:12px 0 0;font-size:11.5px;color:var(--faint);line-height:1.6;flex:0 0 auto}
+.zm-empty{color:var(--faint);font-size:13px;padding:18px 4px;text-align:center}
 /* ★ 用户 2026-10-12："把取消改成大小合适的黑色的 ❌" —— 小弹层里的「取消」改成一枚实底 ✕。
    造型与既有的 .btn.primary 同源（实底 = --fg / 字色 = --bg，深浅两套主题各自成立），
    只是等宽等高成方形（40×40）、图标走 SVG 细线，不用文字字符（❌ 那种 emoji 会带颜色+字体回退）。 */
@@ -4272,7 +4291,10 @@ function zoneColorOf(k){
 }
 /* AI 只在这些分区里挑一个 —— 「未分组」是兜底、不是让模型选的落点（失败自然留空 = 未分组）。 */
 function zonesForPick(){
-  return zlist().filter(z => !!z.k).map(z => ({ k: z.k, name: String(z.name) }));
+  /* ⚠️ 这里必须**带上 rule**（7.2.0 起每栏有自己的一条分区规则）——
+     只返回 {k,name} 的话 zoneRulesText() 读不到规则、静默返回空串，
+     表现就是"写了规则 AI 也看不见"。 */
+  return zlist().filter(z => !!z.k).map(z => ({ k: z.k, name: String(z.name), rule: String(z.rule == null ? '' : z.rule) }));
 }
 /* ---------- 行为学习：2-gram ----------
    取标题的 2-gram（与 aiScoreCandidate 的"二元组字面重合"同一把刀，**不引入分词依赖**）：
@@ -4396,7 +4418,12 @@ function sanitizeZones(raw){
     let color = typeof z.color === 'string' ? z.color.trim() : '';
     if (!/^#[0-9a-fA-F]{6}$/.test(color)) color = ZONE_COLORS[ci % ZONE_COLORS.length];
     ci++;
-    out.push({ k: k, name: name, color: color });
+    /* ★ 7.2.0：每栏可以带一条**分区规则**（用户写的大白话，喂给 AI 判落点用）。
+       只读它自己的字段，上限 120 字；空串等价于"没写"，不写进对象里。 */
+    const rule = String(z.rule == null ? '' : z.rule).replace(/\s+/g, ' ').trim().slice(0, 120);
+    const rec = { k: k, name: name, color: color };
+    if (rule) rec.rule = rule;
+    out.push(rec);
   }
   return out;
 }
@@ -4475,16 +4502,17 @@ function nextZoneKey(){
   for (let i = 1; i < 1000; i++){ const k = 'z' + i; if (!used.has(k)) return k; }
   return 'z' + Date.now();
 }
-/* 分区表的排序 / 增删（清单页「⋯」面板调它们）。 */
+/* 分区表的排序 / 增删（分区管理弹窗调它们）。 */
 function zoneAdd(name){
   const n = String(name == null ? '' : name).replace(/\s+/g, ' ').trim().slice(0, 12);
   if (!n) return null;
-  const z = { k: nextZoneKey(), name: n, color: ZONE_COLORS[S.zones.length % ZONE_COLORS.length] };
+  const z = { k: nextZoneKey(), name: n, color: ZONE_COLORS[S.zones.length % ZONE_COLORS.length], rule: '' };
   S.zones.push(z);
   save();
   return z;
 }
-/* 上移 / 下移。首 / 末不越界（返回 false，调用方据此禁用按钮）。 */
+/* 上移 / 下移。首 / 末不越界（返回 false，调用方据此禁用按钮）。
+   ★ 7.2.0：清单页不再有「上移/下移」菜单，排序改成长按拖动；这个函数留给键盘/内部调用。 */
 function zoneMove(k, dir){
   const i = S.zones.findIndex(z => z.k === k);
   if (i < 0) return false;
@@ -4516,6 +4544,18 @@ function zoneDelete(k){
   if (Array.isArray(S.foldedZones)) S.foldedZones = S.foldedZones.filter(x => x !== k);
   save();
   return { ok: true, moved: moved, dropped: dropped };
+}
+/* ★ 7.2.0：把「每栏各自那条规则」拼成给模型看的一段话（弹窗里写、AI 在这儿读）。
+   一行一栏，格式固定成「分区名：规则」，让模型能把规则和分区对上。
+   老存档里那条全局规则（S.zoneRules）**保留不动**（备份不丢），但新界面不再编辑它。 */
+function zoneRulesText(){
+  const out = [];
+  for (const z of zonesForPick()){
+    const r = String(z.rule == null ? '' : z.rule).trim();
+    const nm = String(z.name == null ? '' : z.name);
+    if (r && nm) out.push('- 「' + nm.slice(0, 20) + '」：' + r.slice(0, 120));
+  }
+  return out.join('\n');
 }
 /* 清掉指向不存在分区的折叠态（删分区 / 恢复老备份之后调用）。 */
 function zonePruneFolded(){
@@ -6724,7 +6764,23 @@ function renderList(){
      所以"筛选居中"和"右边贴右"能同时成立，左边也不会把中间挤歪。 */
   const toolsOpen = document.body.classList.contains('tools-open');
   h += `<div class="list-top${rv()}"${rvd(40)}>
-    <button class="btn ghost import-btn glass-chip" id="importBtn">粘贴导入</button>
+    <!-- ★ 7.2.0（用户 2026-10-12 逐字定）：左端从一枚文字按钮换成**两枚圆形图标** ——
+         ① 粘贴导入（黑底白线，同底栏那枚＋）；② 分区管理（白底灰细框 + 三条横线）。
+         中间「筛选」与右端「视图切换」一个字不动。 -->
+    <span class="tools-left">
+      <button type="button" class="tools-ico paste" id="importBtn" aria-label="粘贴导入" title="粘贴导入：把一大段文字按行拆成待办">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <rect x="8.4" y="3.2" width="7.2" height="3.6" rx="1.2"/>
+          <path d="M15.6 5h1.9a1.7 1.7 0 0 1 1.7 1.7v12.6a1.7 1.7 0 0 1-1.7 1.7H6.5a1.7 1.7 0 0 1-1.7-1.7V6.7A1.7 1.7 0 0 1 6.5 5h1.9"/>
+          <path d="M8.6 12.4h6.8M8.6 16.2h4.6"/>
+        </svg>
+      </button>
+      <button type="button" class="tools-ico zones" id="zoneManagerBtn" aria-label="分区管理" title="分区管理：新建 / 改名 / 删除 / 写分区规则">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M4.4 7.2h15.2M4.4 12h15.2M4.4 16.8h9.6"/>
+        </svg>
+      </button>
+    </span>
     <button class="filter-bar" id="filterFab" type="button" aria-expanded="${toolsOpen ? 'true' : 'false'}"
         aria-label="展开或收起搜索与筛选">筛选<svg class="fb-chev" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9.5l6 6 6-6"/></svg></button>
     <span class="seg glass-chip" role="group" aria-label="清单展示方式">
@@ -6998,11 +7054,9 @@ function renderZoneBody(){
       empty: '空', list: ungrouped, fixed: true });
   }
 
-  /* ★ 7B：每栏多一枚「⋯」（改名 / 上移 / 下移 / 删除）——
-     它是整条 header 热区里的一个按钮，所以必须 stopPropagation，
-     否则点它会顺手把这一栏折叠掉（见 #view 委托里 data-zmenu 那一段）。 */
-  const zmenuBtn = c => c.fixed ? ''
-    : `<button type="button" class="zmenu" data-zmenu="${c.k}" aria-label="${esc(c.label)}：改名、排序、删除" title="改名 / 排序 / 删除">⋯</button>`;
+  /* ★ 7.2.0（用户 2026-10-12）：每栏标题右边那枚「⋯」**整块撤掉**了 ——
+     新建 / 改名 / 删除 / 写规则全部搬进「分区管理」弹窗（清单页左端那枚圆形图标），
+     排序改成长按拖动。所以标题栏右侧只剩那枚小三角（z-chev，纯折叠指示）。 */
 
   cols.forEach((c, zi) => {
     /* ★ 0B：分区列表**不收已完成的根条目** —— 它们沉到下面那条「已完成」里。
@@ -7021,7 +7075,7 @@ function renderZoneBody(){
     bh += `<section class="glass zone${c.cls || ''}${fd ? ' folded' : ''}${rv()}" data-z="${c.k}" style="${zSty}">
       <header${c.fixed ? '' : ` data-zfold="${c.k}" role="button" tabindex="0" aria-expanded="${fd ? 'false' : 'true'}"`}>
         <span class="dot"></span><h3>${esc(c.label)}</h3><span class="n mono">${live.length}</span>
-        <i class="z-chev" aria-hidden="true"></i>${zmenuBtn(c)}
+        <i class="z-chev" aria-hidden="true"></i>
       </header>
       <div class="zone-body">${live.length ? live.map(x => renderTree(x)).join('') : `<div class="empty">${c.empty}</div>`}</div>
     </section>`;
@@ -9765,7 +9819,7 @@ function zoneAdvisorAsk(title, cur, rawText, preset){
   /* 结构型条目（早中晚 / 带父级路径）不出网：它的归属由结构决定，不是"分不清"。
      判据读的是 preset（本地解析的完整结果），没有 preset 的模型条目不受影响。 */
   if (preset && ((preset.dayParts && preset.dayParts.length) || (preset.path && preset.path.length))) return null;
-  const rules = String(S.zoneRules || '').trim();
+  const rules = (typeof zoneRulesText === 'function' ? zoneRulesText() : '') || String(S.zoneRules || '').trim();
   const loc = zoneAdvisorLocal(title, !!rules);
   if (loc) return loc;                          // ② 零请求
   if (!aiOn()) return null;                     // AI 关着 → 留空（未分组）
@@ -11038,18 +11092,9 @@ function renderSettings(){
               <b>不会用于本地识别</b>：本地偏置错了就无从纠正。把某个词改对两次，鱼事会问一次要不要收进来。</span>
           </div>
         </div>
-        <!-- ★ 7B：「对 AI 的规范设置」——和「常用词」同一类东西（都是"用户教 AI 的"：
-              常用词管"听对"，规范设置管"分对"）。
-              内容可选：**空着也能用**（空着就走行为学习 + 模型自己判）。 -->
-        <div class="set-row stack">
-          <div class="set-txt">
-            <b>对 AI 的规范设置</b>
-            <span>用大白话写清"什么内容归哪个区"，比如：<i>学习的事归学习，买东西、做饭归生活；临时想起来的一句念头算想法</i>。
-              写了它，AI 就按你的规则分；<b>空着也能用</b> —— 空着时靠下面那些"学到的词"和你自己的手改。</span>
-          </div>
-          <textarea class="ai-input ai-rules" id="zoneRulesInput" rows="3" spellcheck="false"
-            placeholder="例：学习的事归「学习」，买东西、做饭归「生活」">${esc(S.zoneRules || '')}</textarea>
-        </div>
+        <!-- ★ 7.2.0（用户 2026-10-12）：原来这里那块「对 AI 的规范设置」文本框**整块搬走** ——
+               规则改成"每栏各写一条"，录入口在「分区管理」弹窗里（清单页左端那枚圆形图标）。
+               老存档里的 S.zoneRules 仍然保留（备份不丢），但界面不再编辑它。 -->
         <div class="set-row stack">
           <div class="set-txt">
             <b>它学到的（分区）<span class="mono">${zoneHintList().length}</span></b>
@@ -11285,13 +11330,8 @@ function aiFieldCommit(el){
     save(); refresh(); toast('模型名已更新');
     return true;
   }
-  /* ★ 7B：「对 AI 的规范设置」——存的是自然语言，原样留着（只限长），空串合法（= 不写规则）。 */
-  if (id === 'zoneRulesInput'){
-    S.zoneRules = String(el.value || '').slice(0, 1000);
-    save();
-    toast(S.zoneRules.trim() ? '规则存好了 · 以后 AI 按它分区' : '规则清空了 · 改用学到的词 + 模型自己判');
-    return true;
-  }
+  /* ★ 7.2.0：「对 AI 的规范设置」那个框已搬进分区管理弹窗（每栏一条规则），
+     这里不再处理 zoneRulesInput。老字段 S.zoneRules 仍然按原样读存档（见 load()）。 */
   return false;
 }
 
@@ -13806,8 +13846,12 @@ view.addEventListener('keydown', e => {
    正解是在 `.zmenu` 上加 position+z-index（见上面 .zmenu 那段注释），
    再靠下面委托里"更具体的分支排在前面"兜一层。判断事件能不能到，
    用 `document.elementFromPoint(中心)` 的返回，不要靠肉眼看层序、也不要靠再加拦截。 */
+/* ★ 7.2.0（2026-10-12）：每栏那枚「⋯」与它的菜单（data-zmenu / data-zoneopt）整块删掉了 ——
+   新增 / 改名 / 删除 / 写规则都搬进「分区管理」弹窗，排序改成长按拖动。
+   留这条注释是因为上面那段"不要加捕获阶段 stopPropagation"的教训仍然有效：
+   凡是在 `.zone>header` 这条热区伪元素上叠按钮，都得给按钮 position:relative + z-index。 */
 view.addEventListener('click', e => {
-  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart],[data-statpage],[data-statback],[data-statentry],[data-jump],[data-zmenu],[data-zoneadd],[data-zoneopt],[data-zpick],[data-note]');
+  const el = e.target.closest('[data-act],[data-tag],[data-f],[data-lay],[data-set],[data-zfold],[data-theme],[data-listmode],[data-capzone],[data-aipriv],[data-haptic],[data-datepart],[data-statpage],[data-statback],[data-statentry],[data-jump],[data-zoneadd],[data-zpick],[data-note]');
   /* ★ 7A：长文页（笔记列表 / 详情）的全部动作走 `data-note`。
      值形如 `open:<id>` / `edit:<id>` / `new` / `back` / `card` / `multi` / `multicancel` / `batchdel`。
      与 data-zpick / data-sparkedit 同一条纪律：**单独一个属性 + 单独一段分支**，
@@ -13867,14 +13911,9 @@ view.addEventListener('click', e => {
      "点不了，直接就展开了详细的待办"）。之前 `_7b-dom` 用 `el.click()` 直接在 `⋯` 上派发，
      目标就是 `⋯` 本体、不走这段 closest 逻辑，所以假绿。现在把 ⋯ / 面板项 / 新建分区
      这三样挪到最前面，与"卡片里那枚 chip 必须留在选择器之外"同一条纪律。 */
-  if (el.dataset.zmenu !== undefined){
-    const btn = el, k = el.dataset.zmenu;
-    if (document.getElementById('zmenuPop')) closeZoneMenu();
-    else openZoneMenu(btn, k);
-    return;
-  }
+  /* ★ 7.2.0：分区管理弹窗是 `.modal` 里的 absolute 面板（见 openZoneManager），
+     它的动作由面板自己的监听处理 —— 这里只需要认识「新建分区」这一枚（在面板底部）。 */
   if (el.dataset.zoneadd !== undefined){ zoneAddOpen(); return; }
-  if (el.dataset.zoneopt !== undefined) return;   // 面板里的动作由它自己的监听处理（见 openZoneMenu）
 
   /* ★ 0E：清单页底部那块「已完成」折叠区整块撤掉了 —— 连它的展开 / 收起分支一起删。
      （原来这里读写的 S.doneOpen 也一并清掉了，不留"字段还在但没人读"的孤儿。） */
@@ -14533,88 +14572,237 @@ function zoneTeachFromEditor(it, before, after){
   if (title) zoneHintAdd(title, after);
   return true;
 }
-/* 「⋯」面板里的四个动作。删除走二次确认，文案写清条数（绝不悄悄删条目）。 */
-function openZoneMenu(btn, k){
-  closeZoneMenu();
-  const idx = S.zones.findIndex(z => z.k === k);
-  if (idx < 0) return;
-  const z = S.zones[idx];
-  const box = document.createElement('div');
-  box.className = 'zmenu-pop';
-  box.id = 'zmenuPop';
-  box.innerHTML = `
-    <button type="button" class="zm" data-zoneopt="rename">改名</button>
-    <button type="button" class="zm" data-zoneopt="up"${idx === 0 ? ' disabled aria-disabled="true"' : ''}>上移</button>
-    <button type="button" class="zm" data-zoneopt="down"${idx === S.zones.length - 1 ? ' disabled aria-disabled="true"' : ''}>下移</button>
-    <button type="button" class="zm danger" data-zoneopt="del">删除</button>`;
-  document.body.appendChild(box);
-  const r = btn.getBoundingClientRect();
-  box.style.position = 'fixed';
-  box.style.top = Math.round(Math.min(r.bottom + 6, window.innerHeight - box.offsetHeight - 12)) + 'px';
-  box.style.left = Math.round(Math.min(Math.max(8, r.right - box.offsetWidth), window.innerWidth - box.offsetWidth - 8)) + 'px';
-  box.querySelectorAll('[data-zoneopt]').forEach(b => {
+/* ★★ 7.2.0（用户 2026-10-12 逐字定形态）：分区管理弹窗。
+   形态照 openParentPicker / openCapZoneSheet：在现有 `.modal` 里 appendChild 一块
+   `position:absolute;inset:0;background:var(--bg)` 的面板 —— 不改 `.mask`/`.modal` 的骨架。
+   里面：左上「新建分区」· 右上「保存」· 分区列表（标题 + 一行灰字规则 + 展开后的改名/删除）
+   · 底部一行灰字说明。**规则就地保存**（双击改、失焦/回车即存），改名/删除也即时;
+   「保存」= 收工并回清单。旧的每栏「⋯」菜单（openZoneMenu）整块删除 —— 改名/删除都改在这里。 */
+let zmState = null;
+function zmOpenOf(k){ return !!(zmState && zmState.open[k]); }
+function openZoneManager(focusK){
+  const modalEl = document.getElementById('modal');
+  if (!modalEl) return;
+  const old = document.getElementById('zm_panel');
+  if (old) old.remove();
+  if (!zmState) zmState = { open: {}, draft: {} };
+  if (focusK) zmState.open[focusK] = true;
+  /* 面板是 `inset:0` 的 absolute —— 直接塞进空的 `.modal` 会**高度塌成 0、根本看不见**
+     （与 0C 的 openParentPicker、3B 的 openCourier 同一个坑）。
+     所以先放一个撑高的占位壳，再调 openMask() 把遮罩打开（这一步不能省：
+     openZoneManager 是 document 上的独立入口，不会顺带走到 openMask）。 */
+  modalEl.innerHTML = '<div id="zm_holder" style="height:min(620px,72vh)"></div>';
+  const panel = document.createElement('div');
+  panel.id = 'zm_panel';
+  panel.setAttribute('style', 'position:absolute;inset:0;z-index:2;background:var(--bg);'
+    + 'display:flex;flex-direction:column;padding:22px clamp(20px,3vw,30px) 18px');
+  modalEl.appendChild(panel);
+  if (typeof openMask === 'function') openMask();
+  zmPanelSync();
+}
+function zmClosePanel(){
+  const p = document.getElementById('zm_panel');
+  if (p) p.remove();
+  const h = document.getElementById('zm_holder');
+  if (h) h.remove();
+  const t = document.querySelector('#modal h3');
+  if (t && !t.id) t.id = 'modalTitle';
+  const m = document.getElementById('modal');
+  if (m) m.setAttribute('aria-labelledby', 'modalTitle');
+}
+/* 关掉整块弹层（点「保存」/ Esc / 点遮罩都走它）—— 草稿在 zmSave 里已经写回数据。 */
+function closeZoneManager(){
+  zmState = null;
+  if (typeof closeModal === 'function') closeModal();
+}
+function zmPanelSync(){
+  const panel = document.getElementById('zm_panel');
+  if (!panel) return;
+  /* 重画前先把正在写的规则收进草稿 —— 不然「新建分区/改名/删除回来」会把没提交的字丢掉。 */
+  panel.querySelectorAll('textarea[data-zrule]').forEach(t => {
+    zmState.draft[t.dataset.zrule] = String(t.value || '');
+  });
+  const rows = S.zones.map(z => {
+    const k = esc(z.k), nm = esc(String(z.name).slice(0, 20));
+    const rule = zmState.draft[z.k] != null ? zmState.draft[z.k] : String(z.rule || '');
+    const open = zmOpenOf(z.k);
+    return `<div class="zm-item" style="--zc:${esc(z.color)}" data-zmrow="${k}">
+      <div class="zm-ihead">
+        <i class="zm-idot" aria-hidden="true"></i>
+        <b class="zm-iname">${nm}</b>
+        <button type="button" class="zm-ichev" data-zmtoggle="${k}"
+          aria-label="${open ? '收起' : '展开'}「${nm}」的操作" aria-expanded="${open ? 'true' : 'false'}"
+          title="${open ? '收起' : '展开'}">${open ? '▾' : '▸'}</button>
+      </div>
+      <button type="button" class="zm-rule${rule ? '' : ' empty'}" data-zmrule="${k}"
+        title="双击写规则" aria-label="双击编辑「${nm}」的分区规则">${rule ? esc(rule) : '点两下写规则：什么事归这一栏'}</button>
+      ${open ? `<div class="zm-acts">
+        <button type="button" class="bm" data-zmrename="${k}">改名</button>
+        <button type="button" class="bm danger" data-zmdel="${k}">删除</button>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+  panel.innerHTML = `
+    <div class="zm-head">
+      <h3 class="zm-title" id="zm_title">分区管理</h3>
+      <button type="button" class="btn" id="zm_new">＋ 新建分区</button>
+      <button type="button" class="btn primary" id="zm_save">保存</button>
+    </div>
+    <div class="zm-list">${rows || '<div class="zm-empty">还没有分区</div>'}</div>
+    <p class="zm-foot">规则就是告诉 AI「什么事归哪一栏」：比如「学习的事归学习，买东西、做饭归生活」。<br>
+      一行写一个分区；留空也能用 —— 空着时靠你手动挪栏学到的词 + 模型自己判。</p>`;
+  const m = document.getElementById('modal');
+  if (m) m.setAttribute('aria-labelledby', 'zm_title');
+  document.getElementById('zm_new').onclick = () => zoneAddOpen();
+  document.getElementById('zm_save').onclick = () => { zmSave(); };
+  panel.querySelectorAll('[data-zmtoggle]').forEach(b => {
     b.onclick = () => {
-      const act = b.dataset.zoneopt;
-      closeZoneMenu();
-      if (act === 'rename') return zoneRenameOpen(k);
-      if (act === 'up' || act === 'down') zoneMove(k, act === 'up' ? -1 : 1);
-      if (act === 'del') return zoneDeleteConfirm(k);
-      refresh();
+      const k = b.dataset.zmtoggle;
+      zmState.open[k] = !zmState.open[k];
+      zmPanelSync();
     };
   });
+  panel.querySelectorAll('[data-zmrule]').forEach(b => {
+    const k = b.dataset.zmrule;
+    const startEdit = () => zmRuleEdit(k);
+    b.ondblclick = startEdit;
+    /* 触屏没有双击语义可依赖：单击也进编辑（桌面端双击同样命中）；
+       桌面单击只是"选中"没有副作用，所以这条不会误伤。 */
+    b.onclick = startEdit;
+  });
+  panel.querySelectorAll('[data-zmrename]').forEach(b => {
+    b.onclick = () => zoneRenameOpen(b.dataset.zmrename);
+  });
+  panel.querySelectorAll('[data-zmdel]').forEach(b => {
+    b.onclick = () => zoneManagerDelete(b.dataset.zmdel);
+  });
 }
-function closeZoneMenu(){
-  const el = document.getElementById('zmenuPop');
-  if (el) el.remove();
-}
-document.addEventListener('click', e => {
-  const el = document.getElementById('zmenuPop');
-  if (!el) return;
-  if (e.target.closest && e.target.closest('#zmenuPop')) return;
-  if (e.target.closest && e.target.closest('[data-zmenu]')) return;
-  closeZoneMenu();
-});
-/* 改名：只改 name，条目一个字都不动（红线 1）。复用现有弹层 + uiConfirm 的骨架。 */
-function zoneRenameOpen(k){
+/* 规则：双击 → 原地变成**无边框**输入框（用户明确要求"不要实色边框"）。 */
+function zmRuleEdit(k){
+  const panel = document.getElementById('zm_panel');
+  if (!panel || !zmState) return;
+  const btn = panel.querySelector('[data-zmrule="' + k + '"]');
+  if (!btn || panel.querySelector('textarea[data-zrule]')) return;
   const z = S.zones.find(x => x.k === k);
   if (!z) return;
-  modal.innerHTML = `<h3 id="modalTitle">改这一栏的名字</h3>
-    <p class="confirm-msg">只改显示的名字 —— 里面的条目还属于这一栏，一条都不会动。</p>
-    <div class="field"><label>名字</label>
-      <input type="text" id="zr_name" maxlength="12" autocomplete="off" value="${esc(z.name)}"></div>
-    <div class="foot">
-      <button class="btn-x" id="zr_no" aria-label="取消" title="取消"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
-      <button class="btn primary" id="zr_ok" style="margin-left:auto">保存</button></div>`;
-  openMask();
-  const inp = document.getElementById('zr_name');
-  document.getElementById('zr_no').onclick = closeModal;
-  document.getElementById('zr_ok').onclick = () => {
-    const v = String(inp.value || '').replace(/\s+/g, ' ').trim();
-    if (!v){ toast('名字不能空着'); return; }
-    zoneRename(k, v);
-    closeModal(); refresh();
-    toast('改好了 · 里面 ' + S.items.filter(x => x && x.zone === k).length + ' 条还在这一栏');
+  const cur = zmState.draft[k] != null ? zmState.draft[k] : String(z.rule || '');
+  const ta = document.createElement('textarea');
+  ta.className = 'zm-rin';
+  ta.rows = 1;
+  ta.setAttribute('data-zrule', k);
+  ta.setAttribute('aria-label', '「' + String(z.name).slice(0, 20) + '」的分区规则');
+  ta.value = cur;
+  btn.replaceWith(ta);
+  const fit = () => { ta.style.height = 'auto'; ta.style.height = Math.min(160, ta.scrollHeight) + 'px'; };
+  fit();
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+  ta.oninput = fit;
+  ta.onblur = () => zmRuleSubmit(k);
+  ta.onkeydown = e => {
+    if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); zmRuleSubmit(k); }
+    else if (e.key === 'Escape'){ e.preventDefault(); zmRuleCommit(k, cur, true); }
+    e.stopPropagation();
   };
-  if (!reduceMotion()) setTimeout(() => inp.focus(), 60);
 }
-/* 删分区：二次确认，文案写清「里面的 N 条会移到『未分组』」。 */
-function zoneDeleteConfirm(k){
+/* 提交这一栏正在编辑的规则。抽成函数是为了**不依赖 focus/blur 的派发**：
+   真实浏览器里点别处会先 blur、再 click，而 headless / 某些 WebView 里
+   元素没拿到焦点时 `.blur()` 根本不派发事件 —— 那样规则就静默丢了。
+   所以「回车」和「失焦」都走这里，来源只有一个。 */
+function zmRuleSubmit(k){
+  const panel = document.getElementById('zm_panel');
+  if (!panel || !zmState) return;
+  const ta = panel.querySelector('textarea[data-zrule="' + k + '"]');
+  zmRuleCommit(k, ta ? ta.value : '');
+}
+/* 落库：只写 S.zones[i].rule（上限 120 字），条目一个字都不碰；写不出东西就退回只重画面板。 */
+function zmRuleCommit(k, val, cancel){
+  const panel = document.getElementById('zm_panel');
+  if (!panel || !zmState) return;
+  if (!cancel){
+    const v = String(val == null ? '' : val).replace(/\s+/g, ' ').trim().slice(0, 120);
+    const z = S.zones.find(x => x.k === k);
+    const before = z ? String(z.rule || '') : '';
+    if (z && v !== before){
+      z.rule = v;
+      try { save(); } catch (e){}
+      toast(v ? '「' + String(z.name).slice(0, 20) + '」的规则存好了' : '这条规则清空了');
+    }
+    zmState.draft[k] = v;
+  }
+  zmPanelSync();
+}
+/* 保存 = 收工回清单（规则/改名/删除都是即时写的，这里只做收尾与一次重画）。 */
+function zmSave(){
+  const panel = document.getElementById('zm_panel');
+  if (panel){
+    panel.querySelectorAll('textarea[data-zrule]').forEach(t => { zmState.draft[t.dataset.zrule] = t.value; });
+  }
+  const n = S.zones.length;
+  closeZoneManager();
+  refresh();
+  toast(n ? '分区设置好了 · 共 ' + n + ' 栏' : '分区都清空了');
+}
+/* 删分区：二次确认，文案写清「里面的 N 条会移到『未分组』」。
+   确认框会盖掉管理面板，所以用完必须把面板接回来（setModalAfterClose）。 */
+function zoneManagerDelete(k){
   const z = S.zones.find(x => x.k === k);
   if (!z) return;
   const n = S.items.filter(x => x && x.zone === k).length;
+  const back = () => { if (zmState) zmPanelSync(); };
+  if (typeof setModalAfterClose === 'function') setModalAfterClose(back);
   uiConfirm('删除「' + z.name + '」',
     n ? '「' + z.name + '」里的 ' + n + ' 条会移到「未分组」，一条都不会删。\n\n这个分区本身会消失（以后还能再建）。'
       : '这个分区里现在没有条目。删掉它只是不再显示这一栏。',
     '删掉这一栏',
     () => {
       const r = zoneDelete(k);
+      if (zmState){ delete zmState.draft[k]; delete zmState.open[k]; zmPanelSync(); }
       refresh();
       toast('「' + z.name + '」删掉了' + (r.moved ? ' · ' + r.moved + ' 条进了「未分组」' : '')
         + (r.dropped ? ' · 清掉 ' + r.dropped + ' 条学习记录' : ''));
     });
 }
-/* 新建分区：只要名字，颜色循环取色。 */
+/* 改名：在**管理面板内部**换一屏（不改 name 的语义：只改显示名，条目一条不动）。
+   取消/返回都回到分区列表，面板上没提交的草稿原样保留。 */
+function zoneRenameOpen(k){
+  const panel = document.getElementById('zm_panel');
+  const z = S.zones.find(x => x.k === k);
+  if (!z) return;
+  if (!panel) return;
+  /* 先把它正在写的规则收进草稿，回来时原样还在。 */
+  if (zmState){
+    const ta = panel.querySelector('textarea[data-zrule="' + k + '"]');
+    if (ta) zmState.draft[k] = String(ta.value || '');
+  }
+  panel.innerHTML = `
+    <div class="zm-head">
+      <h3 class="zm-title" id="zm_title">改名字</h3>
+      <button type="button" class="btn" id="zr_back">返回</button>
+    </div>
+    <p class="confirm-msg" style="margin:0 0 14px">只改显示的名字 —— 里面的条目还属于这一栏，一条都不会动。</p>
+    <div class="field"><label>名字</label>
+      <input type="text" id="zr_name" maxlength="12" autocomplete="off" value="${esc(z.name)}"></div>
+    <div class="foot">
+      <button class="btn-x" id="zr_no" aria-label="取消" title="取消"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+      <button class="btn primary" id="zr_ok" style="margin-left:auto">保存</button></div>`;
+  const inp = document.getElementById('zr_name');
+  const back = () => zmPanelSync();
+  document.getElementById('zr_back').onclick = back;
+  document.getElementById('zr_no').onclick = back;
+  document.getElementById('zr_ok').onclick = () => {
+    const v = String(inp.value || '').replace(/\s+/g, ' ').trim();
+    if (!v){ toast('名字不能空着'); return; }
+    zoneRename(k, v);
+    zmPanelSync();
+    toast('改好了 · 里面 ' + S.items.filter(x => x && x.zone === k).length + ' 条还在这一栏');
+  };
+  if (!reduceMotion()) setTimeout(() => inp.focus(), 60);
+}
+/* 新建分区：只要名字，颜色循环取色。用完把管理面板接回来（草稿不丢）。 */
 function zoneAddOpen(){
+  const back = () => { if (zmState) zmPanelSync(); };
+  if (typeof setModalAfterClose === 'function') setModalAfterClose(back);
   modal.innerHTML = `<h3 id="modalTitle">新建分区</h3>
     <p class="confirm-msg">分区就是清单页里的一条栏目（比如「学习」「工作」「生活」）。
       时间与循环以后只是条目上的标记，不再决定它进哪一栏。</p>
@@ -14630,6 +14818,7 @@ function zoneAddOpen(){
     const v = String(inp.value || '').replace(/\s+/g, ' ').trim();
     if (!v){ toast('给它起个名字'); return; }
     const z = zoneAdd(v);
+    if (z && zmState) zmState.open[z.k] = true;
     closeModal(); refresh();
     toast(z ? '建好了「' + z.name + '」' : '没能建出来');
   };
@@ -15605,6 +15794,12 @@ view.addEventListener('pointerdown', e => {
   if (e.target.closest && e.target.closest('button, [data-act], a, input')) return;  // 按钮和角标有自己的动作
   const card = e.target.closest && e.target.closest('.idea-card');
   if (!card || ideaUI.mergeMode) return;                  // 多选态下长按不触发，免得和勾选打架
+  /* ★ 7.2.0：`#view` 里也有分区卡片，它们的长按是**排序**（见 zoneDragDown），
+     不能落进"想法卡手势"这一套 —— 这里直接排除。
+     ⚠️ 想法卡本身**也带着 .zone 类**（`<div class="glass zone zone-wide idea-card">`），
+     所以判据必须是"清单页那种分区卡"（.board > .zone / 带 data-zfold 的标题栏），
+     写成 `closest('.zone')` 会把想法页的长按一起挡掉（实测 5I 的 22 条断言全红）。 */
+  if (e.target.closest && e.target.closest('.board > .zone')) return;
   const seed = card.querySelector('.item.seed[data-id]');
   if (!seed) return;
   seedPressFrom = { x: e.clientX, y: e.clientY };
@@ -16965,10 +17160,13 @@ function pickImport(){
       <textarea id="i_txt" style="min-height:240px" placeholder="----长期----&#10;☐ 读一本专业书101～1015&#10;☐ 写结课论文105～1020&#10;----短期----&#10;☐ 1016 交数学作业"></textarea></div>
     <div class="field"><label>这批笔记大概是什么时候写的？（"今天 / 周四 / 17号"按这天算）</label>
       <div class="sel cal" id="i_base"></div></div>
-    <div class="foot"><span style="font-size:12px;color:var(--faint)">会追加到现有清单，不覆盖</span>
-      <div class="spacer"></div>
-      <button class="btn" id="i_cancel">取消</button>
-      <button class="btn primary" id="i_ok">导入</button></div>`;
+    <div class="foot" style="flex-direction:column;align-items:stretch;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px;width:100%">
+        <button class="btn-x" id="i_cancel" aria-label="取消" title="取消"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+        <button class="btn primary" id="i_ok" style="margin-left:auto">导入</button>
+      </div>
+      <span style="font-size:12px;color:var(--faint)">会追加到现有清单，不覆盖</span>
+    </div>`;
   openMask();
   makeCal(document.getElementById('i_base'), ymd(new Date()));
   document.getElementById('i_cancel').onclick = closeModal;
@@ -16978,8 +17176,185 @@ function pickImport(){
   };
 }
 
+/* ==================================================================== */
+/* ★★ 7.2.0：分区**长按拖动排序**（取代旧的「⋯ → 上移 / 下移」）
+   --------------------------------------------------------------------
+   用户 2026-10-12 逐字定的效果：
+     ① 长按某个分区（比如「长期」）→ 卡片抬起、跟手指走；
+     ② 拖到「短期」和「循环」中间时，下面那栏**往上顶**，腾出空位；
+     ③ 松手 → 卡片**吸附**到空位，新顺序写进 S.zones。
+   三条实现纪律：
+     · **只在收起态**生效（展开的长卡片拖着会跟内部条目滚动打架；展开态照旧是折叠手势）；
+     · 抬起用 `position:fixed` 的**克隆体**，被拖的原卡留在流里继续占位 —— 这样网格不会重排、
+       不会闪，其他卡片只是被 `translateY` 推开（纯合成层动画，不动布局）；
+     · 指针一动就拦 touchmove（同想法页手势那条铁律：手势态成立后 preventDefault 才拦得住）。
+   键盘替代：标题栏聚焦时 **Ctrl/⌘ + ←/→** 交换顺序（拖拽对键盘用户没有等价物）。 */
+const ZONE_DRAG_MS = 320;                    // 长按阈值：比想法卡的 400ms 略快（卡片本身就在可滚页面里）
+let zdT = 0, zdFrom = null, zdCard = null, zdG = null;
+function zdCancelLift(){
+  if (zdT){ clearTimeout(zdT); zdT = 0; }
+  if (zdCard){ zdCard.classList.remove('zd-press'); zdCard = null; }
+  zdFrom = null;
+}
+function zdEnd(){
+  zdCancelLift();
+  if (!zdG) return;
+  const g = zdG; zdG = null;
+  if (g.ghost && g.ghost.parentNode) g.ghost.parentNode.removeChild(g.ghost);
+  g.zones.forEach(z => { z.style.transform = ''; z.style.transition = ''; });
+  const src = document.querySelector('.board > .zone.zd-src');
+  if (src) src.classList.remove('zd-src');
+  document.body.classList.remove('zd-on');
+  if (g.moved) zoneReorderCommit(g.key, g.toIndex);
+}
+function zdCancelAll(){ if (zdG) zdEnd(); else zdCancelLift(); }
+/* 真正的落库：把 k 挪到 toIndex，写盘 + 重画（动画已由克隆体收尾，重画是瞬时的）。 */
+function zoneReorderCommit(k, toIndex){
+  const i = S.zones.findIndex(z => z.k === k);
+  if (i < 0) return false;
+  const j = Math.max(0, Math.min(S.zones.length - 1, toIndex));
+  if (j === i) return false;
+  const [z] = S.zones.splice(i, 1);
+  S.zones.splice(j, 0, z);
+  save();
+  refresh();
+  toast('「' + String(z.name).slice(0, 20) + '」挪到第 ' + (j + 1) + ' 栏');
+  return true;
+}
+/* ★ 7.2.0：可排序的判据 = **这一栏带不带标题栏**（`data-zfold` 长在 `<header>` 上，
+   renderZoneBody 里 `c.fixed` 的「未分组」不输出它）。未分组固定排最后、也不参与排序。
+   ⚠️ 别去 section 上找 data-zfold（那是 7B 写 header 的属性），也**别**用
+   `!card.classList.contains('folded')` —— 后者会把"普通展开态"一起挡掉。 */
+view.addEventListener('pointerdown', e => {
+  if (e.button) return;
+  if (zdG) return;
+  /* 按钮、输入、可点的行有自己的动作；只有"卡片空白处 / 标题栏本体"才算拖。 */
+  if (e.target.closest && e.target.closest('button, a, input, textarea, .item')) return;
+  const card = e.target.closest && e.target.closest('.board > .zone');
+  if (!card || !card.classList.contains('folded')) return;            // 只在**收起态**
+  const head = card.querySelector(':scope > header[data-zfold]');
+  if (!head) return;                                                  // 「未分组」不可排序
+  const k = card.getAttribute('data-z');
+  const board = card.parentNode;
+  if (!board) return;
+  zdFrom = { x: e.clientX, y: e.clientY };
+  zdCard = card;
+  card.classList.add('zd-press');
+  zdT = setTimeout(() => {
+    zdT = 0;
+    const c = zdCard;
+    if (!c || !c.parentNode) { zdCancelLift(); return; }
+    const r = c.getBoundingClientRect();
+    const board = c.parentNode;
+    const cards = [].slice.call(board.querySelectorAll(':scope > .zone')).filter(z => z.isConnected);
+    const zones = cards.filter(z => z.querySelector(':scope > header[data-zfold]'));
+    const ghost = c.cloneNode(true);
+    ghost.removeAttribute('data-zfold');
+    ghost.classList.add('zd-ghost');
+    ghost.style.position = 'fixed';
+    ghost.style.left = r.left + 'px';
+    ghost.style.top = r.top + 'px';
+    ghost.style.width = r.width + 'px';
+    ghost.style.height = r.height + 'px';
+    ghost.style.margin = '0';
+    ghost.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(ghost);
+    /* 原卡**留在流里占位，但先隐形** —— 抬起来的是那份克隆体；不隐形的话
+       原卡还画在原地，让位动画看起来像没动（用户口径：手指按住的那张应该"被拿起来"）。
+       用 opacity 而不是 visibility/display：跨度的让位动画要按它的原位算。 */
+    c.classList.add('zd-src');
+    zdG = { key: k, toIndex: Math.max(0, zones.indexOf(c)), moved: false,
+      zones: zones, ghost: ghost, dy: 0 };
+    document.body.classList.add('zd-on');
+    buzz(30);
+    zdApply(k);
+  }, ZONE_DRAG_MS);
+});
+view.addEventListener('pointermove', e => {
+  if (!zdFrom) return;
+  if (zdT){                                   // 还没到长按：动一下就当成"滚动"
+    if (Math.abs(e.clientX - zdFrom.x) > 10 || Math.abs(e.clientY - zdFrom.y) > 10) zdCancelLift();
+    return;
+  }
+  if (!zdG) return;
+  const g = zdG;
+  g.dy = e.clientY - zdFrom.y;
+  g.ghost.style.transform = 'translateY(' + g.dy + 'px)';
+  /* 目标下标用**中点穿越**判定，不是"离谁中心最近"：
+     手指中心从被拖那张的原始中心出发，往下越过某一栏的中线就与它换位（往上同理）。
+     两种口径在"刚好拖过半栏"那一下会给出同一个答案，但"最近中心"在起点附近
+     会给两张卡相同的距离、于是 toIndex 一直钉在原处（实测症状：卡片抬起来了、
+     谁都不让位、松手也不换位）。中点口径没有这个平局。 */
+  const centers = g.zones.map(z => { const r = z.getBoundingClientRect(); return r.top + r.height / 2; });
+  const from = Math.max(0, g.zones.indexOf(g.key ? g.zones.find(z => z.getAttribute('data-z') === g.key) : null));
+  let to = from;
+  if (g.dy > 0){
+    for (let i = from; i < g.zones.length - 1; i++){
+      if (e.clientY > (centers[i] + centers[i + 1]) / 2) to = i + 1; else break;
+    }
+  } else if (g.dy < 0){
+    for (let i = from; i > 0; i--){
+      if (e.clientY < (centers[i] + centers[i - 1]) / 2) to = i - 1; else break;
+    }
+  }
+  if (to !== g.toIndex){ g.moved = true; g.toIndex = to; zdApply(g.key); }
+});
+/* 让位：按"目标顺序"把非拖拽的卡片推开 —— 只写 transform，不动布局（0.2s 补间）。 */
+function zdApply(curKey){
+  const g = zdG;
+  if (!g) return;
+  const zones = g.zones;
+  const order = zones.map(z => z.getAttribute('data-z'));
+  const from = order.indexOf(curKey);
+  if (from < 0) return;
+  const to = Math.max(0, Math.min(order.length - 1, g.toIndex));
+  order.splice(from, 1);
+  order.splice(to, 0, curKey);
+  zones.forEach(z => {
+    const k = z.getAttribute('data-z');
+    const idxNow = zones.indexOf(z);
+    const idxWant = order.indexOf(k);
+    z.style.transition = 'transform .2s cubic-bezier(.2,.8,.2,1)';
+    if (k === curKey || idxNow === idxWant){ z.style.transform = 'none'; return; }
+    let d = 0;
+    if (idxWant > idxNow){ for (let i = idxNow; i < idxWant; i++) d += zoneStep(zones[i], zones[i + 1]); }
+    else { for (let i = idxNow; i > idxWant; i--) d -= zoneStep(zones[i - 1], zones[i]); }
+    z.style.transform = 'translateY(' + d + 'px)';
+  });
+}
+/* 相邻两栏之间"跨一格"的位移：下一栏顶 - 这一栏顶（含 gap）。 */
+function zoneStep(a, b){
+  const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+  return rb.top - ra.top;
+}
+view.addEventListener('pointerup', () => { if (zdG) zdEnd(); else zdCancelLift(); });
+view.addEventListener('pointercancel', () => zdCancelAll());
+window.addEventListener('pointerup', () => { if (zdG) zdEnd(); else if (zdT) zdCancelLift(); });
+view.addEventListener('touchmove', e => {
+  if (zdG && e.cancelable) e.preventDefault();
+}, { passive: false });
+/* 键盘替代：标题栏聚焦时 Ctrl/⌘ + ←/→ 交换顺序（拖拽对键盘用户没有等价物）。
+   ⚠️ `data-zfold` 长在 **`<header>`** 上（section 上没有），判定要走 `head` 而不是它的父节点。 */
+view.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const head = e.target.closest && e.target.closest('.zone > header');
+  if (!head) return;
+  const card = head.closest('.zone');
+  if (!card || !head.hasAttribute('data-zfold')) return;              // 「未分组」不排序
+  e.preventDefault();
+  const i = S.zones.findIndex(z => z.k === card.getAttribute('data-z'));
+  if (i < 0) return;
+  const j = e.key === 'ArrowLeft' ? i - 1 : i + 1;
+  if (j < 0 || j >= S.zones.length){ toast('已经在' + (j < 0 ? '最前' : '最后') + '了'); return; }
+  zoneReorderCommit(S.zones[i].k, j);
+});
+window.addEventListener('keydown', e => { if (e.key === 'Escape' && zdG) zdEnd(); });
+
 document.addEventListener('click', e => {
   if (e.target.closest('#importBtn')) pickImport();
+  /* ★ 7.2.0：清单页左端那枚圆形图标 → 分区管理弹窗（面板里负责新建/改名/删除/写规则）。 */
+  if (e.target.closest('#zoneManagerBtn')){ openZoneManager(); return; }
   if (e.target.closest('#exportBtn')){
     /* 带上完整快照（含标签库/外观设置），否则换台电脑恢复会丢标签 —— 见 snapshot() 的说明 */
     const payload = Object.assign(snapshot(), { exportedAt: new Date().toISOString() });
@@ -17350,13 +17725,13 @@ function tweenShape(target, dur, targetCx, onDone){
 const fab = document.getElementById('entryFab');
 /* v3.8：页面显示的版本号。开发期手改这里；打包时 _android/build.py 会用 AndroidManifest
    的 versionName 覆盖它 —— 版本号只有一处真相源（manifest），这里只是它的投影。 */
-const APP_VERSION = '7.1.4';
+const APP_VERSION = '7.2.0';
 /* ★ 7D：「更新日志」面板的数据源。**由 _sync-build.mjs 从仓库根目录的 `更新日志.md` 注入**，
    跟 APP_VERSION 同一套机制（"恰好一处否则拒绝改"）。
    ⚠️ 这一行是**构建产物**：手改会被下次 `node _ref/_sync-build.mjs` 覆盖；
    要改更新说明就改 `更新日志.md`（它是唯一真相源）。这里留一个空数组占位，
    让没跑过 sync-build 的页面也能正常渲染（面板会显示"这一版没有更新说明"）。 */
-const CHANGELOG = [{"v":"7.1.4","items":["分区标题右边那枚「⋯」好按多了：可点范围放大到 44×44，外观也换成跟卡片一致的小方胶囊","点开的分区菜单（改名 / 上移 / 下移 / 删除）去掉了那圈灰边，材质跟全站卡片统一了，四个选项也排得更紧凑","修好了更新日志变长之后「关掉」按钮被挤出面板下沿的毛病：现在列表自己滚，「关掉」稳稳待在面板里","小弹层里的「取消」换成一枚大小合适的黑色 ✕","分区菜单里那行「这一栏有 N 条」删掉了","想法页空着时那句「没有在用的想法了…」删掉了","换页动画统一成「自下而上淡入淡出」（想法页进出多选、卡片 ↔ 长文页、更新日志翻页都走这一条）"]},{"v":"7.1.3","items":["修好了长文页多选时那条「已选 N 条 / 删除」的工具条会闪到页面上面去的毛病 —— 它现在稳稳贴在屏幕底部","修好了卡片页勾卡片时整个页面闪一下的毛病：现在只是那一张卡亮起来，别的卡片纹丝不动"]},{"v":"7.1.2","items":["编辑页和详情页现在是同一套排版：同一颗「← 想法」、同一行「时间 · 共多少字」、标题和正文的字号行距完全一样，点进编辑不再像换了一个界面","「共多少字」在编辑时随打字实时变","长文页右上角那个问号挪到了最右边","想法卡片页的问号说明里补上了「双击底栏『想法』切到长文页」，这类说明也补全了几条"]},{"v":"7.1.1","items":["修好了长文列表卡片外面那圈多余的灰边 —— 它看着像描边，其实是浏览器给按钮的默认边框，现在卡片和想法页、清单页是同一种玻璃卡了"]},{"v":"7.1.0","items":["长文页顶部现在也有「想法」这个大标题了 —— 切到长文只是换了下半截内容，不是换了一个页面","长文页右上角那枚「卡片」换成了 **?**：点开写着这一页的全部操作（怎么切回卡片、怎么进编辑、两个出口各去哪）","点「完成」不再一脚踢回列表：它会**停在刚才那条的全文页**，想接着写就再点一次标题；只有左上「返回」才是回列表","卡片页的「多选」改成**点整张卡**就勾上（和长文页、树状图一致），卡片里面的排版不会再因为多选而挪位置","列表卡换成了和全站一样的圆角与留白；点进全文、点回列表都补上了滑动淡入的动画","首次那个「双击可切换至长文本」的提示会自己收掉，不用手动点"]},{"v":"7.0.0","items":["「想法」多了一张**草稿纸**：双击底栏最左边那个「想法」，就能在「卡片」和「长文」之间切换","长文里可以原样贴一大段，不用拆、不用整理，也不用先想清楚 —— 列表上只显示标题、日期和开头那一行，全文点进去才看","点标题或点正文都能进全屏编辑，左上角「返回」直接回长文列表","它跟待办、想法是分开的：不提醒、不进统计，所以不会打扰你已经理好的那些事（笔记会跟着备份一起走，换手机不会丢）"]},{"v":"6.3.1","items":["更新日志和「AI 连接」这两个面板补上了出入场动画：换页会横向滑进滑出，展开条目也是慢慢撑开，和页面其它地方一致"]},{"v":"6.3.0","items":["设置页重新分组了：功能 / AI / 外观与体感 / 数据，跟 AI 有关的都在「AI」这一栏","每一栏都要自己点开，不再假装知道哪一栏最常用","「数据」最底下那行版本号，点开就能看这一版改了什么，翻到下面还能看以前每一版"]},{"v":"6.2.0","items":["分区可以自己建、改名、删除、上下移了","删掉某个分区时，里面的待办会进「未分组」，一条都不会丢","时间识别补齐一批：`月底`、`月初`、`年底`、`下个月这个时候`","全角数字也能认了（`３号` 和 `3号` 一样）","只有钟点、没写日期的待办，现在落在「短期」而不是「长期」"]},{"v":"6.1.1","items":["修复了一些问题"]},{"v":"6.1.0","items":["设置页重新分组了：常用的排前面，不常用的折叠起来","AI 的配置（key、接口地址、模型名）收进了一个二级页，主列表清爽了","「关于」不再单独占一栏，收进了「数据」","「点一下执行一次」的按钮（试连接、备份这些）变得更好认了"]},{"v":"6.0.0","items":["清单页的分区从固定的三个，变成**你自己定义**的：想要「学习 / 工作 / 生活」就自己加","把一条待办挪到某个分区，挪两次它就学会了：以后同类内容直接归到那儿","想精细控制，可以在设置里写给 AI 的规则说明（不写也能用）"]},{"v":"5.17.2","items":["修复了一些问题"]},{"v":"5.17.1","items":["子想法现在可以直接点着改（每一层都能改）","下滑续写不再被旁边的卡片抢走"]},{"v":"5.17.0","items":["时间识别大补齐：`昨天`、`今晚`、`明早`、`9月15号`、`14号到19号`、`三天后`、`下下周三` 这些以前不认的说法，现在都能认"]},{"v":"5.16.3","items":["正在进行的日期区间现在显示绿色（以前显示成还没开始的灰）","收起分区时不再削掉卡片一块"]},{"v":"5.16.2","items":["逾期改成看截止日（一个 10/8~10/11 的区间，过了 10/11 才算逾期）","`17号 开会` 这种写法能认了","删掉了卡片左边那条蓝色竖条"]},{"v":"5.16.1","items":["修复了一些问题"]},{"v":"5.16.0","items":["把 AI 关掉之后，本地也能认一批时间说法（`17号 开会`、`大后天` 这些）"]},{"v":"5.15.1","items":["删一个有子任务的待办时，会先问一句「一起删还是只删这条」","撤销能把父子关系一起还原"]},{"v":"5.15.0","items":["提醒更准了（改用系统闹钟那一档）","设置页多了一行「上次提醒：排 xx:xx · 实际 xx:xx」，能看出到底准不准","晚得多的话，多一个「去放行」的入口（省电限制会让闹钟晚几分钟）"]},{"v":"5.14.1","items":["`1分钟后`、`三天后` 这类相对时间，本地也能认了"]},{"v":"5.14.0","items":["到点提醒改成横幅 + 响铃（不再只有全屏）","通知上多了两枚按钮：「知道了」和「稍后 5 分钟」","响铃页可以上滑取消"]},{"v":"5.13.0","items":["汉字钟点也能认了（`晚上九点五十一 看书`）","图片识别出来的条目，可以逐条点开改"]},{"v":"5.12.0","items":["加了「锁屏时全屏响铃」开关（默认关）"]},{"v":"5.11.1","items":["修复了一些问题"]},{"v":"5.11.0","items":["录入条左边多了一个图片键：拍照或截图，能直接识别成待办"]},{"v":"5.10.1","items":["修复了一些问题"]},{"v":"5.10.0","items":["循环支持「每周三」「每月1号」这种写法了"]},{"v":"5.9.0","items":["可以对着已有的待办说「改成明天下午三点」，它自己找那一条改"]},{"v":"5.8.0","items":["底层改进（这一版没有界面上能直接看到的变化）"]},{"v":"5.7.1","items":["修复了一些问题"]},{"v":"5.7.0","items":["AI 会判断一句话该记成待办还是想法","语音的两条路（直接记 / 先编辑）都会先让 AI 纠正一遍"]},{"v":"5.6.1","items":["修复了一些问题"]},{"v":"5.5.3","items":["修复了一些问题"]},{"v":"5.5.2","items":["修复了一些问题"]},{"v":"5.5.1","items":["修复了一些问题"]},{"v":"5.5.0","items":["到点提醒（通知）上线"]},{"v":"5.4.1","items":["修复了一些问题"]},{"v":"5.4.0","items":["统计页的数字可以点进去看明细了"]},{"v":"5.3.3","items":["修复了一些问题"]},{"v":"5.3.2","items":["修复了一些问题"]},{"v":"5.3.1","items":["修复了一些问题"]},{"v":"5.3.0","items":["父子任务的显示和勾选闭环了（父任务完成时子任务不再散架）"]},{"v":"5.2.4","items":["数据安全加固：存档坏掉时不再把整个 app 弄崩"]},{"v":"5.2.0","items":["修复了一些问题"]},{"v":"5.1.1","items":["设置页从 8 栏收成 5 栏","树状图：打开不再缩到看不清，竖向也能滑了"]},{"v":"5.0.0","items":["想法系统（把想法记下来、拆成子想法、再立项成待办）"]},{"v":"4.x","items":["长按手势（右滑立项 / 左滑编辑 / 下滑续写 / 拖到另一条上合并）","多选批量操作","想法页的树状图视图","默认落点设置"]},{"v":"3.x","items":["想法系统上线（缩进树、回顾抽屉、立项三步走）"]},{"v":"2.x","items":["最初的单文件待办应用"]}]; /* CHANGELOG-INJECT-POINT */
+const CHANGELOG = [{"v":"7.2.0","items":["清单页标题下那一行最左边多了两枚圆形图标：**粘贴导入**（黑底白线，跟底栏那枚＋同款）和 **分区管理**（白底灰细框 + 三条横线）","每栏标题右边那个「⋯」拿掉了 —— 新建 / 改名 / 删除 / 写规则全部搬进「分区管理」弹窗：左上「＋ 新建分区」、右上「保存」，每栏标题下面一行灰字就是它的规则，**双击那行灰字**就能直接改，输入框不带边框","分区顺序改成**长按拖动**：按住某一栏（收起状态）拖到别处，其他栏自动让位、松手吸附到位；键盘用户可以用 Ctrl + ←/→ 换位","设置页「AI」里那段「对 AI 的规范设置」搬进了分区管理弹窗（规则改成每栏各写一条，AI 按栏读）","粘贴导入弹窗底下改成「取消（左）· 导入（右）」横排，灰字提示挪到第二行"]},{"v":"7.1.4","items":["分区标题右边那枚「⋯」好按多了：可点范围放大到 44×44，外观也换成跟卡片一致的小方胶囊","点开的分区菜单（改名 / 上移 / 下移 / 删除）去掉了那圈灰边，材质跟全站卡片统一了，四个选项也排得更紧凑","修好了更新日志变长之后「关掉」按钮被挤出面板下沿的毛病：现在列表自己滚，「关掉」稳稳待在面板里","小弹层里的「取消」换成一枚大小合适的黑色 ✕","分区菜单里那行「这一栏有 N 条」删掉了","想法页空着时那句「没有在用的想法了…」删掉了","换页动画统一成「自下而上淡入淡出」（想法页进出多选、卡片 ↔ 长文页、更新日志翻页都走这一条）"]},{"v":"7.1.3","items":["修好了长文页多选时那条「已选 N 条 / 删除」的工具条会闪到页面上面去的毛病 —— 它现在稳稳贴在屏幕底部","修好了卡片页勾卡片时整个页面闪一下的毛病：现在只是那一张卡亮起来，别的卡片纹丝不动"]},{"v":"7.1.2","items":["编辑页和详情页现在是同一套排版：同一颗「← 想法」、同一行「时间 · 共多少字」、标题和正文的字号行距完全一样，点进编辑不再像换了一个界面","「共多少字」在编辑时随打字实时变","长文页右上角那个问号挪到了最右边","想法卡片页的问号说明里补上了「双击底栏『想法』切到长文页」，这类说明也补全了几条"]},{"v":"7.1.1","items":["修好了长文列表卡片外面那圈多余的灰边 —— 它看着像描边，其实是浏览器给按钮的默认边框，现在卡片和想法页、清单页是同一种玻璃卡了"]},{"v":"7.1.0","items":["长文页顶部现在也有「想法」这个大标题了 —— 切到长文只是换了下半截内容，不是换了一个页面","长文页右上角那枚「卡片」换成了 **?**：点开写着这一页的全部操作（怎么切回卡片、怎么进编辑、两个出口各去哪）","点「完成」不再一脚踢回列表：它会**停在刚才那条的全文页**，想接着写就再点一次标题；只有左上「返回」才是回列表","卡片页的「多选」改成**点整张卡**就勾上（和长文页、树状图一致），卡片里面的排版不会再因为多选而挪位置","列表卡换成了和全站一样的圆角与留白；点进全文、点回列表都补上了滑动淡入的动画","首次那个「双击可切换至长文本」的提示会自己收掉，不用手动点"]},{"v":"7.0.0","items":["「想法」多了一张**草稿纸**：双击底栏最左边那个「想法」，就能在「卡片」和「长文」之间切换","长文里可以原样贴一大段，不用拆、不用整理，也不用先想清楚 —— 列表上只显示标题、日期和开头那一行，全文点进去才看","点标题或点正文都能进全屏编辑，左上角「返回」直接回长文列表","它跟待办、想法是分开的：不提醒、不进统计，所以不会打扰你已经理好的那些事（笔记会跟着备份一起走，换手机不会丢）"]},{"v":"6.3.1","items":["更新日志和「AI 连接」这两个面板补上了出入场动画：换页会横向滑进滑出，展开条目也是慢慢撑开，和页面其它地方一致"]},{"v":"6.3.0","items":["设置页重新分组了：功能 / AI / 外观与体感 / 数据，跟 AI 有关的都在「AI」这一栏","每一栏都要自己点开，不再假装知道哪一栏最常用","「数据」最底下那行版本号，点开就能看这一版改了什么，翻到下面还能看以前每一版"]},{"v":"6.2.0","items":["分区可以自己建、改名、删除、上下移了","删掉某个分区时，里面的待办会进「未分组」，一条都不会丢","时间识别补齐一批：`月底`、`月初`、`年底`、`下个月这个时候`","全角数字也能认了（`３号` 和 `3号` 一样）","只有钟点、没写日期的待办，现在落在「短期」而不是「长期」"]},{"v":"6.1.1","items":["修复了一些问题"]},{"v":"6.1.0","items":["设置页重新分组了：常用的排前面，不常用的折叠起来","AI 的配置（key、接口地址、模型名）收进了一个二级页，主列表清爽了","「关于」不再单独占一栏，收进了「数据」","「点一下执行一次」的按钮（试连接、备份这些）变得更好认了"]},{"v":"6.0.0","items":["清单页的分区从固定的三个，变成**你自己定义**的：想要「学习 / 工作 / 生活」就自己加","把一条待办挪到某个分区，挪两次它就学会了：以后同类内容直接归到那儿","想精细控制，可以在设置里写给 AI 的规则说明（不写也能用）"]},{"v":"5.17.2","items":["修复了一些问题"]},{"v":"5.17.1","items":["子想法现在可以直接点着改（每一层都能改）","下滑续写不再被旁边的卡片抢走"]},{"v":"5.17.0","items":["时间识别大补齐：`昨天`、`今晚`、`明早`、`9月15号`、`14号到19号`、`三天后`、`下下周三` 这些以前不认的说法，现在都能认"]},{"v":"5.16.3","items":["正在进行的日期区间现在显示绿色（以前显示成还没开始的灰）","收起分区时不再削掉卡片一块"]},{"v":"5.16.2","items":["逾期改成看截止日（一个 10/8~10/11 的区间，过了 10/11 才算逾期）","`17号 开会` 这种写法能认了","删掉了卡片左边那条蓝色竖条"]},{"v":"5.16.1","items":["修复了一些问题"]},{"v":"5.16.0","items":["把 AI 关掉之后，本地也能认一批时间说法（`17号 开会`、`大后天` 这些）"]},{"v":"5.15.1","items":["删一个有子任务的待办时，会先问一句「一起删还是只删这条」","撤销能把父子关系一起还原"]},{"v":"5.15.0","items":["提醒更准了（改用系统闹钟那一档）","设置页多了一行「上次提醒：排 xx:xx · 实际 xx:xx」，能看出到底准不准","晚得多的话，多一个「去放行」的入口（省电限制会让闹钟晚几分钟）"]},{"v":"5.14.1","items":["`1分钟后`、`三天后` 这类相对时间，本地也能认了"]},{"v":"5.14.0","items":["到点提醒改成横幅 + 响铃（不再只有全屏）","通知上多了两枚按钮：「知道了」和「稍后 5 分钟」","响铃页可以上滑取消"]},{"v":"5.13.0","items":["汉字钟点也能认了（`晚上九点五十一 看书`）","图片识别出来的条目，可以逐条点开改"]},{"v":"5.12.0","items":["加了「锁屏时全屏响铃」开关（默认关）"]},{"v":"5.11.1","items":["修复了一些问题"]},{"v":"5.11.0","items":["录入条左边多了一个图片键：拍照或截图，能直接识别成待办"]},{"v":"5.10.1","items":["修复了一些问题"]},{"v":"5.10.0","items":["循环支持「每周三」「每月1号」这种写法了"]},{"v":"5.9.0","items":["可以对着已有的待办说「改成明天下午三点」，它自己找那一条改"]},{"v":"5.8.0","items":["底层改进（这一版没有界面上能直接看到的变化）"]},{"v":"5.7.1","items":["修复了一些问题"]},{"v":"5.7.0","items":["AI 会判断一句话该记成待办还是想法","语音的两条路（直接记 / 先编辑）都会先让 AI 纠正一遍"]},{"v":"5.6.1","items":["修复了一些问题"]},{"v":"5.5.3","items":["修复了一些问题"]},{"v":"5.5.2","items":["修复了一些问题"]},{"v":"5.5.1","items":["修复了一些问题"]},{"v":"5.5.0","items":["到点提醒（通知）上线"]},{"v":"5.4.1","items":["修复了一些问题"]},{"v":"5.4.0","items":["统计页的数字可以点进去看明细了"]},{"v":"5.3.3","items":["修复了一些问题"]},{"v":"5.3.2","items":["修复了一些问题"]},{"v":"5.3.1","items":["修复了一些问题"]},{"v":"5.3.0","items":["父子任务的显示和勾选闭环了（父任务完成时子任务不再散架）"]},{"v":"5.2.4","items":["数据安全加固：存档坏掉时不再把整个 app 弄崩"]},{"v":"5.2.0","items":["修复了一些问题"]},{"v":"5.1.1","items":["设置页从 8 栏收成 5 栏","树状图：打开不再缩到看不清，竖向也能滑了"]},{"v":"5.0.0","items":["想法系统（把想法记下来、拆成子想法、再立项成待办）"]},{"v":"4.x","items":["长按手势（右滑立项 / 左滑编辑 / 下滑续写 / 拖到另一条上合并）","多选批量操作","想法页的树状图视图","默认落点设置"]},{"v":"3.x","items":["想法系统上线（缩进树、回顾抽屉、立项三步走）"]},{"v":"2.x","items":["最初的单文件待办应用"]}]; /* CHANGELOG-INJECT-POINT */
 
 const LONG_PRESS_MS = 350;          // 长按阈值（≥350ms 才进入手势态）
 const SAFE_ZONE = 28;               // 安全范围＝按钮半径（用户："错位按钮的一半"）：
