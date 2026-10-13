@@ -1,0 +1,96 @@
+run @ 2026-10-13T12:00:17.9643422+08:00 HEAD=f39538b 7.6.1 热力图：当前月居中显示（寻月/吸附/跳转三处统一居中口径）
+=== _0a-regress.mjs exit=0
+  ok   备份恢复的入口判据已与 load 对齐（不再是 Array.isArray 单判） |   ok   渲染树里没有再出现 `c.list.map(renderTree)`（会把数组下标当深度传进去） |   ok   本轮触碰的函数名都恰好一处定义（同名重复定义会让新代码静默失效）  →   |   ok   间隔循环的新条目不再带 cycleOf 组标记 |  | 通过 62 / 失败 0
+=== _0b-regress.mjs exit=0
+  ok   新浮层没有靠 backdrop-filter 提供可读性 |   ok   新增的撤销都走 toast 的按钮形态 |   ok   没有新增直接写 S.view = 的地方（新代码只调 goView）  →  1 处 |   ok   openParentPicker 的 data-pid 做了转义 |  | 通过 108 / 失败 0
+=== _0c-regress.mjs exit=0
+  ok   teParseTime("9:30")（半角冒号）  →  "09:30" |   ok   teParseTime("930")  →  "09:30" |   ok   teParseTime("下午5点")  →  "17:00" |   ok   teParseTime("9点半")（0F.1 已修）  →  "09:30" |  | PASS 37 / 37  全绿
+=== _0e-regress.mjs exit=0
+  ok   选择器 .stat-sub{ 只定义一次  →  1 处 |   ok   选择器 .stat-sub-top{ 只定义一次  →  1 处 |   ok   选择器 .stat-day{ 只定义一次  →  1 处 |   ok   选择器 .stat-list{ 只定义一次  →  1 处 |  | ══ 汇总：107 通过 / 0 失败 ══
+=== _0f-regress.mjs exit=0
+  ok   两个设备文案类 .fw-mouse / .fw-touch 也不在 |   ok   .page-shell 的 padding-bottom 仍用 var(--bar-keep, …) |   ok   0D.3 的滚动那一半还在（fit-view 的挂/摘） |   ok   "把页脚摆到中点"那段定位代码已随页脚一起删 |  | PASS 23 / 23  全绿
+=== _1-regress.mjs exit=0
+  ok   新增的 2 个常量各恰好一处定义  →  全部唯一 |  | [8] 第 2 批（本批不做）：词表进 S / 备份含词表字段 |   [批2] snapshot()（备份）里含词表字段  →  第 2 批做 —— 本轮只做第 1 批，故此项不计入通过/失败 |  | PASS 75 / 75  全绿（另有 1 项属第 2 批，未做，未计入）
+=== _2a-regress.mjs exit=0
+[11] 本卡碰过的函数名 / 常量：全文件各恰好一处定义 |   ok   本卡碰过的 42 个函数名都恰好一处定义  →  全部唯一 |   ok   新增的 12 个常量各恰好一处定义  →  全部唯一 |   ok   归一化 / 叠字那两个老函数没有被本卡复制一份  →   |  | PASS 151 / 151  全绿   （耗时 0.3s）
+=== _2b-regress.mjs exit=0
+  ok      落下来的是本地解析的结果（标题带原话里的词）  →  我在想要不要把交房租做成网页形式出现的 |   ok      确实问过模型（不是没发请求）  →  2 |   ok      提示语说清"用的是本地识别"  →  AI 没接上，用的是本地识别 · 已加入「长期」存入想法撤销→ 长期 |   ok      全程只有 1 条  →  1 |  | PASS 97 / 97  全绿
+=== _2c-regress.mjs exit=0
+  ok   AI 的唯一出网口没变（去注释后全文件 fetch( 仍恰好 1 处）  →  1 处 |   ok   失败路径仍恰好 6 条（护栏复用 invalid，没有新开第 7 条）  →  6 处 |   ok   function aiValidateItems( 的定义次数  →  1 |   ok   本卡没有新增任何函数（dupdef 清单不用加名字）  →  护栏与阈值全部内联在既有函数里 |  | PASS 66 / 66  全绿   （耗时 17ms）
+=== _3a-regress.mjs exit=0
+  ok   snapshot() 的字段清单里没有焦点  →   |   ok   focus 用的是 sessionStorage（不是 localStorage 存档）  →   |   ok   焦点在切视图时被清掉（goView 里那处守卫）  →   |   ok   创建 / 打开详情都会更新焦点  →   |  | PASS 99 / 99 全绿
+=== _3b-regress.mjs exit=0
+  · 操作请求：messages 808 字符 ≈ 539 token（候选 3 条）；请求体 JSON 1049 字符 |   · 强 cue 命中（改成 / 删掉 / 勾掉…）走本地路径：**0 请求** |   · 3B 新增的开销只有一条：大白话录入时多问一次"新建还是改已有"（路由请求）；带本地语法 / AI 关着 / 无候选时都仍是 0 请求 |   ok   用量：固定前缀逐字符不变  → 921 |  | PASS 73 / 73 全绿
+=== _3c-regress.mjs exit=0
+  ok   ★ 候选门槛里把「同视图」剔掉了：score - s.view < AI_CAND_MIN  →   |   ok   字面重合（kw > 0）仍然一律放行  →   |   ok   「同视图」只剩一处加分点（不再有裸的 300 写死）  →  1 |   ok   门槛常量 AI_CAND_MIN 只有一处定义  →  1 |  | PASS 36 / 36 全绿
+=== _4a-regress.mjs exit=0
+  ok   调桥排期 b.notifySchedule( 仍是 1 处  →  1 处 |   ok   编辑弹层有「每周几」一排键 |   ok   编辑弹层有三种方式的键盘组 |   ok   新浮层行没有靠 backdrop-filter 提供可读性 |  | 通过 116 / 失败 0
+=== _4b-regress.mjs exit=0
+  ok   源码里没有对 CAMERA 的任何运行时申请 |  | [10] 重复定义体检（本次触碰过的名字都在 _check-dupdef 的清单里） |   ok   新函数各恰好 1 处定义  →  [] |  | 全部通过：62/62
+=== _4c-regress.mjs exit=0
+  ok   通知点击仍走既有的 notifyId → 页面 jumpToTask（没有被绕过） |   ok   verify_apk.py 的 EXPECT_PERMS 已同步两条新权限 |   ok   版本号自洽（versionCode = MAJOR*1e6 + MINOR*1e4 + PATCH*1e2）  →  7.6.1 / 7060100（应为 7060100） |   ok   新加的函数名都还在（避免"读着对、跑起来没有"） |  | 全部通过 / 68（通过 68）
+=== _4d-regress.mjs exit=0
+  ok   tpat 里「晚」带了「一点」的负向断言（裸晚 + 一点 = 稍后） |   ok   用 exec 循环取第一发**可接受**的匹配（歧义那条能跳过、后面真的钟点仍能认到） |   ok   前一字歧义闸在位 |   ok   tm 的取法紧跟在 tpat 之后、歧义闸在 exec 循环里 |  | 通过 94 / 失败 0
+=== _5d-regress.mjs exit=0
+  ok   sanitizeParents 本身没被改（不含子任务/删除这类词）  →   |   ok   本卡新增的 3 个函数各恰好一处定义  →  全部唯一 |   ok   清单卡的 ✕ 走统一入口（有子才问）  →   |   ok   syncNotifyMany 对"不在库里的 id"会撤（删除级联能真正撤掉子任务闹钟）  →   |  | 合计: 38 通过 / 0 失败
+=== _5e-regress.mjs exit=0
+  ok   红线：这两句 AI 开着时仍出网（needAI=true）  →  [true,true] |   ok   5E 的压力测试注释挨着 smartHintCount 那条老规矩 |   ok   探针文件在（_ref/_5e-probe.mjs） |   ok   parseSmart 的落点推导走 zoneShortKey()/zoneRepeatKey()，没有字面量 short/long  →  const zone = explicit || (localIdea ? 'idea' : (date ? (daysFromToday(date) <= 14 ? zoneShortKey() : zoneLongKey()) : (repeat ? zoneRepeatKe |  | 通过 109 / 失败 0
+=== _5f-regress.mjs exit=0
+  常规回归清单：parse · 0a · 0b · 0c · 0e · 0f · 1 · 2a · 2b · 2c · 3a · 3b · 3c · 4a · 4b · 4c · 4d · 5 · 5d · 5e · 5f · dupdef ＋ DOM 那批 ＋ **_verify-idea.mjs · _verify-mobile.mjs** |  | [7] 重复定义体检（本卡触碰过的名字） |   ok   12 个名字各恰好一处定义  →  全部唯一 |  | 合计: 32 通过 / 0 失败
+=== _5g-regress.mjs exit=0
+  ok   reduceMotion() 一字未改（只读系统的 prefers-reduced-motion） |   ok   排期真相源：notifyTimeOf( 出现次数  →  3 |   ok   排期真相源：b.notifySchedule( 出现次数  →  1 |   ok   AI 唯一 fetch 出口  →  1 |  | PASS 56 / 56  全绿
+=== _5h-regress.mjs exit=0
+  ok   重复定义体检：function foldZoneWithMotion( 定义处数  →  1 |   ok   重复定义体检：function resetFoldZone( 定义处数  →  1 |   ok   重复定义体检：function renderZoneBody( 定义处数  →  1 |   ok   重复定义体检：function parseSmart( 定义处数  →  1 |  | PASS 60 / 60  全绿
+=== _5i-regress.mjs exit=0
+  ok   ③ 卡片整个在视口外时不钉（没有"原位"可言，钉它只会把页面凭空滚走） |   ok   ④ 用户一动（pointerdown / touchstart / 滚轮）就把控制权还给他 |   ok   ⑤ 连续三帧位置没变就收工（位置稳了没必要继续补） |   ok   空串 / 只有空白：seedAddSpark 返回 false（两条出口都不收输入框） |  | ===== 91/91 =====
+=== _5-regress.mjs exit=0
+  ok   读桥的两个纯函数在 |   ok   文案有"排…实际…"与 晚/早/准点 三档 |   ok   晚 ≥60 秒才给「去放行」（data-act=batteryopen） |   ok   「去放行」接线到 openBatterySettings |  | 通过 104 / 失败 0
+=== _6a-regress.mjs exit=0
+ | ════════════════════════════════════════ | 逐行断言数 212 / 语料表行数 212  ✅ 相等（卡面验收 6） | 总通过 283 / 总失败 0（含 [A][B][C][D] 附加段） |  | 全绿 ✅
+=== _6b-regress.mjs exit=0
+  ok   六件动作的 data-act 都在  →  [] |   ok   备份按钮换成了 .set-act（仍是 id=exportBtn，点击处理没变） |   ok   动作类不再借用状态类的类名（.pill / .segbtn / .switch） |   ok   CSS 里 .set-act 是实心（background:var(--fg)），与状态类的凹槽 / 描边不是一套 |  | PASS 84 / 84  全绿
+=== _7a-regress.mjs exit=0
+  ok   hideNoteTip 恰好一处定义  →  1 处 |   ok   noteTipClose 恰好一处定义  →  1 处 |   ok   noteAct 恰好一处定义  →  1 处 |   ok   S.view = 仍只有 goView 一处  →  1 |  | 通过 153 / 失败 0
+=== _7b-regress.mjs exit=0
+  ok   所有 7B 函数各只有一份定义  →  [] |   ok   交互层新增函数各只有一份定义  →  [] |  | ======================================== | 7B 回归：99/0 | ========================================
+=== _7d-regress.mjs exit=0
+  ok   三级面板：默认只展开当前大版本 7（其他都折叠）  →  1 |   ok   三级面板：展开的正是当前大版本 |   ok   三级面板：展开某个小版本（7.6.0）之后它的条目都出来了  →  3 条 |   ok   三级面板：没展开的小版本不铺条目（默认折叠） |  | PASS 58 / 58  全绿
+=== _parse-regress.mjs exit=0
+  ok   买3~5个苹果 不解析  →  [null,null] |   ok   买 3~5个苹果 不解析  →  [null,null,"买 3~5个苹果"] |   ok   第3~5章 不解析  →  null |   ok   走路 3~5 公里 不解析  →  null |  | 通过 62 / 失败 0
+=== _check-dupdef.mjs exit=0
+  ok   openNoteHelp  →  1 处定义 |   ok   noteEditMeta  →  1 处定义 |   ok   notesBatchHTML  →  1 处定义 |   ok   batchBarSync  →  1 处定义 |  | 全部唯一定义，通过（481/481）
+=== _parse-regress.mjs exit=0
+  ok   买3~5个苹果 不解析  →  [null,null] |   ok   买 3~5个苹果 不解析  →  [null,null,"买 3~5个苹果"] |   ok   第3~5章 不解析  →  null |   ok   走路 3~5 公里 不解析  →  null |  | 通过 62 / 失败 0
+
+--- summary ---
+_0a-regress.mjs          exit=0  10/02
+_0b-regress.mjs          exit=0  3/1
+_0c-regress.mjs          exit=0  37 / 37
+_0e-regress.mjs          exit=0  1/0
+_0f-regress.mjs          exit=0  23 / 23
+_1-regress.mjs           exit=0  75 / 75
+_2a-regress.mjs          exit=0  151 / 151
+_2b-regress.mjs          exit=0  97 / 97
+_2c-regress.mjs          exit=0  66 / 66
+_3a-regress.mjs          exit=0  99 / 99
+_3b-regress.mjs          exit=0  73 / 73
+_3c-regress.mjs          exit=0  36 / 36
+_4a-regress.mjs          exit=0  
+_4b-regress.mjs          exit=0  62/62
+_4c-regress.mjs          exit=0  1 / 7060100
+_4d-regress.mjs          exit=0  1/2
+_5d-regress.mjs          exit=0  
+_5e-regress.mjs          exit=0  00/12
+_5f-regress.mjs          exit=0  
+_5g-regress.mjs          exit=0  56 / 56
+_5h-regress.mjs          exit=0  60 / 60
+_5i-regress.mjs          exit=0  91/91
+_5-regress.mjs           exit=0  
+_6a-regress.mjs          exit=0  
+_6b-regress.mjs          exit=0  84 / 84
+_7a-regress.mjs          exit=0  
+_7b-regress.mjs          exit=0  99/0
+_7d-regress.mjs          exit=0  58 / 58
+_parse-regress.mjs       exit=0  
+_check-dupdef.mjs        exit=0  481/481
+_parse-regress.mjs       exit=0  

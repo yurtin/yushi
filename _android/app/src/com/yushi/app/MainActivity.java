@@ -200,6 +200,16 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             s.setForceDark(WebSettings.FORCE_DARK_OFF);
         }
+        /* ★ 审查修复（2026-10-13，安全）：页面里有 AI key 输入框（type=text + CSS 遮字），
+           WebView 自带的「保存密码」通路不受页面样式约束，可能在部分 WebView 上把它
+           写进凭据库 —— 而本项目的红线是"key 只留在 localStorage、不进备份"。
+           显式关掉；顺便把混合内容钉成 NEVER_ALLOW（当前靠默认值）。 */
+        try {
+            s.setSavePassword(false);
+        } catch (Throwable t){ /* 个别 ROM 的实现会抛，忽略 */ }
+        try {
+            s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        } catch (Throwable t){ /* 老 WebView 没有这个 API */ }
 
         /* 底色透明，让下面 Activity 的 windowBackground（values / values-night 各一套）
            顶过 WebView 首帧之前那一下白闪。 */
@@ -404,7 +414,9 @@ public class MainActivity extends Activity {
 
     /* ★ v3.21 sherpa-onnx 流式识别（边录边出字）。模型直接从 assets 读，不需要解到私有目录。
        API 是 Kotlin 写的：配置类都有无参构造 + setter，所以这里 new 完逐个 set。 */
-    private com.k2fsa.sherpa.onnx.OnlineRecognizer sRec;
+    /* ★ 审查修复（2026-10-13）：onCreate 在后台线程预热 ensureRec()、主线程 startSherpa()
+       也会调一次 —— 不加 volatile 时主线程可能读到"引用已写入但对象尚未完全发布"的实例。 */
+    private volatile com.k2fsa.sherpa.onnx.OnlineRecognizer sRec;
     private com.k2fsa.sherpa.onnx.OnlineStream sStream;
     private volatile boolean sRun = false;
     private String sLastPartial = "";
@@ -1082,6 +1094,11 @@ public class MainActivity extends Activity {
     private boolean handleUrl(Uri u) {
         if (u == null) return false;
         if (HOST.equals(u.getHost())) return false;      // 自家资源：交给 shouldInterceptRequest
+        String scheme = u.getScheme();
+        /* ★ 审查修复（2026-10-13，安全）：以前"除自家域名外一律 ACTION_VIEW"，
+           等于任何自定义 scheme（xx://）都能被直接投递给第三方 App。现在只放行
+           http/https，其余一律丢弃。 */
+        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) return true;
         /* 页面里目前没有任何外链；万一以后加了，丢给系统浏览器，别在 App 里跳走 ——
            否则用户会卡在一个没有地址栏的页面里，退都退不出去。 */
         try {

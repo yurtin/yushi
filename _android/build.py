@@ -25,6 +25,7 @@
 `AndroidManifest.xml` 里**不写** INTERNET —— 它保持纯净版的真相源，
 联网版的那一行由本脚本在构建目录的副本上注入（见 main() 第 1 步）。
 """
+import hashlib
 import os
 import re
 import shutil
@@ -167,10 +168,35 @@ def write_log():
         pass
 
 
+# 敏感实参不进日志：签名口令以前被 `run()` 原样打印，并被 write_log() 写进
+# _ref/_build.log（本项目 2026-10-13 审查实测：口令明文落在项目目录下的日志里）。
+# 只有**日志**被脱敏，传给 subprocess 的仍是真值。
+SENSITIVE_FLAGS = ('--ks-pass', '--key-pass', '--storepass', '--keypass')
+
+
+def _redact_args(args):
+    out, hide_next = [], False
+    for a in args:
+        s = str(a)
+        if hide_next:
+            out.append('***')
+            hide_next = False
+            continue
+        if s in SENSITIVE_FLAGS:
+            out.append(s)
+            hide_next = True
+            continue
+        if s.startswith('pass:') or s.startswith('password:'):
+            out.append(s.split(':', 1)[0] + ':***')
+            continue
+        out.append(s)
+    return out
+
+
 def run(title, args, cwd=None, allow_fail=False):
     """跑一条命令。工具是 .exe / java，直接 CreateProcess，不经过 cmd。"""
     log('>> ' + title)
-    log('   ' + ' '.join('"%s"' % a if ' ' in a else a for a in args))
+    log('   ' + ' '.join('"%s"' % a if ' ' in a else a for a in _redact_args(args)))
     p = subprocess.run(args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     out = p.stdout.decode('utf-8', 'replace').strip()
     for line in out.splitlines():
@@ -183,6 +209,14 @@ def run(title, args, cwd=None, allow_fail=False):
 def require(path, what):
     if not os.path.exists(path):
         die(what + ' 不存在：' + path)
+
+
+def _sha256(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1 << 20), b''):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def sync_tree(src, dst, exclude=()):
@@ -521,6 +555,15 @@ def main():
     # ---------- 交付：拷回项目目录 ----------
     log('\n== 交付 ==')
     dest = os.path.join(PROJECT, OUT_NAME)
+    # 同版本号重打的硬闸门。本文件是交付包的唯一出口，一旦同名不同内容就停手：
+    # 历史事故 —— 5.6.0 名下出现过两份内容不同的包（sha256 53BAB339… 与 ACD46FD4…），
+    # 用户下了旧的那份，靠文件名根本分辨不出来。
+    if os.path.exists(dest):
+        if _sha256(dest) != _sha256(final):
+            die('同版本号的交付包已存在、且内容与本次构建不同：\n   ' + dest
+                + '\n   先升 _android/app/AndroidManifest.xml 的 versionName 再重跑。'
+                  '（version-numbering 的口径：不确定上一版是否已外发时宁可 +1）')
+        log('   已存在同名且内容一致的包，覆盖无副作用')
     shutil.copy2(final, dest)
     log('   APK: ' + dest)
     log('   大小: {:,} 字节 ({:.2f} MB)'.format(os.path.getsize(dest), os.path.getsize(dest) / 1048576.0))

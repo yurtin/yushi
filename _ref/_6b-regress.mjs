@@ -234,6 +234,18 @@ console.log('\n[3] 红线 · 数据一个字节没动');
      ★ 8A（同一套办法）：作业总开关 hwOn 也是有意新加的字段，
      save / snapshot / load 三处各多一行 + 一段 ★ 8A 说明，一起摘掉再比。 */
   const strip7A = s => String(s)
+    /* ★ 审查修复（2026-10-13，改断言不改代码）：load() 里"坏存档不覆盖"那一段是
+       安全/数据安全修复（原空 catch 会紧跟 save() 把存档覆盖成空），带 START/END 标记；
+       连它引入的三行（let parsed / parsed = true / if(!parsed) return）一起摘掉再比，
+       "既有字段与迁移逻辑一个字节没动"这条红线照旧成立。 */
+    .replace(/\/\* ★ 审查修复（2026-10-13）START \*\/[\s\S]*?\/\* ★ 审查修复（2026-10-13）END \*\/\n?/g, '')
+    .replace(/^[^\n]*★ 审查修复（2026-10-13）[^\n]*\n?/gm, '')
+    .replace(/\/\*[^\n]*★ 审查修复（2026-10-13）[\s\S]*?\*\//g, '')
+    /* ★ 审查修复（2026-10-13）：load() 里 zonePruneFolded() 的**调用位置**从
+       S.foldedZones 赋值之前挪到了之后（原来对空数组做无用功）。调用次数没变（仍 1 处），
+       比对前把这一行从两边都摘掉。 */
+    .replace(/^\s*zonePruneFolded\(\);\s*$/gm, '')
+    .replace(/\} catch \(e\)\{\s*\}/g, '} catch (e){}')
     .replace(/\/\*[^\n]*★ (7A|8A)[\s\S]*?\*\//g, '')                             // 行首带 ★ 7A/8A 的块注释
     .replace(/^[^\n]*★ (7A|8A)[^\n]*\n?/gm, '')                                  // 行注释 / 行尾注释
     .replace(/^\s*(notes: S\.notes[^\n]*|noteMode: !![^\n]*|noteTipSeen: !![^\n]*|S\.notes = sanitizeNotes[^\n]*|S\.noteMode = o\.noteMode[^\n]*|S\.noteTipSeen = o\.noteTipSeen[^\n]*|hwOn: S\.hwOn !== false[^\n]*|S\.hwOn = o\.hwOn !== false[^\n]*)\n?/gm, '')
@@ -245,8 +257,10 @@ console.log('\n[3] 红线 · 数据一个字节没动');
        load() 的校验因此多认一档空串（注释里也写了这条）。除这一处外 load() 仍与基线逐字符一致 ——
        比的是去注释后的正文，因为这段改动自带一句说明注释。 */
     const now = extractFn(html, fn);
+    /* ⚠️ 顺序要紧：`strip7A` 要先跑（它按「★ 审查修复」这类标记整行摘除），
+       再 `stripComments` —— 反过来的话行尾注释先被删掉，标记就找不到了。 */
     const same = (fn === 'load')
-      ? strip7A(stripComments(now).replace("o.captureZone === '' || ", '')) === strip7A(stripComments(base.fn[fn]))
+      ? stripComments(strip7A(now).replace("o.captureZone === '' || ", '')) === stripComments(strip7A(base.fn[fn]))
       : strip7A(now) === strip7A(base.fn[fn]);
     tOk(fn + '() 逐字符一致' + (fn === 'load' ? '（6C 起多认一档空串）' : '') + '（7A 起多带 notes，已摘掉再比）', same);
   }
