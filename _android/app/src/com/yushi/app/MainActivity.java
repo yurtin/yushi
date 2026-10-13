@@ -114,6 +114,28 @@ public class MainActivity extends Activity {
      *  App 冷启动时 onCreate 早就跑完了，那时 evaluateJavascript 打在空页面上会丢掉 ——
      *  所以先存下来，等 onPageFinished（或那道延时兜底）再发。 */
     private String pendingNotify = null;
+
+    /* ★ 9A 系统分享入口：别的 App「分享 → 鱼事」带进来的内容。
+       与 pendingNotify 同一套时序纪律（冷启动时先存、onPageFinished/兜底再发；取走就清）。
+       要分四个字段而不是一个对象，是因为「图片读失败」也要能派发出去（页面据此提示
+       「这张图读不出来」），见 flushShare 的 hasPendingShare 判据。 */
+    private boolean pendingShareOn = false;
+    /** 文本分享的正文（SEND + text/plain）。图片分享时恒为 null。 */
+    private String pendingShareText = null;
+    /** 图片分享的 data URL 列表（`data:image/jpeg;base64,…`），最多 SHARE_MAX_IMAGES 张。 */
+    private java.util.ArrayList<String> pendingShareImages = null;
+    /** 读不出来的图片张数（临时读授权过期 / 太大 / IO 错）。 */
+    private int pendingShareFailed = 0;
+    /** 来源里超过 SHARE_MAX_IMAGES 张 → true（页面会提示"只取了前 N 张"）。 */
+    private boolean pendingShareTruncated = false;
+    /** 一次最多收几张：一张图就是一次出网（见任务卡 9A 第 5 条坑）。 */
+    private static final int SHARE_MAX_IMAGES = 5;
+    /** 单张图读进来超过这个字节数就放弃（当"读不出来"处理）。
+     *  取 8MB 与页面侧 IMG_REJECT_BYTES 同一个口径；不加这道闸的话，
+     *  一张 20MB 的原图会变成 ~27MB 的 JS 字符串塞进 evaluateJavascript。 */
+    private static final long SHARE_MAX_BYTES = 8 * 1024 * 1024L;
+    /** 分享内容取走之后把 action 改成它 —— rotate / 重建时不会重放同一条分享。 */
+    private static final String ACTION_SHARE_DONE = "com.yushi.app.SHARE_DONE";
     /** ★ 4C：上一次看到的"精确排期能不能用"。用户从系统设置页回来时拿它比对 ——
      *  状态一变（拿到或丢了权限）就按原生排期表重排一遍，不必等下一次页面操作。 */
     private boolean lastExactOk = true;
@@ -249,9 +271,13 @@ public class MainActivity extends Activity {
         /* ★ 阶段1 提醒：App 被通知点开时 Intent 里带着条目 id —— 先存下来，
            等页面加载完（onPageFinished）再交给它（见 flushNotify 的说明）。 */
         deliverNotify(getIntent());
+        /* ★ 9A 系统分享入口：别的 App 分享进来的文本 / 图片。与通知点击同一套时序 ——
+           先在 onCreate 里解析并存下来（原生侧当场把图片读成 base64，content URI 的
+           临时读授权只活这一下），等页面跑起来再由 flushShare 派发。 */
+        deliverShare(getIntent());
         /* 兜底那一次：web.restoreState 这条路上 onPageFinished 不一定会再来。
-           flushNotify 是幂等的（发过就清空），多发无害。 */
-        web.postDelayed(this::flushNotify, 2500);
+           flushNotify / flushShare 都是幂等的（发过就清空），多发无害。 */
+        web.postDelayed(() -> { flushNotify(); flushShare(); }, 2500);
     }
 
     /** App 已经在跑时又点了一条通知：系统走这里（launchMode=singleTop + SINGLE_TOP）。 */
@@ -260,6 +286,11 @@ public class MainActivity extends Activity {
         super.onNewIntent(it);
         setIntent(it);
         deliverNotify(it);
+        /* ★ 9A：App 在后台时从别处分享进来 —— 走的是这条（不会重开实例）。
+           注意这是**加分支**，不是替换：上面那行通知跳转与 onResume 里的精确闹钟
+           回传都还在（任务卡 9A 第 4 条坑）。 */
+        deliverShare(it);
+        flushShare();
     }
 
     /**
@@ -1072,10 +1103,12 @@ public class MainActivity extends Activity {
         /** ★ 阶段1：页面每次加载完，补发一次"待处理的通知点击"。
          *  为什么不直接在 onCreate 里发：App 被通知点开时，onCreate 那一刻 WebView 还是空的，
          *  evaluateJavascript 打在空页面上会静默丢掉；而页面脚本注册监听要等它自己跑起来。
-         *  onPageFinished 是"页面脚本已经跑过一遍"的第一个可靠信号。 */
+         *  onPageFinished 是"页面脚本已经跑过一遍"的第一个可靠信号。
+         *  ★ 9A：同理补发一次"待处理的分享内容"（冷启动分享进来的那一次）。 */
         @Override
         public void onPageFinished(WebView view, String url) {
             flushNotify();
+            flushShare();
         }
     }
 
@@ -1295,6 +1328,170 @@ public class MainActivity extends Activity {
     void emitNotifyExact(String state){
         final String js = "window.dispatchEvent(new CustomEvent('yushi:notify',{detail:{type:'exact',state:"
                 + jsStr(state) + "}}));";
+        if (web != null) web.post(() -> web.evaluateJavascript(js, null));
+    }
+
+    /* ---- ★ 9A 系统分享入口：别的 App 分享进来的内容 ---- */
+
+    /**
+     * 解析一条分享 Intent（ACTION_SEND / ACTION_SEND_MULTIPLE）并先存起来。
+     *
+     * <p><b>为什么图片必须在这里读完</b>：分享进来的图片是 `content://` + 系统给的一次性读授权，
+     * 只在这一轮（这个 Intent 的生命周期）有效。页面自己去 `fetch(uri)` 一定失败，
+     * 而且是**静默失败**（表现成"图片没识别出来"，很难查）。所以原生当场 openInputStream
+     * 读全 → Base64 → `data:<mime>;base64,…`，页面拿到的就是一段可以直接交给 AI 的字符串。
+     *
+     * <p><b>取走就清</b>：解析完把 action 改掉，rotate / 重建 / 再次 onNewIntent 都不会重放。
+     * 与 pendingNotify 的 `it.removeExtra("notifyId")` 是同一条纪律。
+     */
+    private void deliverShare(android.content.Intent it) {
+        if (it == null) return;
+        final String act = it.getAction();
+        final boolean single = android.content.Intent.ACTION_SEND.equals(act);
+        final boolean multi = android.content.Intent.ACTION_SEND_MULTIPLE.equals(act);
+        if (!single && !multi) return;
+        it.setAction(ACTION_SHARE_DONE);
+
+        String text = null;
+        final java.util.ArrayList<android.net.Uri> uris = new java.util.ArrayList<>();
+        try {
+            if (single) {
+                CharSequence cs = it.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT);
+                if (cs != null) text = cs.toString().trim();
+                android.os.Parcelable p = it.getParcelableExtra(android.content.Intent.EXTRA_STREAM);
+                if (p instanceof android.net.Uri) uris.add((android.net.Uri) p);
+            } else {
+                java.util.ArrayList<android.os.Parcelable> ps =
+                        it.getParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM);
+                if (ps != null) {
+                    for (android.os.Parcelable q : ps) {
+                        if (q instanceof android.net.Uri) uris.add((android.net.Uri) q);
+                    }
+                }
+            }
+        } catch (Throwable t) { /* 脏 Intent 不崩，当没分享 */ }
+
+        int failed = 0;
+        boolean truncated = false;
+        final java.util.ArrayList<String> shots = new java.util.ArrayList<>();
+        if (!uris.isEmpty()) {
+            if (uris.size() > SHARE_MAX_IMAGES) truncated = true;
+            final int take = Math.min(uris.size(), SHARE_MAX_IMAGES);
+            for (int i = 0; i < take; i++) {
+                String d = readImageDataUrl(uris.get(i));
+                if (d == null || d.length() == 0) failed++;
+                else shots.add(d);
+            }
+        }
+
+        /* 有图就按图走（图里通常才是要记的东西）；一张都没读出来但来源本来是图 →
+           仍按 image 派发（images 为空 + failed>0），页面据此提示「这张图读不出来」。 */
+        if (!shots.isEmpty() || (uris.isEmpty() && text != null && text.length() > 0)) {
+            pendingShareText = (shots.isEmpty() ? text : null);
+            pendingShareImages = (shots.isEmpty() ? null : shots);
+            pendingShareFailed = 0;
+            pendingShareTruncated = false;
+        } else if (!uris.isEmpty()) {
+            pendingShareText = null;
+            pendingShareImages = shots;      // 可能为空：读失败的那几张
+            pendingShareFailed = failed;
+            pendingShareTruncated = truncated;
+        } else if (text != null && text.length() > 0) {
+            pendingShareText = text;
+            pendingShareImages = null;
+            pendingShareFailed = 0;
+            pendingShareTruncated = false;
+        } else {
+            return;                          // 空分享（既没文本也没图）：什么都不发
+        }
+        pendingShareOn = true;
+    }
+
+    /** 把一张 content URI 读成 data URL。读不出来返回 null（调用方计进 failed）。 */
+    private String readImageDataUrl(android.net.Uri uri) {
+        if (uri == null) return null;
+        java.io.InputStream in = null;
+        try {
+            in = getContentResolver().openInputStream(uri);
+            if (in == null) return null;
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            long total = 0;
+            while ((n = in.read(buf)) > 0) {
+                total += n;
+                if (total > SHARE_MAX_BYTES) return null;   // 太大：按"读不出来"处理
+                bo.write(buf, 0, n);
+            }
+            byte[] data = bo.toByteArray();
+            if (data.length == 0) return null;
+            String mime = null;
+            try { mime = getContentResolver().getType(uri); } catch (Throwable t) { }
+            if (mime == null || mime.indexOf("image/") != 0) mime = "image/jpeg";
+            return "data:" + mime + ";base64,"
+                    + android.util.Base64.encodeToString(data, android.util.Base64.NO_WRAP);
+        } catch (Throwable t) {
+            return null;
+        } finally {
+            try { if (in != null) in.close(); } catch (Throwable t) { }
+        }
+    }
+
+    /** 页面准备好了就把待处理的分享发出去。**幂等**：emitShare 发过就清空，重复调用无害。 */
+    private void flushShare() {
+        if (!pendingShareOn) return;
+        /* 与 flushNotify 同一条理由：onPageFinished 那一刻页面脚本可能刚跑一半
+           （监听刚注册上、AI 还没就绪），等 260ms 再发。 */
+        if (web != null) web.postDelayed(this::emitShare, 260);
+    }
+
+    /**
+     * 分享内容 → 页面。detail 两种形状：
+     * <pre>
+     *   yushi:share { type:'text',  text:'…' }
+     *   yushi:share { type:'image', images:[{mime:'image/jpeg', dataUrl:'data:image/jpeg;base64,…'}],
+     *                 truncated:false, failed:0 }
+     * </pre>
+     * 与 yushi:notify / yushi:speech 同一套 CustomEvent 机制（见 _android/NOTIFY-BRIDGE.md）。
+     * **取走就清**：发过一次之后 pendingShare* 全部归零。
+     */
+    void emitShare() {
+        if (!pendingShareOn) return;
+        final String text = pendingShareText;
+        final java.util.ArrayList<String> imgs = pendingShareImages;
+        final int failed = pendingShareFailed;
+        final boolean trunc = pendingShareTruncated;
+        pendingShareOn = false;
+        pendingShareText = null;
+        pendingShareImages = null;
+        pendingShareFailed = 0;
+        pendingShareTruncated = false;
+
+        final StringBuilder sb = new StringBuilder();
+        if (imgs != null && !imgs.isEmpty()) {
+            sb.append("window.dispatchEvent(new CustomEvent('yushi:share',{detail:{type:'image',images:[");
+            for (int i = 0; i < imgs.size(); i++) {
+                if (i > 0) sb.append(',');
+                String d = imgs.get(i);
+                String mime = "image/jpeg";
+                int semi = d.indexOf(';');
+                if (d.indexOf("data:") == 0 && semi > 5) mime = d.substring(5, semi);
+                sb.append("{mime:").append(jsStr(mime))
+                  .append(",dataUrl:").append(jsStr(d)).append('}');
+            }
+            sb.append("],truncated:").append(trunc)
+              .append(",failed:").append(failed).append("}}));");
+        } else if (text != null && text.length() > 0) {
+            sb.append("window.dispatchEvent(new CustomEvent('yushi:share',{detail:{type:'text',text:")
+              .append(jsStr(text)).append("}}));");
+        } else if (failed > 0) {
+            /* 来源是图、但一张都没读出来 —— 也要派发，页面据此说一句人话（不静默）。 */
+            sb.append("window.dispatchEvent(new CustomEvent('yushi:share',{detail:{type:'image',")
+              .append("images:[],truncated:false,failed:").append(failed).append("}}));");
+        } else {
+            return;
+        }
+        final String js = sb.toString();
         if (web != null) web.post(() -> web.evaluateJavascript(js, null));
     }
 

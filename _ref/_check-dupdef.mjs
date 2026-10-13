@@ -225,6 +225,8 @@ const NAMES = [
   'maybeNoteTip', 'hideNoteTip', 'noteTipClose',
   /* ---- 7A 第一轮反馈（用户 2026-10-12）：长文页补「想法」标题 + 右上角改操作提示 ---- */
   'notesIntroHTML', 'openNoteHelp', 'noteEditMeta', 'notesBatchHTML', 'batchBarSync',
+  /* ---- 9A 系统分享入口（2026-10-13）：分享面板进来的文本/图片走确认页 ---- */
+  'shareAskIfEditing', 'shareText', 'runShareText', 'shareImages', 'runShareImages',
 ];
 
 if (!fs.existsSync(FILE)){ console.error('找不到文件：' + FILE); process.exit(2); }

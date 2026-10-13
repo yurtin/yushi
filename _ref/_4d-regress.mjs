@@ -326,7 +326,10 @@ console.log('\n[8] 源码级不变量 + tpat 改前/改后原文（验收要求�
   tOk('行是 button 不是 div', /class="cf-row cf-row-go" data-i=/.test(htmlNC));
   tOk('点行调的是 imageConfirmEdit', /b\.onclick = \(\) => imageConfirmEdit\(\+b\.dataset\.i\);/.test(htmlNC));
   tOk('imageConfirmEdit 用 opts.onSave 写回（icApplyEdit）', /onSave: it => \{ icApplyEdit\(src, it\); back\(\); \}/.test(htmlNC));
-  tOk('确认页的「确认添加」落的是 icItems 那份（改后的值）', /imageCommit\(icItems\)/.test(htmlNC));
+  /* ★ 9A：确认页现在被「图片识别」与「系统分享」两个入口共用，落库时多带一个
+     "原文占位"（默认为空时由 imageCommit 兜成「图片」）—— 这是**改断言不改代码**，
+     断言从"字面只有 icItems"放宽成"落的是 icItems 那份 + 传了 rawNote"。 */
+  tOk('确认页的「确认添加」落的是 icItems 那份（改后的值）', /imageCommit\(icItems, rawNote\)/.test(htmlNC));
   tOk('红线 3：排期真相源没动（notifyTimeOf 仍恰好 3 处）',
     (htmlNC.match(/notifyTimeOf/g) || []).length === 3, (htmlNC.match(/notifyTimeOf/g) || []).length);
   tOk('红线 3：b.notifySchedule( 仍恰好 1 处',
