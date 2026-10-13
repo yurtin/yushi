@@ -1242,7 +1242,9 @@ t('示例覆盖了这一版的所有形状：三层父子（根→子→孙）/ 
       seeds.filter(x => x.done).length,
       ds.filter(x => x.goal).length,
       ds.filter(x => x.date && x.date < ymd(new Date())).length,
-      ds.filter(x => x.zone === 'repeat' && x.repeat).length];`),
+      /* ★ 2026-10-13 改断言（脚本漂移，不改代码）：7B 把分区键从 'repeat' 改成 z_repeat，
+         这里还写着旧字面量 → 永远数到 0。走页面的 zoneRepeatKey() 拿真键。 */
+      ds.filter(x => x.zone === zoneRepeatKey() && x.repeat).length];`),
   [2, 1, 2, 1, 2, 1]);
 t('示例里的日期是**按今天算**的（不会过几天就变成一堆过期条目）',
   await ev(`const ds = S.items.filter(x => x.demo);
@@ -1665,8 +1667,9 @@ t('开关都是 role="switch"，aria-checked 与真实状态一致',
      **5A（5.14.0）加了「锁屏时全屏响铃」alarmfull**，两个都是 .set-card 里的 .switch[data-set]。
      ★ 7D 改断言：分组换成 功能 / AI / 外观与体感 / 数据 之后，这 7 个开关的 **DOM 顺序**变成
        功能（notify / alarmfull / voice / ideaReview / autoDoneParent）→
-       外观与体感（help / lite）。集合没变，只是位置换了。 */
-  [['notify', 'alarmfull', 'voice', 'ideaReview', 'autoDoneParent', 'help', 'lite'], true]);
+       外观与体感（help / lite）。集合没变，只是位置换了。
+     ★ 8A（7.5.0）再加一个「作业」总开关 hwOn（功能栏末行）→ 现在是 8 个。 */
+  [['notify', 'alarmfull', 'voice', 'ideaReview', 'autoDoneParent', 'hwOn', 'help', 'lite'], true]);
 t('点语音开关 → aria-checked 翻转，并且存进存档',
   await ev(`const b=document.querySelector('[data-set="voice"]');
     const before=b.getAttribute('aria-checked'); b.click();

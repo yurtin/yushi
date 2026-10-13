@@ -315,8 +315,11 @@ console.log('\n[6] 7B.2「未分组」有内容时排最后');
   const cols = await zoneCols();
   tOk('未分组那一栏出现了，且排在最后', cols[cols.length - 1].k === '' && cols[cols.length - 1].ids.indexOf('s2') >= 0,
     JSON.stringify(cols.map(c => c.k)));
-  t('它没有排序能力（未分组不可拖）', cols[cols.length - 1].menu, false);
-  t('它没有可折叠的标题栏（不可折叠）', cols[cols.length - 1].fold, false);
+  /* ★ 2026-10-13 改断言（脚本漂移，不改代码）：更新日志 7.6.0 写明
+     「未分组那一栏以前点标题没反应（合不上），现在能折叠了」；7.2.x 的拖动排序也作用于
+     所有 `.board > .zone`。原来那两条"不可拖 / 不可折叠"的期望已作废，改成"与普通分区一致"。 */
+  t('未分组也能拖（7.6.0 起，与普通分区一致）', cols[cols.length - 1].menu, true);
+  t('未分组也能折叠（7.6.0 起，与普通分区一致）', cols[cols.length - 1].fold, true);
 }
 
 /* ══════════ [7] 删除分区（红线 2 的 DOM 版） ══════════ */

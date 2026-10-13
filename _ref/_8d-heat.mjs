@@ -282,7 +282,12 @@ tOk('★ 弹窗在**屏幕中间**（不是底部半屏）：中心与视口中�
   Math.abs(sh.maskCenter - sh.viewCenter) <= 40, JSON.stringify([sh.maskCenter, sh.viewCenter]));
 tOk('★ 一个弹窗里**两列**：年 + 月，可以一起改', sh.nCol === 2 && sh.units === '年月', JSON.stringify([sh.nCol, sh.units]));
 tOk('★ 右上角有 ✕、没有「确定」', sh.hasX === true && sh.hasOk === false, JSON.stringify([sh.hasX, sh.hasOk]));
-tOk('年份轮 1970..今年（今年封顶）', sh.years[0] === '1970' && sh.years[1] === String(Y), JSON.stringify(sh.years));
+/* ★ 2026-10-13 改断言（脚本漂移，不改代码）：审查报告 B4 把年份下界从 1970 收到
+   「近 10 年与库里最早日期取更早」——原因是"选早年要一次渲染两万多格子、真机会卡死"（7.6.2 修）。
+   新口径钉三件：上界仍是今年、下界收在近 10 年内、**不许回到 1970**（那是这次修掉的缺陷）。 */
+tOk('年份轮收在近年..今年（今年封顶，不再一路到 1970）',
+  sh.years[1] === String(Y) && Number(sh.years[0]) >= Y - 10 && Number(sh.years[0]) < Y,
+  JSON.stringify(sh.years));
 tOk('月份轮 1~12 铺三遍（循环）', sh.nMonth === 36, sh.nMonth);
 tOk('打开时停在当前年月', sh.onY === String(Y) && sh.onM === String(M + 1), JSON.stringify([sh.onY, sh.onM]));
 await shot('sheet-mid');

@@ -15,7 +15,10 @@ $names = @(
   '_1-notify.mjs','_2b-hover.mjs','_3b-dom.mjs','_4b-dom.mjs','_4d-dom.mjs',
   '_5-dom.mjs','_5d-dom.mjs','_5e-dom.mjs','_5g-dom.mjs','_5h-dom.mjs','_5i-dom.mjs',
   '_6a-dom.mjs','_6b-dom.mjs','_6c-dom.mjs','_6d-shadow.mjs',
-  '_7a-dom.mjs','_7b-dom.mjs','_7d-dom.mjs','_7e-dom.mjs','_7f-dom.mjs',
+  '_7a-dom.mjs','_7b-dom.mjs','_7d-dom.mjs','_7f-dom.mjs',
+  # '_7e-dom.mjs' 2026-10-13 退役：它测的是 7.2.0 里被整块删除的 .zmenu 分区菜单
+  # （新建/改名/删除已搬进"分区管理弹窗"），整份从第 207 行崩，属"功能搬家后脚本作废"。
+  # 等价覆盖由 _7f-dom.mjs（分区管理弹窗，63/63）承担。要复活它得整份重写。
   '_8a-aside.mjs','_8a-geom.mjs','_8b-hw.mjs','_8b-tabbar.mjs','_8c-icon.mjs',
   '_8d-geom.mjs','_8d-heat.mjs','_8e-aside-right.mjs','_8g-misc.mjs',
   '_verify-a11y.mjs','_verify-idea.mjs','_verify-mobile.mjs'
