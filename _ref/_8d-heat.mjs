@@ -83,6 +83,22 @@ tOk('★ 年月字号大一号（≥26px）', h1.fs >= 26, h1.fs);
 tOk('★ 年月在热力图**上方**，固定头是 sticky', h1.aboveHeat === true && h1.fixSticky === 'sticky', JSON.stringify([h1.aboveHeat, h1.fixSticky]));
 t('★ 星期表头 7 格、周一到周日', h1.wkTxt, '一二三四五六日');
 t('进来默认是当月', h1.cur, Y + '-' + pad(M + 1));
+/* ★ 7.6.1（用户："10 月的热力图应该放在我能看到的正中间"）：当月那一块要**居中**在滚动视口里。 */
+const centered = await ev(`
+  var heat = document.getElementById('stHeat');
+  var cur = heat.dataset.cur;
+  var cells = [].slice.call(heat.querySelectorAll('.st-cell[data-m="' + cur + '"]'));
+  if (!cells.length) return { err: 'no-cells' };
+  var first = cells[0].getBoundingClientRect(), last = cells[cells.length-1].getBoundingClientRect();
+  var hr = heat.getBoundingClientRect();
+  return { blockTop: Math.round(first.top), blockBottom: Math.round(last.bottom),
+    blockMid: Math.round((first.top + last.bottom)/2), viewMid: Math.round(hr.top + hr.height/2),
+    diff: Math.round((first.top + last.bottom)/2 - (hr.top + hr.height/2)),
+    heatH: Math.round(hr.height), blockH: Math.round(last.bottom - first.top) };`);
+tOk('★ 当月那一块**居中**在滚动视口里（中心相差 ≤4px）', Math.abs(centered.diff) <= 4, JSON.stringify(centered));
+tOk('★ 当月完整可见（上下都留出邻月的空间，不是贴顶被遮一半）',
+  centered.blockTop > centered.viewMid - centered.heatH/2 && centered.blockBottom < centered.viewMid + centered.heatH/2,
+  JSON.stringify([centered.blockTop, centered.blockBottom, centered.viewMid]));
 /* 滚动热力图：年月那行必须一动不动，但字要跟着变 */
 const scrolled = await ev(`
   var heat = document.getElementById('stHeat'), ym = document.getElementById('stYm');
@@ -181,13 +197,14 @@ console.log('\n[2b] 滑动吸附：超过当前月的 30% → 吸到相邻月份
 const snap = await ev(`
   var heat = document.getElementById('stHeat');
   var marks = stMarks.length ? stMarks : (stMarks = stHeatMarks(heat));
-  /* 先落在"当月"那一格上 */
+  /* 先落在"当月居中"的位置上（7.6.1 的基准） */
   var idx = marks.findIndex(function(x){ return x.m === heat.dataset.cur; });
   if (idx < 0) return { err: 'no-cur-mark' };
-  heat.scrollTo({ top: marks[idx].top, behavior: 'instant' });
+  function centerTop(mk){ return Math.max(0, mk.top + mk.h/2 - heat.clientHeight/2); }
+  heat.scrollTo({ top: centerTop(marks[idx]), behavior: 'instant' });
   return new Promise(function(resolve){
     setTimeout(function(){
-      var base = marks[idx].top, h = marks[idx+1].top - base;
+      var base = centerTop(marks[idx]), h = centerTop(marks[idx+1]) - base;
       /* ① 往上滑 40%（> 30%）→ 期望吸到上一个月 */
       heat.scrollTo({ top: base + h * 0.4, behavior: 'instant' });
       setTimeout(function(){
@@ -200,7 +217,7 @@ const snap = await ev(`
             heat.scrollTo({ top: base + h * 0.2, behavior: 'instant' });
             setTimeout(function(){
               resolve({ cur: heat.dataset.cur, h: Math.round(h), mid: mid,
-                base: Math.round(base), wantNext: Math.round(marks[idx+1].top),
+                base: Math.round(base), wantNext: Math.round(centerTop(marks[idx+1])),
                 afterDown: afterDown, afterSmall: Math.round(heat.scrollTop),
                 title: document.getElementById('stYm').textContent });
             }, 700);
