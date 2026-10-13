@@ -105,7 +105,7 @@ def build_index(version):
     return len(out.encode('utf-8'))
 
 
-def write_manifest(version):
+def write_manifest():
     data = {
         'name': APP_NAME,
         'short_name': APP_NAME,
@@ -117,7 +117,11 @@ def write_manifest(version):
         'orientation': 'portrait',
         'background_color': '#ffffff',
         'theme_color': '#ffffff',
-        'version': version,
+        # ★ 审查修复（2026-10-13，11 号 🟡5）：这里原来写了一个 'version' 字段 ——
+        #   Web App Manifest 规范里**没有** version 这个成员，浏览器一律忽略它，
+        #   更新判定完全靠 sw.js 的字节差异。留着只会让人误以为"改了 version 用户就会更新"。
+        #   版本号的真相源仍是 _android/app/AndroidManifest.xml，PWA 侧由
+        #   sw.js 的 CACHE 名（build_pwa.write_sw）与页面里的 APP_VERSION 承载。
         'icons': [
             {'src': 'icon-192.png', 'sizes': '192x192', 'type': 'image/png', 'purpose': 'any'},
             {'src': 'icon-512.png', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'any'},
@@ -219,7 +223,7 @@ def main():
     try:
         os.makedirs(DIST, exist_ok=True)
         n = build_index(version)
-        write_manifest(version)
+        write_manifest()
         write_sw(version)
         write_icons()
     except BaseException:
