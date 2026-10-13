@@ -599,7 +599,7 @@ public class MainActivity extends Activity {
     @Override
     public void onBackPressed() {
         /* ① 键盘弹着 → 只收键盘，弹层 / 页面都不动（安卓惯例） */
-        if (imeVisible || imeAccepting()){
+        if (keyboardUp()){
             hideIme();
             backAt = 0;
             return;
@@ -634,12 +634,19 @@ public class MainActivity extends Activity {
                 });
     }
 
-    /** API < 30 没有 WindowInsets.Type.ime()，用 IME 的连接状态兜一下（API 30+ 走 imeVisible）。 */
-    private boolean imeAccepting(){
+    /** 软键盘真的弹着吗。
+     *  API 30+ 用上面那段 WindowInsets 监听写下的 imeVisible（准）；
+     *  低版本取不到 Type.ime()，用"可视帧底部被吃掉多少"判（经典做法，阈值 15%）。
+     *  ⚠️ 刻意**不用** InputMethodManager.isAcceptingText()：输入框有焦点但键盘没弹时
+     *  它也是 true（录入页一进去就 focus），那样按返回会被白白吃掉一下。 */
+    private boolean keyboardUp(){
+        if (Build.VERSION.SDK_INT >= 30) return imeVisible;
         try {
-            android.view.inputmethod.InputMethodManager imm =
-                    (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-            return imm != null && imm.isAcceptingText();
+            android.view.View dv = getWindow().getDecorView();
+            android.graphics.Rect r = new android.graphics.Rect();
+            dv.getWindowVisibleDisplayFrame(r);
+            int h = dv.getHeight();
+            return h > 0 && (h - r.bottom) > h * 0.15;
         } catch (Throwable t){ return false; }
     }
 

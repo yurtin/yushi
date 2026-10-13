@@ -18,6 +18,9 @@ const JAVA = process.argv[3] || path.join(ROOT, '_android', 'app', 'src', 'com',
 const html = fs.readFileSync(FILE, 'utf8');
 const java = fs.readFileSync(JAVA, 'utf8');
 const htmlNC = html.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+/* Java 侧同样要去注释 —— 注释里会写「刻意不用 isAcceptingText」这种字面量，
+   拿原串数会把说明当成实现（本项目的老坑：判据要用去注释后的源码）。 */
+const javaNC = java.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
 let pass = 0, fail = 0;
 const t = (label, got, want) => {
@@ -243,8 +246,12 @@ console.log('\n[5] MainActivity.onBackPressed');
 const iBack = java.indexOf('public void onBackPressed()');
 const backBody = iBack < 0 ? '' : java.slice(iBack, java.indexOf('\n    }', iBack));
 tOk('[5-1] onBackPressed 调 appBack()', backBody.indexOf('appBack') >= 0);
-tOk('[5-2] 键盘优先（imeVisible / isAcceptingText → hideIme 后 return）',
-  /imeVisible \|\| imeAccepting\(\)/.test(backBody) && /hideIme\(\);\s*\n\s*backAt = 0;\s*\n\s*return;/.test(backBody));
+tOk('[5-2] 键盘优先（keyboardUp() → hideIme 后 return）',
+  /if \(keyboardUp\(\)\)\{/.test(backBody) && /hideIme\(\);\s*\n\s*backAt = 0;\s*\n\s*return;/.test(backBody));
+tOk('[5-2b] 键盘判定两种口径：API30+ 读 imeVisible，低版本读可视帧',
+  /SDK_INT >= 30\) return imeVisible;/.test(java) && /getWindowVisibleDisplayFrame/.test(java));
+tOk('[5-2c] 刻意没用 isAcceptingText（有焦点没键盘时会白吃一下返回）',
+  javaNC.indexOf('isAcceptingText') < 0);
 tOk('[5-3] 2 秒窗口常量 BACK_EXIT_MS = 2000', count(java, 'BACK_EXIT_MS = 2000') === 1);
 tOk('[5-4] "handled" 分支直接 return（不退出）',
   /indexOf\("handled"\) >= 0\)\{ backAt = 0; return; \}/.test(backBody));
