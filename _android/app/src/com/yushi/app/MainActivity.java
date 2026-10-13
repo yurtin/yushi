@@ -117,6 +117,14 @@ public class MainActivity extends Activity {
     /** ★ 4C：上一次看到的"精确排期能不能用"。用户从系统设置页回来时拿它比对 ——
      *  状态一变（拿到或丢了权限）就按原生排期表重排一遍，不必等下一次页面操作。 */
     private boolean lastExactOk = true;
+    /** ★ 7.7.0：返回键的"再按一次退出"窗口（2 秒）。
+     *  第一次按只提示、绝不退出；窗口内第二次按才 finish()。 */
+    private static final long BACK_EXIT_MS = 2000;
+    /** 上一次"到底了"的返回键按下时刻（uptimeMillis；0 = 没有待确认的退出）。 */
+    private long backAt = 0;
+    /** ★ 7.7.0：软键盘是否弹着（API 30+ 由下面那段 WindowInsets 监听写，
+     *  API < 30 取不到 Type.ime()，退回 InputMethodManager.isAcceptingText()）。 */
+    private boolean imeVisible = false;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -171,6 +179,7 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 30) {
             host.setOnApplyWindowInsetsListener((v, insets) -> {
                 int ime = insets.getInsets(android.view.WindowInsets.Type.ime()).bottom;
+                imeVisible = ime > 0;   // ★ 7.7.0：返回键的"键盘优先"要读它
                 if (v.getPaddingBottom() != ime) {
                     v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), ime);
                 }
@@ -574,31 +583,73 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * 返回键：弹层开着就先关弹层，否则退出。
+     * 返回键：**逐层往回退**，退到最外层再按一次才退出（7.7.0）。
      *
-     * <p>页面是单文件、没有历史，所以「退回上一页」基本走不到；真正有用的是
-     * 「返回 = 关掉当前弹层」这条约定。这里复用页面已有的 Escape 处理，
-     * 不另造一套关闭逻辑（否则弹层的滚动锁、inert、焦点归还都要在这里再实现一遍）。
+     * <p>页面是单文件、没有历史记录，所以"上一页"这件事只能由页面自己说 ——
+     * 这里问 appBack()：它按"键盘 → 手势 → 滑轮 → 弹层 → 编辑器 → 多选 → 全屏树 →
+     * 子页 → 回清单"的顺序只消掉一层，返回 'handled'；一层都没有时返回 'pass'。
      *
-     * <p>语音手势（长按态）也归在这条约定里：长按期间按返回，页面收到 Escape 会先取消手势并复原。
+     * <p>为什么不再在这里判 #mask：那套判据只认弹层，统计子页 / 长文详情 / 全屏树 /
+     * 多选态全都漏掉，按返回会直接退出应用（用户 2026-10-13 报的就是这个）。
+     * 现在分层逻辑只有页面一处，原生只管"键盘优先 + 再按一次退出"。
+     *
+     * <p>页面没加载完（appBack 还不存在）时返回 'nopage'，落回老路径，不新增崩溃面。
      */
     @SuppressWarnings("deprecation")
     @Override
     public void onBackPressed() {
+        /* ① 键盘弹着 → 只收键盘，弹层 / 页面都不动（安卓惯例） */
+        if (imeVisible || imeAccepting()){
+            hideIme();
+            backAt = 0;
+            return;
+        }
+        if (web == null){ super.onBackPressed(); return; }
+        /* ② 问页面：这一下归它管吗 */
         web.evaluateJavascript(
-                "(function(){var m=document.getElementById('mask');" +
-                "if(m&&m.classList.contains('on')){" +
-                "document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return 'handled';}" +
-                "return 'pass';})()",
+                "(function(){try{return (typeof appBack==='function')?appBack():'nopage';}" +
+                "catch(e){return 'nopage';}})()",
                 new ValueCallback<String>() {
                     @Override
                     public void onReceiveValue(String value) {
-                        // 注意 evaluateJavascript 的回调是**异步**的，而且字符串带引号
-                        if (value != null && value.indexOf("handled") >= 0) return;
-                        if (web.canGoBack()) web.goBack();
-                        else finish();
+                        // evaluateJavascript 的回调是**异步**的，而且字符串带引号
+                        if (value != null && value.indexOf("handled") >= 0){ backAt = 0; return; }
+                        if (value != null && value.indexOf("nopage") >= 0){
+                            // 页面还没跑起来：老路径（有历史就后退，否则退出）
+                            if (web.canGoBack()) web.goBack();
+                            else finish();
+                            return;
+                        }
+                        /* ③ 页面没事可做了 = 已经在最外层 → 再按一次退出 */
+                        long now = android.os.SystemClock.uptimeMillis();
+                        if (backAt != 0 && now - backAt < BACK_EXIT_MS){
+                            backAt = 0;
+                            finish();
+                            return;
+                        }
+                        backAt = now;
+                        android.widget.Toast.makeText(MainActivity.this,
+                                "再按一次退出鱼事", android.widget.Toast.LENGTH_SHORT).show();
                     }
                 });
+    }
+
+    /** API < 30 没有 WindowInsets.Type.ime()，用 IME 的连接状态兜一下（API 30+ 走 imeVisible）。 */
+    private boolean imeAccepting(){
+        try {
+            android.view.inputmethod.InputMethodManager imm =
+                    (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            return imm != null && imm.isAcceptingText();
+        } catch (Throwable t){ return false; }
+    }
+
+    private void hideIme(){
+        try {
+            android.view.inputmethod.InputMethodManager imm =
+                    (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            if (imm != null && web != null) imm.hideSoftInputFromWindow(web.getWindowToken(), 0);
+        } catch (Throwable t){ }
+        imeVisible = false;
     }
 
     /**

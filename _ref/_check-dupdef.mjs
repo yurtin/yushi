@@ -71,6 +71,8 @@ const NAMES = [
   'tagPillHTML', 'syncEntryTagUI', 'renderEntryTags', 'refresh', 'setFoldInit', 'renderSettings',
   'refreshAfterChange', 'measure', 'paint', 'effectiveTheme', 'applyTheme', 'applyLite', 'currentLite',
   'isSoftwareGL', 'isLiquidGlassCapable', 'initHint', 'goView', 'goEntry', 'themeFabWire', 'setToolsOpen',
+  /* ================= 7.7.0 手机返回键 ================= */
+  'appBack',
   /* ================= 0E 统计页下钻 ================= */
   'statPageHits', 'statTreeOf', 'statRootHits', 'statPageCount', 'originCounts', 'originRowHTML',
   'jumpButtonHTML', 'statJumpHide', 'updateStatJump', 'statItemsHTML', 'walk',
