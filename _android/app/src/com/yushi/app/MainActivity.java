@@ -128,6 +128,10 @@ public class MainActivity extends Activity {
     private int pendingShareFailed = 0;
     /** 来源里超过 SHARE_MAX_IMAGES 张 → true（页面会提示"只取了前 N 张"）。 */
     private boolean pendingShareTruncated = false;
+    /** ★ 7.8.2：收到了、但鱼事处理不了的类型（如 PDF / 视频）——
+     *  只让页面弹一句人话，绝不静默，也绝不硬把二进制当文本读。
+     *  这一条同时是**诊断通道**：文案里带原始 mime，用户截图就能告诉我微信到底发的是什么类型。 */
+    private String pendingShareNotice = null;
     /** 一次最多收几张：一张图就是一次出网（见任务卡 9A 第 5 条坑）。 */
     private static final int SHARE_MAX_IMAGES = 5;
     /** 单张图读进来超过这个字节数就放弃（当"读不出来"处理）。
@@ -1449,7 +1453,18 @@ public class MainActivity extends Activity {
             pendingShareFailed = failed;
             pendingShareTruncated = truncated;
         } else {
-            return;                          // 空分享（既没文本也没图）：什么都不发
+            /* ★ 7.8.2：收到了东西、但一个能用的都没有（例如 PDF / 视频 / 我们没读成功的附件）。
+               绝不静默 —— 让页面弹一句带**原始 mime** 的人话：用户看到就知道是什么类型，
+               这一句同时也是我们唯一的真机诊断通道（本机没有 adb）。 */
+            String mt = null;
+            try { mt = it.getType(); } catch (Throwable t) { }
+            if ((mt == null || mt.length() == 0) && uris.isEmpty()) return;   // 真的是空分享
+            String shown = (mt == null || mt.length() == 0) ? "未知类型" : mt;
+            pendingShareNotice = "这条分享是 " + shown + "，鱼事暂时看不了它（只认识文字和图片）";
+            pendingShareText = null;
+            pendingShareImages = null;
+            pendingShareFailed = 0;
+            pendingShareTruncated = false;
         }
         pendingShareOn = true;
     }
@@ -1521,6 +1536,7 @@ public class MainActivity extends Activity {
      *   yushi:share { type:'text',  text:'…' }
      *   yushi:share { type:'image', images:[{mime:'image/jpeg', dataUrl:'data:image/jpeg;base64,…'}],
      *                 truncated:false, failed:0 }
+     *   yushi:share { type:'notice', text:'这条分享是 application/pdf，鱼事暂时看不了它…' }  ← ★ 7.8.2
      * </pre>
      * 与 yushi:notify / yushi:speech 同一套 CustomEvent 机制（见 _android/NOTIFY-BRIDGE.md）。
      * **取走就清**：发过一次之后 pendingShare* 全部归零。
@@ -1531,14 +1547,20 @@ public class MainActivity extends Activity {
         final java.util.ArrayList<String> imgs = pendingShareImages;
         final int failed = pendingShareFailed;
         final boolean trunc = pendingShareTruncated;
+        final String notice = pendingShareNotice;
         pendingShareOn = false;
         pendingShareText = null;
         pendingShareImages = null;
         pendingShareFailed = 0;
         pendingShareTruncated = false;
+        pendingShareNotice = null;
 
         final StringBuilder sb = new StringBuilder();
-        if (imgs != null && !imgs.isEmpty()) {
+        if (notice != null && notice.length() > 0) {
+            /* 处理不了的类型：只弹一句人话（页面只 toast，不开确认页、不落库）。 */
+            sb.append("window.dispatchEvent(new CustomEvent('yushi:share',{detail:{type:'notice',text:")
+              .append(jsStr(notice)).append("}}));");
+        } else if (imgs != null && !imgs.isEmpty()) {
             sb.append("window.dispatchEvent(new CustomEvent('yushi:share',{detail:{type:'image',images:[");
             for (int i = 0; i < imgs.size(); i++) {
                 if (i > 0) sb.append(',');

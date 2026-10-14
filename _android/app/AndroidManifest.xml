@@ -8,8 +8,8 @@
      3.5.0 → 3050000（旧的 3.1–3.39 是 30100–33900，新方案稳压它们一头，升级不会倒挂）。 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.yushi.app"
-    android:versionCode="7080100"
-    android:versionName="7.8.1">
+    android:versionCode="7080200"
+    android:versionName="7.8.2">
 
     <!--
       零联网仍是底线，但本版破了"零权限"：为支持长按圆钮的设备端离线语音识别，加了两条权限。
@@ -99,26 +99,42 @@
             <!-- ★ 9A 系统分享入口：别的 App 分享文本或图片时，鱼事出现在分享面板里。
                  exported 已经是 true（launcher activity 本来就导出），不用改。
                  一条权限都不加：分享进来的图片是 content:// + 一次性读授权，不是存储权限。
-                 同一个 intent-filter 里的多个 <data> 是**或**关系（文本与单图都走这一条）。 -->
+                 同一个 intent-filter 里的多个 <data> 是**或**关系（文本与单图都走这一条）。
+                 ★ 7.8.2：再加一档 `*/*`（任意类型）。真机实测：只声明 text/plain + text/* +
+                 image/* 时，微信「多选 → 分享」那个系统面板里仍然**没有**鱼事（相册那条能出），
+                 说明微信发出来的类型不在我们声明的那几种里。代价：所有分享面板里都会出现鱼事；
+                 处理不了的类型由原生派发 type:'notice' 让页面弹一句人话（带原始 mime），
+                 等真机告诉我们微信到底发什么，再收窄成精确的那几种。 -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
                 <data android:mimeType="text/*" />
                 <data android:mimeType="image/*" />
+                <data android:mimeType="*/*" />
             </intent-filter>
             <!-- ★ 9A：多选分享（ACTION_SEND_MULTIPLE）。
-                 ⚠️ 真机实测（2026-10-14，荣耀 MagicOS）：微信「多选消息 → 右下角分享」发的是
-                 **SEND_MULTIPLE + text/plain**，而这一条原来只声明了 image/* —— 于是鱼事
-                 在微信那个「全部应用」面板里根本不出现（相册能出，因为它走的是 image/*）。
-                 修法：把 text/plain / text/* 也收进来。多段文本是有意义的（微信多选就是这样），
-                 页面会把它们拼成一段原话再走 aiUnderstand。 -->
+                 ⚠️ 真机实测（2026-10-14，荣耀 MagicOS）：微信「多选消息 → 右下角分享」走的
+                 就是这一支，而它原来的 image/* 完全对不上 —— 类型不匹配，系统就不会列鱼事。
+                 多段文本是有意义的（微信多选就是这样），页面会把它们拼成一段原话再走 aiUnderstand。 -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
                 <data android:mimeType="text/*" />
                 <data android:mimeType="image/*" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <!-- ★ 7.8.2：**没有 type 的分享**也要接。带 <data> 的 filter 只匹配"有 type"的 intent；
+                 有些实现（包括部分 ROM 的聊天记录分享）发的 SEND 是 type=null 的 ——
+                 那种情况只有"一个 <data> 都不声明"的 filter 才匹配得上，所以这两条必须单独存在。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 

@@ -129,6 +129,15 @@ console.log('\n[1b] manifest：两个 intent-filter 都在，权限一条没加'
     tOk('SEND_MULTIPLE 那条也声明了 text/plain（微信多选走的就是它）',
       /android:mimeType="text\/plain"/.test(multiF), multiF.replace(/\s+/g, ' ').slice(0, 90));
     tOk('SEND_MULTIPLE 那条也声明了 text/*', /android:mimeType="text\/\*"/.test(multiF));
+    /* ★ 7.8.2：只声明文字/图片那几种时，微信那个面板里仍然没有鱼事 → 加一档「任意类型」，
+       再补两条「一个 <data> 都不声明」的 filter（只匹配 type=null 的分享）。 */
+    tOk('SEND 那条声明了任意类型 */*', /android:mimeType="\*\/\*"/.test(sendF));
+    tOk('SEND_MULTIPLE 那条声明了任意类型 */*', /android:mimeType="\*\/\*"/.test(multiF));
+    const bare = mf.filter(b => !/android:mimeType/.test(b));
+    tOk('有两条不带 <data> 的 filter（接 type=null 的分享）',
+      bare.filter(b => /action\.SEND"/.test(b)).length === 1
+      && bare.filter(b => /action\.SEND_MULTIPLE"/.test(b)).length === 1,
+      bare.length + ' 条');
   }
   /* 两条 intent-filter 必须挂在 MainActivity 上（另起一个 activity 会让分享面板的
      跳转落在一个没 WebView 的壳上）。 */
@@ -164,6 +173,13 @@ console.log('\n[1c] 原生侧：图片当场读成 base64；取走就清；onNew
     && /mt\.indexOf\("image\/"\) == 0/.test(javaNC));
   tOk('文本有上限（不封顶会变成巨大的 evaluateJavascript 字符串）',
     /SHARE_TEXT_CHARS/.test(javaNC) && /text\.substring\(0, SHARE_TEXT_CHARS\)/.test(javaNC));
+  /* ★ 7.8.2：处理不了的类型要弹一句人话（带原始 mime，兼当真机诊断通道），不许静默。 */
+  tOk('有 notice 分支（处理不了的类型 → 页面只弹提示）',
+    /pendingShareNotice/.test(javaNC)
+    && /type:'notice',text:/.test(javaNC)
+    && /这条分享是 /.test(javaNC));
+  tOk('页面侧认得 type:notice（只 toast，不开确认页）',
+    /d\.type === 'notice'/.test(htmlNC) && /toast\(String\(d\.text/.test(htmlNC));
   tOk('emitShare 发完把 pendingShare 全部归零',
     /void emitShare\(\) \{[\s\S]*?pendingShareOn = false;/.test(javaNC));
   tOk('冷启动不直接发（先存，由 flushShare 在 onPageFinished / 兜底里发）',
