@@ -118,6 +118,18 @@ console.log('\n[1b] manifest：两个 intent-filter 都在，权限一条没加'
   tOk('接了 text/plain', /android:mimeType="text\/plain"/.test(manifest));
   tOk('接了 image/*（单图与多图两条都要）',
     (manifest.match(/android:mimeType="image\/\*"/g) || []).length, 2);
+  /* ★ 7.8.1 真机回归：微信「多选消息 → 分享」发的是 **SEND_MULTIPLE + text/plain**，
+     原来 SEND_MULTIPLE 只声明了 image/* → 鱼事在微信那个面板里根本不出现。
+     这两条是那次修复的钉子（单图/多图两条都要能接文本）。 */
+  {
+    const mf = [...manifest.matchAll(/<intent-filter>([\s\S]*?)<\/intent-filter>/g)].map(m => m[1]);
+    const sendF = mf.filter(b => /action\.SEND"/.test(b))[0] || '';
+    const multiF = mf.filter(b => /action\.SEND_MULTIPLE"/.test(b))[0] || '';
+    tOk('SEND 那条声明了 text/*', /android:mimeType="text\/\*"/.test(sendF));
+    tOk('SEND_MULTIPLE 那条也声明了 text/plain（微信多选走的就是它）',
+      /android:mimeType="text\/plain"/.test(multiF), multiF.replace(/\s+/g, ' ').slice(0, 90));
+    tOk('SEND_MULTIPLE 那条也声明了 text/*', /android:mimeType="text\/\*"/.test(multiF));
+  }
   /* 两条 intent-filter 必须挂在 MainActivity 上（另起一个 activity 会让分享面板的
      跳转落在一个没 WebView 的壳上）。 */
   const mainAct = (manifest.match(/<activity\s+android:name="\.MainActivity"[\s\S]*?<\/activity>/) || [''])[0];
@@ -144,6 +156,14 @@ console.log('\n[1c] 原生侧：图片当场读成 base64；取走就清；onNew
     && /"data:" \+ mime \+ ";base64,"/.test(javaNC));
   tOk('取走就清：解析完把 action 改掉（防 rotate / 重建重放）',
     /it\.setAction\(ACTION_SHARE_DONE\)/.test(javaNC));
+  /* ★ 7.8.1：多选分享的载荷也要收全 —— EXTRA_TEXT 的**数组** + 非图片 URI 当文本读。 */
+  tOk('多选分支读 EXTRA_TEXT 的数组（原来这一支只读 EXTRA_STREAM）',
+    /getCharSequenceArrayExtra\(android\.content\.Intent\.EXTRA_TEXT\)/.test(javaNC));
+  tOk('EXTRA_STREAM 按实际类型分流（非 image/* 走 readTextUri）',
+    /imgUris/.test(javaNC) && /readTextUri\(u\)/.test(javaNC)
+    && /mt\.indexOf\("image\/"\) == 0/.test(javaNC));
+  tOk('文本有上限（不封顶会变成巨大的 evaluateJavascript 字符串）',
+    /SHARE_TEXT_CHARS/.test(javaNC) && /text\.substring\(0, SHARE_TEXT_CHARS\)/.test(javaNC));
   tOk('emitShare 发完把 pendingShare 全部归零',
     /void emitShare\(\) \{[\s\S]*?pendingShareOn = false;/.test(javaNC));
   tOk('冷启动不直接发（先存，由 flushShare 在 onPageFinished / 兜底里发）',

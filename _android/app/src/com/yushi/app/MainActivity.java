@@ -134,6 +134,13 @@ public class MainActivity extends Activity {
      *  取 8MB 与页面侧 IMG_REJECT_BYTES 同一个口径；不加这道闸的话，
      *  一张 20MB 的原图会变成 ~27MB 的 JS 字符串塞进 evaluateJavascript。 */
     private static final long SHARE_MAX_BYTES = 8 * 1024 * 1024L;
+    /** ★ 7.8.1：分享进来的文本上限。
+     *  页面侧只认前面 2000 字（SHARE_TEXT_MAX），这里留足余量即可 ——
+     *  但**必须有**这道闸：微信多选几十条消息时 EXTRA_TEXT 可能很大，
+     *  不封顶会变成一个巨大的 JS 字符串塞进 evaluateJavascript。 */
+    private static final int SHARE_TEXT_CHARS = 40000;
+    /** 单个 .txt 分享文件最多读这么多字节（只用来兜底，正常都是走 EXTRA_TEXT）。 */
+    private static final int SHARE_TEXT_FILE_BYTES = 256 * 1024;
     /** 分享内容取走之后把 action 改成它 —— rotate / 重建时不会重放同一条分享。 */
     private static final String ACTION_SHARE_DONE = "com.yushi.app.SHARE_DONE";
     /** ★ 4C：上一次看到的"精确排期能不能用"。用户从系统设置页回来时拿它比对 ——
@@ -1355,12 +1362,29 @@ public class MainActivity extends Activity {
         String text = null;
         final java.util.ArrayList<android.net.Uri> uris = new java.util.ArrayList<>();
         try {
+            CharSequence cs = it.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT);
+            if (cs != null) text = cs.toString().trim();
             if (single) {
-                CharSequence cs = it.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT);
-                if (cs != null) text = cs.toString().trim();
                 android.os.Parcelable p = it.getParcelableExtra(android.content.Intent.EXTRA_STREAM);
                 if (p instanceof android.net.Uri) uris.add((android.net.Uri) p);
             } else {
+                /* ★ 7.8.1：多选分享也可能把文本放在 EXTRA_TEXT 的**数组**里 ——
+                   微信「多选消息 → 分享」就是这条路（真机实测，荣耀 MagicOS）。
+                   原来这一支只读 EXTRA_STREAM，于是多段文本被整条丢掉。 */
+                CharSequence[] arr = it.getCharSequenceArrayExtra(android.content.Intent.EXTRA_TEXT);
+                if (arr != null) {
+                    StringBuilder jb = new StringBuilder();
+                    for (CharSequence one : arr) {
+                        if (one == null) continue;
+                        String s = one.toString().trim();
+                        if (s.length() == 0) continue;
+                        if (jb.length() > 0) jb.append('\n');
+                        jb.append(s);
+                    }
+                    if (jb.length() > 0) {
+                        text = (text == null || text.length() == 0) ? jb.toString() : (text + "\n" + jb);
+                    }
+                }
                 java.util.ArrayList<android.os.Parcelable> ps =
                         it.getParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM);
                 if (ps != null) {
@@ -1371,29 +1395,45 @@ public class MainActivity extends Activity {
             }
         } catch (Throwable t) { /* 脏 Intent 不崩，当没分享 */ }
 
+        /* ★ 7.8.1：EXTRA_STREAM 里的东西按**实际类型**分流。
+           微信多选分享过来的可能是若干个 text/plain 的 content://（聊天记录），
+           拿它们当图片读会得到一堆 base64 垃圾 —— 一律先问 getType()，
+           非 image/* 的按文本读出来拼进 text。 */
+        final java.util.ArrayList<android.net.Uri> imgUris = new java.util.ArrayList<>();
+        if (!uris.isEmpty()) {
+            StringBuilder tb = new StringBuilder(text == null ? "" : text);
+            for (android.net.Uri u : uris) {
+                String mt = null;
+                try { mt = getContentResolver().getType(u); } catch (Throwable t) { }
+                if (mt != null && mt.indexOf("image/") == 0) { imgUris.add(u); continue; }
+                String s = readTextUri(u);
+                if (s != null && s.length() > 0) {
+                    if (tb.length() > 0) tb.append('\n');
+                    tb.append(s);
+                }
+            }
+            String joined = tb.toString().trim();
+            text = (joined.length() == 0) ? null : joined;
+        }
+        if (text != null && text.length() > SHARE_TEXT_CHARS) text = text.substring(0, SHARE_TEXT_CHARS);
+
         int failed = 0;
         boolean truncated = false;
         final java.util.ArrayList<String> shots = new java.util.ArrayList<>();
-        if (!uris.isEmpty()) {
-            if (uris.size() > SHARE_MAX_IMAGES) truncated = true;
-            final int take = Math.min(uris.size(), SHARE_MAX_IMAGES);
+        if (!imgUris.isEmpty()) {
+            if (imgUris.size() > SHARE_MAX_IMAGES) truncated = true;
+            final int take = Math.min(imgUris.size(), SHARE_MAX_IMAGES);
             for (int i = 0; i < take; i++) {
-                String d = readImageDataUrl(uris.get(i));
+                String d = readImageDataUrl(imgUris.get(i));
                 if (d == null || d.length() == 0) failed++;
                 else shots.add(d);
             }
         }
 
-        /* 有图就按图走（图里通常才是要记的东西）；一张都没读出来但来源本来是图 →
-           仍按 image 派发（images 为空 + failed>0），页面据此提示「这张图读不出来」。 */
-        if (!shots.isEmpty() || (uris.isEmpty() && text != null && text.length() > 0)) {
-            pendingShareText = (shots.isEmpty() ? text : null);
-            pendingShareImages = (shots.isEmpty() ? null : shots);
-            pendingShareFailed = 0;
-            pendingShareTruncated = false;
-        } else if (!uris.isEmpty()) {
+        if (!shots.isEmpty()) {
+            /* 有图就按图走（图里通常才是要记的东西）；图文同时有时图优先。 */
             pendingShareText = null;
-            pendingShareImages = shots;      // 可能为空：读失败的那几张
+            pendingShareImages = shots;
             pendingShareFailed = failed;
             pendingShareTruncated = truncated;
         } else if (text != null && text.length() > 0) {
@@ -1401,10 +1441,40 @@ public class MainActivity extends Activity {
             pendingShareImages = null;
             pendingShareFailed = 0;
             pendingShareTruncated = false;
+        } else if (!imgUris.isEmpty()) {
+            /* 来源是图、但一张都没读出来 → 仍按 image 派发，
+               页面据此提示「这张图读不出来」（failed > 0），不静默。 */
+            pendingShareText = null;
+            pendingShareImages = shots;      // 可能为空：读失败的那几张
+            pendingShareFailed = failed;
+            pendingShareTruncated = truncated;
         } else {
             return;                          // 空分享（既没文本也没图）：什么都不发
         }
         pendingShareOn = true;
+    }
+
+    /** 把一条非图片的分享 URI 当文本读出来（UTF-8，最多 SHARE_TEXT_FILE_BYTES）。读不出来回 null。 */
+    private String readTextUri(android.net.Uri uri) {
+        java.io.InputStream in = null;
+        try {
+            in = getContentResolver().openInputStream(uri);
+            if (in == null) return null;
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            long total = 0;
+            while ((n = in.read(buf)) > 0) {
+                total += n;
+                if (total > SHARE_TEXT_FILE_BYTES) break;
+                bo.write(buf, 0, n);
+            }
+            return new String(bo.toByteArray(), "UTF-8");
+        } catch (Throwable t) {
+            return null;
+        } finally {
+            try { if (in != null) in.close(); } catch (Throwable t) { }
+        }
     }
 
     /** 把一张 content URI 读成 data URL。读不出来返回 null（调用方计进 failed）。 */
