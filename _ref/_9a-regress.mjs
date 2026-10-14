@@ -207,13 +207,14 @@ console.log('\n[1c] 原生侧：图片当场读成 base64；取走就清；onNew
 const CONSTS = ['SHARE_TEXT_MAX', 'SHARE_IMG_MAX', 'SHARE_ITEMS_MAX',
   'AI_KEY_LS', 'AI_TIMEOUT_MS', 'AI_RETRY_MAX', 'AI_CALL_GAP_MS',
   'AI_UNDERSTAND_MAX', 'TAG_PER_ITEM',
-  'AI_UNDERSTAND_SCHEMA', 'AI_IMAGE_SYS', 'ZONE_KEY_RE'];
+  'AI_UNDERSTAND_SCHEMA', 'AI_IMAGE_SYS', 'ZONE_KEY_RE', 'AI_SHARE_HINT'];
 /* aiFail / aiSay 不切进来 —— 它们在下面被换成记录器（同名再切会 Identifier already declared） */
 const FNS = ['aiKey', 'aiOn', 'aiCall', 'aiParseJSON',
   'aiValidDateStr', 'aiValidTimeStr', 'aiValidTag', 'aiValidateItems',
   'zlist', 'zoneLongKey', 'zoneShortKey', 'validZoneKey',
   'icRowBits', 'icApplyEdit', 'openImageConfirm', 'imageConfirmEdit',
   'imageAsk', 'aiImageUser', 'ymd', 'pad2', 'imageCommit',
+  'cleanShareText',
   'shareAskIfEditing', 'shareText', 'runShareText', 'shareImages', 'runShareImages'];
 const LETS = ['icItems', 'shareBusy'];
 
@@ -504,6 +505,47 @@ console.log('\n[9] 分享进来的文本也走"确认前零落库"：S.notes / �
   await sleep(0);
   t('S.notes 没被写', S.notes.length, 0);
   t('save() 一次都没调', box.saves, 0);
+}
+
+/* ==================================================================== */
+console.log('\n[10] ★ 7.9.0 聊天记录壳必须剥掉（只剥分享这条路）');
+{
+  const clean = new Function(extractFn(htmlNC, 'cleanShareText') + '\nreturn cleanShareText;')();
+  const wx = '折欠 和 鱼心 在微信上的聊天记录如下，请查收。\n—— 2026-10-14 ——\n'
+    + '鱼心 快跟你师傅请个假，说你要回去跟朋友玩以撒';
+  t('微信抬头 + 日期分隔 + 发送者名字都剥掉',
+    clean(wx), '快跟你师傅请个假，说你要回去跟朋友玩以撒');
+  t('不分行、粘成一整行的也剥得掉',
+    clean('折欠和鱼心在微信上的聊天记录如下，请查收。——2026-10-14——鱼心 快跟你师傅请个假'),
+    '快跟你师傅请个假');
+  t('多段记录：名字冒号前缀与纯时间戳行都剥掉，正文都留下',
+    clean('A 和 B 在微信上的聊天记录如下，请查收。\n—— 2026-10-14 ——\n'
+      + 'B: 明天上午把材料交到教务处\nA: 好\n2026-10-14 09:01'),
+    '明天上午把材料交到教务处\n好');
+  /* 反例：这几条一个字都不许动 —— 剥壳规则只认"看起来就是壳"的形状。 */
+  t('普通录入句不动', clean('买西瓜 明天'), '买西瓜 明天');
+  t('正文里的冒号不动（不猜 `注意：…`）', clean('注意：明天交材料'), '注意：明天交材料');
+  t('正文里的「和」不动', clean('我和我妈去买菜'), '我和我妈去买菜');
+  t('时间区间 `9:30--10:00` 不动（破折号里必须是日期形状才删）',
+    clean('9:30--10:00 开会'), '9:30--10:00 开会');
+  t('只有壳没有正文 → 退回原文（宁可带着壳，也不吃内容）',
+    clean('A 和 B 在微信上的聊天记录如下，请查收。'),
+    'A 和 B 在微信上的聊天记录如下，请查收。');
+  /* 接线：shareText 先清洗再截断；分享场景给模型一句额外说明（只进 user 段）。 */
+  tOk('shareText 里先 cleanShareText 再截断',
+    /let raw = cleanShareText\(text\)/.test(htmlNC));
+  tOk('分享那条把 AI_SHARE_HINT 传给了 aiUnderstand',
+    /aiUnderstand\(raw, AI_SHARE_HINT\)/.test(htmlNC));
+  tOk('aiUnderstand 收可选 hint 并透传给 aiUnderstandUser',
+    /async function aiUnderstand\(text, hint\)/.test(htmlNC)
+    && /aiUnderstandUser\(raw, hint\)/.test(htmlNC));
+  tOk('hint 插在「只整理这一行」**之前**（原话必须仍是最后一行）',
+    htmlNC.indexOf('if (hint) lines.push(String(hint));')
+      < htmlNC.indexOf("lines.push('只整理这一行"));
+  /* 不传 hint 时提示词逐字符与改动前一致（默认路径零变化） */
+  const userFn = extractFn(htmlNC, 'aiUnderstandUser');
+  tOk('aiUnderstandUser 的 hint 是可选的（不传时不加任何行）',
+    /if \(hint\) lines\.push/.test(userFn));
 }
 
 console.log('\n----');
